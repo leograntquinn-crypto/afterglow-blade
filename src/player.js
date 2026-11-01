@@ -8,7 +8,7 @@
 //      └──闪避──> dash ──攻击──> attack(冲刺攻击)
 //   被打 → hurt / knock(击飞) → down(倒地) → idle
 
-import { GRAVITY, DEPTH, ARENA_W, clamp, lerp, toScreen } from './config.js';
+import { GRAVITY, DEPTH, world, clamp, lerp, toScreen } from './config.js';
 import { MOVES, SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
@@ -102,7 +102,7 @@ export class Player {
         this.onLand(game);
       }
     }
-    this.x = clamp(this.x, 30, ARENA_W - 30);
+    this.x = clamp(this.x, 30, world.w - 30);
     this.y = clamp(this.y, 0, DEPTH);
   }
 

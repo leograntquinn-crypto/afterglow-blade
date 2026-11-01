@@ -1,5 +1,5 @@
 // 敌人：类型表 + 简单 AI + 受击反应（硬直 / 浮空 / 倒地 / 霸体破防）
-import { GRAVITY, DEPTH, ARENA_W, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
+import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
 import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
@@ -29,8 +29,9 @@ let nextId = 0;
 
 export class Enemy {
   // lv：关卡等级，决定血量和伤害；elite：精英怪（更大、更硬、必掉好装备）
+  // type 可以是 TYPES 里的名字，也可以直接传一个类型配置（Boss 用）
   constructor(type, x, y, game, { lv = 1, elite = false } = {}) {
-    const T = TYPES[type];
+    const T = typeof type === 'string' ? TYPES[type] : type;
     this.T = T;
     this.game = game;
     this.id = nextId++;
@@ -233,7 +234,7 @@ export class Enemy {
         this.onLand(game, v);
       }
     }
-    this.x = clamp(this.x, 20, ARENA_W - 20);
+    this.x = clamp(this.x, 20, world.w - 20);
     this.y = clamp(this.y, 0, DEPTH);
   }
 

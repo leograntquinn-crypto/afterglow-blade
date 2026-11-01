@@ -1,23 +1,27 @@
 // 游戏主循环与场景管理
 //
-// 场景流程：标题 → 营地（HTML 界面）→ 关卡战斗 → 结算 → 营地 ……
+// 场景流程：标题 → 营地（HTML 界面）→ 地下城（一间间房间 → 首领）→ 结算 → 营地 ……
 //
 // 固定时间步长（Fixed Timestep）：不管显示器是 60Hz 还是 144Hz，
 // 游戏逻辑都按每秒 60 次更新。这样帧数据（招式第几帧出判定）在任何设备上都一致。
 
-import { VIEW_W, VIEW_H, ARENA_W, DEPTH, COLORS, FONT_TITLE, FONT_NUM, clamp, rand } from './config.js';
+import { VIEW_W, VIEW_H, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, clamp, rand } from './config.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { Loot } from './loot.js';
-import { STAGES, WAVE_NAMES, grade } from './stages.js';
+import { STAGES, grade } from './stages.js';
+import { generateDungeon, DIRS } from './dungeon.js';
+import { Boss, BOSSES } from './boss.js';
+import { Chest, Shrine } from './props.js';
+import { SKILLS, SKILL_KEYS } from './moves.js';
 import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX } from './progression.js';
 import { RARITY, randomDrop, sellPrice, itemTitle } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
-import { drawBackground, drawVignette, drawShadow } from './draw.js';
+import { drawBackground, drawDoors, drawVignette, drawShadow, THEMES } from './draw.js';
 import { drawHUD, drawTitle, drawDead, drawClear } from './hud.js';
 
 class Game {
@@ -117,43 +121,108 @@ class Game {
     this.maxCombo = 0;
     this.kills = 0;
     this.focus = null;
-    this.wave = -1;
+    this.waveIdx = -1;
     this.waveActive = false;
     this.waveClearAt = null;
     this.spawnQueue = [];
     this.spawnSide = 1;
     this.banner = null;
     this.frame = 0;
+    this.dungeon = null;
+    this.room = null;
+    this.boss = null;
+    this.bossAt = null;
+    this.bossDownAt = null;
+    this.transition = null;
+    this.roomsCleared = 0;
   }
 
   startStage(i) {
     this.stage = STAGES[i];
     this.refreshStats();
     this.resetWorld();
+    this.dungeon = generateDungeon(this.stage);
     this.run = { xp: 0, gold: 0, items: [], ups: [], firstClear: false, ended: false };
     this.hub.hide();
     this.setScene('play');
     this.input.clearBuffer();
     this.canvas.focus();
+    this.enterRoom(this.dungeon.start, null);
+    const B = BOSSES[this.stage.boss];
+    this.banner = { title: this.stage.name, sub: `${this.dungeon.mainLength} 个房间 · 首领「${B.name}」在地图上的「王」处`, t: 0 };
+    sfx('wave');
+  }
+
+  // ---------------- 房间 ----------------
+  // from：玩家是朝哪个方向走进来的（'e' = 从西边的门向东走进来）
+  enterRoom(room, from) {
+    this.room = room;
+    room.visited = true;
+    world.w = room.w;
+    this.enemies = [];
+    this.projectiles = [];
+    this.hazards = [];
+    this.loots = [];
+    this.attackers.clear();
+    this.focus = null;
+    this.boss = null;
+    this.bossAt = null;
+    this.waveIdx = -1;
+    this.waveActive = false;
+    this.waveClearAt = null;
+    this.spawnQueue = [];
+
+    const p = this.player;
+    p.vx = p.vy = 0;
+    if (!from) { p.x = 200; p.y = DEPTH / 2; }
+    else if (from === 'e') p.x = 70;
+    else if (from === 'w') p.x = world.w - 70;
+    else if (from === 'n') { p.x = world.w / 2; p.y = DEPTH - 12; }
+    else if (from === 's') { p.x = world.w / 2; p.y = 12; }
+    this.camX = clamp(p.x - VIEW_W / 2, 0, world.w - VIEW_W);
+
+    // 道具房：状态记在房间上，回来时保持
+    if (room.type === 'treasure') {
+      this.enemies.push(new Chest(world.w / 2, DEPTH / 2, room.chestOpened));
+      if (!room.chestOpened) this.toast('攻击宝箱 3 次打开它', COLORS.gold);
+    }
+    if (room.type === 'rest') {
+      this.enemies.push(new Shrine(world.w / 2, DEPTH / 2 - 20, room.shrineUsed, () => (room.shrineUsed = true)));
+      if (!room.shrineUsed) this.toast('靠近泉水恢复生命和魔力', '#6fe38a');
+    }
+    if (room.cleared) return;
+    if (room.type === 'treasure' || room.type === 'rest') { room.cleared = true; return; }
+    if (room.type === 'boss') {
+      const B = BOSSES[this.stage.boss];
+      this.bossAt = this.frame + 70;
+      this.banner = { title: B.name, sub: B.title, t: 0, color: B.glow, boss: true };
+      sfx('bossIntro');
+      return;
+    }
+    if (room.type === 'elite') this.banner = { title: '精 英', sub: '精英怪必定掉落精良以上的装备', t: 0, color: COLORS.gold, small: true };
     this.nextWave();
   }
 
-  // ---------------- 波次 ----------------
   nextWave() {
-    this.wave++;
-    if (this.wave >= this.stage.waves.length) return this.finish();
-    const list = this.stage.waves[this.wave];
-    this.spawnQueue = list.map((spec, i) => ({ spec, at: this.frame + 50 + i * 30 }));
+    this.waveIdx++;
+    const waves = this.room.waves;
+    if (this.waveIdx >= waves.length) return this.roomCleared();
+    this.spawnQueue = waves[this.waveIdx].map((spec, i) => ({ spec, at: this.frame + 40 + i * 26 }));
     this.waveActive = true;
-    const last = this.wave === this.stage.waves.length - 1;
-    this.banner = { title: last ? '最 终 波' : WAVE_NAMES[this.wave], sub: this.stage.subs[this.wave] || this.stage.name, t: 0, color: last ? COLORS.ember : null };
-    sfx('wave');
+    if (this.waveIdx > 0) this.banner = { title: `第 ${this.waveIdx + 1} 波`, sub: '', t: 0, small: true };
+  }
+
+  roomCleared() {
+    this.room.cleared = true;
+    this.roomsCleared++;
+    sfx('door');
+    if (Object.keys(this.room.doors).length) this.toast('通道已开启', COLORS.blade);
   }
 
   spawnEnemy(spec) {
     const elite = spec.endsWith('*');
     this.spawnSide = -this.spawnSide;
-    const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, ARENA_W - 60);
+    const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
     const y = rand(20, DEPTH - 20);
     const e = new Enemy(spec.replace('*', ''), x, y, this, { lv: this.stage.lv, elite });
     e.facing = -this.spawnSide;
@@ -162,17 +231,71 @@ class Game {
     this.fx.ring(x, y, 4, elite ? COLORS.gold : '#8a5cff', 10, 6, 18, 3);
   }
 
+  // Boss 召唤的小怪
+  spawnMinion(type, x, y) {
+    const e = new Enemy(type, x, y, this, { lv: this.stage.lv });
+    e.minion = true;
+    this.enemies.push(e);
+    this.fx.ring(x, y, 4, '#8a5cff', 10, 6, 18, 3);
+  }
+
   updateWaves() {
+    if (this.bossAt != null && this.frame >= this.bossAt) {
+      this.bossAt = null;
+      this.boss = new Boss(this.stage.boss, world.w - 300, DEPTH / 2, this, this.stage.lv);
+      this.boss.facing = -1;
+      this.enemies.push(this.boss);
+      this.fx.ring(this.boss.x, this.boss.y, 4, this.boss.B.glow, 20, 10, 30, 5);
+      this.fx.shake(10, 30);
+    }
     while (this.spawnQueue.length && this.spawnQueue[0].at <= this.frame) this.spawnEnemy(this.spawnQueue.shift().spec);
     if (this.waveActive && !this.spawnQueue.length && !this.enemies.some((e) => e.alive)) {
       this.waveActive = false;
       this.waveClearAt = this.frame;
       for (const l of this.loots) l.magnet = true; // 清场后，地上的东西自动飞过来
     }
-    if (this.waveClearAt != null && this.frame - this.waveClearAt > 110) {
+    if (this.waveClearAt != null && this.frame - this.waveClearAt > 70) {
       this.waveClearAt = null;
       this.nextWave();
     }
+    if (this.bossDownAt != null && this.frame - this.bossDownAt === 50) for (const l of this.loots) l.magnet = true;
+    if (this.bossDownAt != null && this.frame - this.bossDownAt > 150) {
+      this.bossDownAt = null;
+      this.finish();
+    }
+  }
+
+  // 走到打开的门口并继续往门的方向走 → 转场到隔壁房间
+  checkDoors() {
+    if (!this.room.cleared || this.transition || this.bossDownAt != null) return;
+    const p = this.player, d = this.room.doors, inp = this.input;
+    if (p.state !== 'idle' && p.state !== 'run') return;
+    let dir = null;
+    if (d.e && p.x >= world.w - 34 && inp.dx > 0) dir = 'e';
+    else if (d.w && p.x <= 34 && inp.dx < 0) dir = 'w';
+    else if (d.n && p.y <= 1 && inp.dy < 0 && Math.abs(p.x - world.w / 2) < 70) dir = 'n';
+    else if (d.s && p.y >= DEPTH - 1 && inp.dy > 0 && Math.abs(p.x - world.w / 2) < 90) dir = 's';
+    if (dir) { this.transition = { t: 0, dir }; sfx('dash'); }
+  }
+
+  updateTransition() {
+    const tr = this.transition;
+    tr.t++;
+    if (tr.t === 16) {
+      const [dx, dy] = DIRS[tr.dir];
+      this.enterRoom(this.dungeon.get(this.room.x + dx, this.room.y + dy), tr.dir);
+    }
+    if (tr.t >= 32) this.transition = null;
+  }
+
+  openChest(chest) {
+    this.room.chestOpened = true;
+    const L = this.stage.lv;
+    sfx('chest');
+    this.fx.flash(COLORS.gold, 0.2);
+    this.fx.ring(chest.x, chest.y, 30, COLORS.gold, 20, 8, 24, 5);
+    for (let i = 0; i < 4; i++) this.loots.push(new Loot({ x: chest.x, y: chest.y, gold: Math.round(rand(8, 14) * (1 + L * 0.3)), vx: rand(-4, 4) }));
+    for (let i = 0; i < 2; i++) this.dropItem(chest.x, chest.y, randomDrop(L, { minRar: 1, luck: 1 }));
   }
 
   // 结束一次出征（通关、死亡或撤退都会走这里）：存档
@@ -185,7 +308,7 @@ class Game {
 
   finish() {
     const p = this.player, st = this.stage, s = this.save;
-    this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, waves: st.waves.length });
+    this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, rooms: this.dungeon.mainLength });
     // 通关奖励
     const first = !s.cleared[st.id];
     const mul = first ? 3 : 1;
@@ -231,15 +354,22 @@ class Game {
     if (this.toasts.length > 5) this.toasts.shift();
   }
 
+  dropItem(x, y, item) {
+    this.loots.push(new Loot({ x, y, item, vx: rand(-3, 3) }));
+    if (item.rar === 3) { sfx('legend'); this.fx.flash(RARITY[3].color, 0.25); this.fx.shake(6, 20); }
+    else if (item.rar === 2) sfx('rare');
+  }
+
   dropLoot(e) {
     const L = this.stage.lv;
-    const coins = e.elite ? 3 : 1;
+    if (e.minion) return; // Boss 召唤的小怪不掉东西，防止刷
+    const coins = e.isBoss ? 8 : e.elite ? 3 : 1;
     for (let i = 0; i < coins; i++) this.loots.push(new Loot({ x: e.x, y: e.y, gold: Math.round(rand(4, 9) * (1 + L * 0.3)) }));
-    if (Math.random() < (e.elite ? 1 : e.T.drop)) {
-      const item = randomDrop(L, { minRar: e.elite ? 1 : 0, luck: e.elite ? 0.6 : 0 });
-      this.loots.push(new Loot({ x: e.x, y: e.y, item, vx: (Math.random() - 0.5) * 3 }));
-      if (item.rar === 3) { sfx('legend'); this.fx.flash(RARITY[3].color, 0.25); this.fx.shake(6, 20); }
-      else if (item.rar === 2) sfx('rare');
+    if (e.isBoss) {
+      // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高
+      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: L > 1 ? 2 : 1, luck: 2 }));
+    } else if (Math.random() < (e.elite ? 1 : e.T.drop)) {
+      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? 1 : 0, luck: e.elite ? 0.6 : 0 }));
     }
   }
 
@@ -290,6 +420,13 @@ class Game {
     const r = target.takeHit(h, dir, dmg, this);
     if (!r) return false;
     const fromPlayer = src.team === 'player';
+    if (target.team === 'prop') {
+      // 打宝箱：只要火花和声音
+      this.fx.spark(target.x - dir * 20, target.y, 24, dir, 6, '#ffd65a');
+      this.hitstop = Math.max(this.hitstop, 3);
+      sfx('hit');
+      return true;
+    }
     const hz = target.z + target.h * 0.55;
     const hx = target.x - dir * target.w * 0.25;
 
@@ -331,6 +468,18 @@ class Game {
     this.gainXp(e.xp);
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${e.xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
+    if (e.isBoss) {
+      // 首领倒下：长慢动作、所有小怪一起倒下、准备结算
+      this.slowmo = 60;
+      this.hitstop = Math.max(this.hitstop, 16);
+      this.fx.flash('#ffffff', 0.6);
+      this.fx.shake(16, 40);
+      this.banner = { title: '击 破', sub: `${e.B.name} 倒下了`, t: 0, color: e.B.glow };
+      for (const m of this.enemies) if (m.alive && m !== e && m.setState) { m.setState('dying'); m.vz = 6; m.z = Math.max(m.z, 0.01); }
+      this.room.cleared = true;
+      this.bossDownAt = this.frame;
+      return;
+    }
     // 清场的最后一击：慢动作 + 白闪
     if (!this.spawnQueue.length && !this.enemies.some((x) => x.alive)) {
       this.slowmo = 26;
@@ -355,6 +504,7 @@ class Game {
     // 顿帧期间世界静止（特效和震屏照常）
     if (this.hitstop > 0) { this.hitstop--; return; }
 
+    if (this.transition) this.updateTransition();
     this.input.tick();
     this.frame++;
     if (this.comboPop > 0) this.comboPop--;
@@ -373,10 +523,11 @@ class Game {
     if (this.focus?.remove) this.focus = null;
 
     // 镜头：跟随主角，略微看向前方
-    const target = clamp(this.player.x - VIEW_W / 2 + this.player.facing * 60, 0, ARENA_W - VIEW_W);
+    const target = clamp(this.player.x - VIEW_W / 2 + this.player.facing * 60, 0, world.w - VIEW_W);
     this.camX += (target - this.camX) * 0.08;
 
     this.updateWaves();
+    this.checkDoors();
     if (this.player.state === 'dead' && this.player.st > 90 && this.scene === 'play') {
       this.endRun();
       this.setScene('dead');
@@ -409,8 +560,9 @@ class Game {
 
     ctx.save();
     ctx.translate(ox, oy);
-    drawBackground(ctx, camX, t);
+    drawBackground(ctx, camX, t, THEMES[this.stage && this.scene !== 'hub' ? this.stage.theme : 'crypt']);
     if (this.scene !== 'hub') {
+      drawDoors(ctx, camX, this.room, t);
       this.fx.drawFloor(ctx, camX);
       for (const h of this.hazards) h.drawFloor(ctx, camX);
       const actors = [this.player, ...this.enemies];
@@ -424,6 +576,11 @@ class Game {
     ctx.restore();
 
     drawVignette(ctx);
+    if (this.transition) {
+      const tt = this.transition.t;
+      ctx.fillStyle = `rgba(5,4,8,${tt < 16 ? tt / 16 : (32 - tt) / 16})`;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
     if (this.fx.flashA > 0) {
       ctx.globalAlpha = this.fx.flashA;
       ctx.fillStyle = this.fx.flashColor;
@@ -431,11 +588,29 @@ class Game {
       ctx.globalAlpha = 1;
     }
 
-    if (this.scene === 'play') drawHUD(ctx, this);
+    if (this.scene === 'play') {
+      drawHUD(ctx, this);
+      if (this.touch) this.updateTouchCooldowns();
+    }
     else if (this.scene === 'title') drawTitle(ctx, this);
     else if (this.scene === 'dead') drawDead(ctx, this);
     else if (this.scene === 'clear') drawClear(ctx, this);
     else if (this.scene === 'hub') this.hub.drawPreview(t);
+  }
+
+  // 触屏：把技能冷却直接显示在按钮上（CSS 变量驱动扇形遮罩）
+  updateTouchCooldowns() {
+    this.touchBtns ??= SKILL_KEYS.map((k) => document.querySelector(`.tbtn[data-action="${k}"]`));
+    const p = this.player;
+    SKILL_KEYS.forEach((k, i) => {
+      const b = this.touchBtns[i];
+      if (!b) return;
+      const learned = this.save.skills[k] > 0;
+      const v = Math.round((p.cd[k] > 0 ? p.cd[k] / p.cdMax[k] : 0) * 40) / 40;
+      if (b._cd !== v) { b._cd = v; b.style.setProperty('--cd', v); }
+      b.classList.toggle('locked', !learned);
+      b.classList.toggle('nomp', learned && p.mp < SKILLS[k].mp);
+    });
   }
 
   resize() {

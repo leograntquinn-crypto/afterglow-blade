@@ -3,6 +3,7 @@ import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE, xpToNext, MAX_LV, power } from './progression.js';
 import { RARITY, itemTitle } from './items.js';
+import { ROOM_INFO } from './dungeon.js';
 
 function bar(ctx, x, y, w, h, val, max, trail, color) {
   ctx.fillStyle = 'rgba(8,6,12,.75)';
@@ -47,9 +48,11 @@ export function drawHUD(ctx, game) {
   });
   ctx.globalAlpha = 1;
 
-  // 顶部中央：最近攻击的敌人
+  // 顶部中央：首领血条，或者最近攻击的敌人
   const f = game.focus;
-  if (f && !f.remove) {
+  if (drawBossBar(ctx, game)) {
+    // 首领在场时只显示首领血条
+  } else if (f && !f.remove) {
     const w = 360, x = VIEW_W / 2 - w / 2, y = game.touch ? 62 : 26; // 触屏时让出顶部暂停按钮
     ctx.font = `20px ${FONT_TITLE}`;
     ctx.fillStyle = f.elite ? COLORS.gold : COLORS.ink;
@@ -68,16 +71,11 @@ export function drawHUD(ctx, game) {
       ctx.fillText(broken ? '破防中 · 伤害 +30%' : '霸体', x + w, y);
       ctx.textAlign = 'left';
     }
-  } else if (game.stage) {
-    ctx.textAlign = 'center';
-    ctx.font = `20px ${FONT_TITLE}`;
-    ctx.fillStyle = 'rgba(233,226,214,.6)';
-    ctx.fillText(`${game.stage.name} · ${Math.min(game.wave + 1, game.stage.waves.length)} / ${game.stage.waves.length}`, VIEW_W / 2, game.touch ? 64 : 28);
-    ctx.textAlign = 'left';
   }
+  drawMinimap(ctx, game);
 
   // 右侧：连击
-  const comboY = game.touch ? 150 : 120;
+  const comboY = 160;
   if (game.combo >= 2) {
     const pop = 1 + (game.comboPop / 8) * 0.35;
     const c = game.combo >= 30 ? COLORS.blade : game.combo >= 12 ? COLORS.gold : '#ffffff';
@@ -95,11 +93,11 @@ export function drawHUD(ctx, game) {
     ctx.fillRect(VIEW_W - 24 - 140 * (game.comboT / 110), comboY + 32, 140 * (game.comboT / 110), 3);
   }
 
-  // 技能栏
+  // 技能栏（触屏时冷却直接显示在按钮上，这里不画）
   const size = 52, gap = 8;
   const sx0 = VIEW_W - (size + gap) * SKILL_KEYS.length - 14;
-  const sy0 = game.touch ? 20 : VIEW_H - size - 22;
-  SKILL_KEYS.forEach((key, i) => {
+  const sy0 = VIEW_H - size - 22;
+  if (!game.touch) SKILL_KEYS.forEach((key, i) => {
     const sk = SKILLS[key], x = sx0 + i * (size + gap), y = sy0;
     const learned = s.skills[key] > 0;
     const cd = p.cd[key], ready = learned && cd <= 0 && p.mp >= sk.mp;
@@ -151,20 +149,32 @@ export function drawHUD(ctx, game) {
     ctx.fillText('WASD 移动  J 攻击  K 跳跃  L 闪避  W+J 上挑  U I O P 技能  Esc 暂停', 22, VIEW_H - 22);
   }
 
-  // 波次横幅
+  // 横幅：进入地下城、首领登场、阶段切换、精英房间……
   const b = game.banner;
   if (b) {
     const a = b.t < 15 ? b.t / 15 : b.t > 100 ? Math.max(0, 1 - (b.t - 100) / 30) : 1;
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
+    const big = !b.small, y = big ? 225 : 210;
     ctx.fillStyle = 'rgba(8,6,12,.55)';
-    ctx.fillRect(0, 170, VIEW_W, 110);
-    ctx.font = `64px ${FONT_TITLE}`;
+    ctx.fillRect(0, y - (big ? 55 : 36), VIEW_W, big ? 110 : 70);
+    if (b.boss) {
+      const g = ctx.createLinearGradient(VIEW_W / 2 - 300, 0, VIEW_W / 2 + 300, 0);
+      g.addColorStop(0, 'rgba(0,0,0,0)');
+      g.addColorStop(0.5, b.color);
+      g.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(VIEW_W / 2 - 300, y - 55, 600, 2);
+      ctx.fillRect(VIEW_W / 2 - 300, y + 53, 600, 2);
+    }
+    ctx.font = `${big ? 64 : 42}px ${FONT_TITLE}`;
     ctx.fillStyle = b.color || COLORS.ink;
-    ctx.fillText(b.title, VIEW_W / 2, 214);
-    ctx.font = `17px ${FONT_UI}`;
-    ctx.fillStyle = COLORS.ember;
-    ctx.fillText(b.sub, VIEW_W / 2, 258);
+    ctx.fillText(b.title, VIEW_W / 2, y - (b.sub ? 11 : 0));
+    if (b.sub) {
+      ctx.font = `17px ${FONT_UI}`;
+      ctx.fillStyle = b.boss ? COLORS.ink : COLORS.ember;
+      ctx.fillText(b.sub, VIEW_W / 2, y + (big ? 33 : 22));
+    }
     ctx.globalAlpha = 1;
   }
   ctx.restore();
@@ -266,7 +276,7 @@ export function drawDead(ctx, game) {
   ctx.fillText('力 竭', VIEW_W / 2, 150);
   ctx.font = `17px ${FONT_UI}`;
   ctx.fillStyle = '#b9aec4';
-  ctx.fillText(`倒在「${game.stage.name}」第 ${game.wave + 1} 波 · 已获得的经验、金币和装备都会保留`, VIEW_W / 2, 230);
+  ctx.fillText(`倒在「${game.stage.name}」· 清理了 ${game.roomsCleared} 个房间 · 已获得的经验、金币和装备都会保留`, VIEW_W / 2, 230);
   drawRewards(ctx, game, VIEW_W / 2 - 110, 290, t - 20);
   if (t > 60) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 480);
   ctx.restore();
@@ -321,5 +331,123 @@ export function drawClear(ctx, game) {
     ctx.fillText('新纪录', VIEW_W - 260, 370);
   }
   if (t > 110) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 490);
+  ctx.restore();
+}
+
+// ---------------- 首领血条（多管血，DNF 风格）----------------
+// 总血量切成 N 管，每管一种颜色，右边显示「×剩余管数」。比一条长血条更有「在推进」的感觉
+const BAR_COLORS = ['#ff4d5e', '#ff9a2e', '#ffd65a', '#6fe38a', '#4fa3ff', '#b46bff'];
+function drawBossBar(ctx, game) {
+  const b = game.boss;
+  if (!b || b.remove || b.state === 'spawn') return false;
+  const w = 520, x = (VIEW_W - w) / 2, y = game.touch ? 60 : 24;
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  ctx.font = `24px ${FONT_TITLE}`;
+  ctx.fillStyle = b.B.glow;
+  ctx.textAlign = 'left';
+  ctx.fillText(b.name, x, y);
+  const nw = ctx.measureText(b.name).width;
+  ctx.font = `500 18px ${FONT_NUM}`;
+  ctx.fillStyle = '#b9aec4';
+  ctx.fillText(`LV.${b.lv}`, x + nw + 10, y + 2);
+  // 阶段标记
+  b.B.phases.forEach((ph, i) => {
+    ctx.fillStyle = i <= b.phase ? b.B.glow : 'rgba(255,255,255,.2)';
+    ctx.save();
+    ctx.translate(x + w - 8 - (b.B.phases.length - 1 - i) * 16, y);
+    ctx.rotate(Math.PI / 4);
+    ctx.fillRect(-4, -4, 8, 8);
+    ctx.restore();
+  });
+
+  const per = b.maxHp / b.bars;
+  const idx = Math.max(0, Math.ceil(b.hp / per) - 1);
+  const frac = b.hp <= 0 ? 0 : (b.hp - idx * per) / per;
+  const trailFrac = Math.min(1, Math.max(0, (b.hpTrail - idx * per) / per));
+  const by = y + 16, bh = 16;
+  ctx.fillStyle = 'rgba(8,6,12,.85)';
+  ctx.fillRect(x - 2, by - 2, w + 4, bh + 4);
+  if (idx > 0 && b.hp > 0) {
+    ctx.fillStyle = BAR_COLORS[(idx - 1) % BAR_COLORS.length];
+    ctx.fillRect(x, by, w, bh);
+  }
+  ctx.fillStyle = '#efe6d6';
+  ctx.fillRect(x, by, w * trailFrac, bh);
+  ctx.fillStyle = BAR_COLORS[idx % BAR_COLORS.length];
+  ctx.fillRect(x, by, w * frac, bh);
+  ctx.fillStyle = 'rgba(255,255,255,.2)';
+  ctx.fillRect(x, by, w * frac, 4);
+  ctx.font = `600 26px ${FONT_NUM}`;
+  ctx.textAlign = 'left';
+  ctx.fillStyle = COLORS.ink;
+  ctx.fillText(`×${b.hp > 0 ? idx + 1 : 0}`, x + w + 10, by + bh / 2 + 2);
+  // 霸体条
+  const broken = b.brokenT > 0;
+  ctx.fillStyle = 'rgba(8,6,12,.85)';
+  ctx.fillRect(x - 2, by + bh + 3, w + 4, 7);
+  ctx.fillStyle = broken ? 'rgba(255,179,71,.35)' : COLORS.ember;
+  ctx.fillRect(x, by + bh + 4, w * (broken ? 1 - b.brokenT / 240 : b.armor / b.maxArmor), 5);
+  ctx.font = `13px ${FONT_UI}`;
+  ctx.textAlign = 'right';
+  ctx.fillStyle = broken ? COLORS.ember : '#b9aec4';
+  ctx.fillText(broken ? '破防中！伤害 +30%，可以浮空连击' : '霸体', x + w - 60, y);
+  ctx.restore();
+  return true;
+}
+
+// ---------------- 小地图 ----------------
+// 只显示走过的房间和与它们相连的房间；首领房间一开始就能看到
+function drawMinimap(ctx, game) {
+  const D = game.dungeon;
+  if (!D) return;
+  const rooms = [...D.rooms.values()];
+  const linked = (r) => Object.keys(r.doors).some((d) => {
+    const n = D.get(r.x + { e: 1, w: -1, n: 0, s: 0 }[d], r.y + { e: 0, w: 0, n: -1, s: 1 }[d]);
+    return n?.visited;
+  });
+  const known = (r) => r.visited || r.type === 'boss' || linked(r);
+  const xs = rooms.map((r) => r.x), ys = rooms.map((r) => r.y);
+  const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
+  const cw = 22, ch = 15, gap = 5;
+  const W = (maxX - minX + 1) * (cw + gap) - gap, H = (maxY - minY + 1) * (ch + gap) - gap;
+  const x0 = VIEW_W - 18 - W, y0 = 18;
+  const pos = (r) => [x0 + (r.x - minX) * (cw + gap), y0 + (r.y - minY) * (ch + gap)];
+  ctx.save();
+  ctx.fillStyle = 'rgba(8,6,12,.6)';
+  ctx.fillRect(x0 - 7, y0 - 7, W + 14, H + 14);
+  // 通道
+  ctx.strokeStyle = 'rgba(233,226,214,.35)';
+  ctx.lineWidth = 2;
+  ctx.beginPath();
+  for (const r of rooms) {
+    if (!known(r)) continue;
+    const [x, y] = pos(r);
+    if (r.doors.e && known(D.get(r.x + 1, r.y))) { ctx.moveTo(x + cw, y + ch / 2); ctx.lineTo(x + cw + gap, y + ch / 2); }
+    if (r.doors.s && known(D.get(r.x, r.y + 1))) { ctx.moveTo(x + cw / 2, y + ch); ctx.lineTo(x + cw / 2, y + ch + gap); }
+  }
+  ctx.stroke();
+  ctx.textAlign = 'center';
+  ctx.textBaseline = 'middle';
+  ctx.font = `12px ${FONT_TITLE}`;
+  for (const r of rooms) {
+    if (!known(r)) continue;
+    const [x, y] = pos(r);
+    const cur = r === game.room;
+    ctx.fillStyle = cur ? COLORS.blade : r.cleared ? '#4a4458' : r.visited ? '#2a2433' : 'rgba(0,0,0,.4)';
+    ctx.fillRect(x, y, cw, ch);
+    ctx.strokeStyle = r.type === 'boss' ? COLORS.blood : 'rgba(233,226,214,.4)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x + 0.5, y + 0.5, cw - 1, ch - 1);
+    const g = ROOM_INFO[r.type].glyph;
+    if (g) {
+      ctx.fillStyle = cur ? '#0b0910' : r.type === 'boss' ? COLORS.blood : r.type === 'treasure' ? COLORS.gold : r.type === 'rest' ? '#6fe38a' : COLORS.ember;
+      ctx.fillText(g, x + cw / 2, y + ch / 2 + 1);
+    }
+  }
+  ctx.font = `14px ${FONT_TITLE}`;
+  ctx.textAlign = 'right';
+  ctx.fillStyle = 'rgba(233,226,214,.6)';
+  ctx.fillText(game.stage.name, x0 + W, y0 + H + 22);
   ctx.restore();
 }

@@ -10,6 +10,7 @@ import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, rese
 import { STAGES, isUnlocked } from './stages.js';
 import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
+import { BOSSES } from './boss.js';
 import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
 
@@ -75,7 +76,8 @@ export class Hub {
     return `<div class="stages">${STAGES.map((st, i) => {
       const open = isUnlocked(s, i);
       const best = s.best[st.id];
-      const kinds = [...new Set(st.waves.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
+      const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
+      const boss = BOSSES[st.boss];
       const under = s.lv < st.lv;
       return `<article class="stage ${open ? '' : 'locked'}">
         <div class="stage-head">
@@ -83,7 +85,8 @@ export class Hub {
           <span class="rec ${under ? 'warn' : ''}">推荐 Lv.${st.lv}</span>
         </div>
         <p>${st.desc}</p>
-        <p class="meta">${st.waves.length} 波 · ${kinds}${st.waves.flat().some((t) => t.endsWith('*')) ? ' · 精英' : ''}</p>
+        <p class="meta">${st.rooms} 个房间 · ${kinds} · 精英</p>
+        <p class="boss-line">首领 <b style="color:${boss.glow}">${boss.name}</b> <span>${boss.title}</span></p>
         <div class="stage-foot">
           ${best ? `<span class="grade g${best.letter}">${best.letter}</span>` : `<span class="first">首通奖励 ×3</span>`}
           ${open ? `<button class="btn primary" data-act="go" data-i="${i}">出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}

@@ -69,7 +69,13 @@
   .tbtn.atk { width: 84px; height: 84px; right: 0; bottom: 0; font-size: 34px; border-color: rgba(127, 243, 255, .6); }
   .tbtn.jump { right: 96px; bottom: 0; }
   .tbtn.dash { right: 0; bottom: 96px; }
-  .tbtn.sk { width: 50px; height: 50px; font-size: 21px; color: var(--blade); }
+  /* 技能按钮：--cd 是剩余冷却比例（0~1），用锥形渐变画出扇形遮罩 */
+  .tbtn.sk {
+    width: 50px; height: 50px; font-size: 21px; color: var(--blade);
+    background: conic-gradient(rgba(0, 0, 0, .7) calc(var(--cd, 0) * 360deg), rgba(11, 9, 16, .45) 0);
+  }
+  .tbtn.sk.locked { opacity: .3; }
+  .tbtn.sk.nomp { color: #4a6c9a; }
   .tbtn.s1 { right: 162px; bottom: 22px; }
   .tbtn.s2 { right: 140px; bottom: 82px; }
   .tbtn.s3 { right: 96px; bottom: 134px; }
@@ -157,6 +163,8 @@
   .rec.warn { color: var(--blood); }
   .stage p { margin: 0; font-size: 13px; line-height: 1.6; }
   .stage .meta { color: var(--mute); font-size: 12px; }
+  .stage .boss-line { font-size: 13px; color: var(--mute); }
+  .stage .boss-line b { font: 20px var(--font-title); font-weight: 400; margin: 0 4px; }
   .stage-foot { margin-top: auto; padding-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .grade { font: 600 34px/1 var(--font-num); }
   .gS { color: var(--gold); } .gA { color: var(--blade); } .gB, .gC { color: var(--ink); }

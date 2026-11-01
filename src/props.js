@@ -1,0 +1,140 @@
+// 房间里的道具：宝箱（打 3 下打开）、泉水（靠近恢复）
+// 它们放在 game.enemies 里，这样玩家的攻击判定能打到宝箱；alive = false 让它们不影响清场判断。
+import { toScreen, hexA } from './config.js';
+import { sfx } from './audio.js';
+
+export class Chest {
+  constructor(x, y, opened = false) {
+    Object.assign(this, { x, y, z: 0, vx: 0, w: 52, h: 42, team: 'prop', facing: 1, opened, hits: 0, shakeT: 0, t: 0 });
+  }
+  get alive() { return false; }
+  canBeHit() { return !this.opened; }
+  takeHit(h, dir, dmg, game) {
+    if (this.opened) return null;
+    this.hits++;
+    this.shakeT = 8;
+    if (this.hits >= 3) {
+      this.opened = true;
+      game.openChest(this);
+    }
+    return {};
+  }
+  update() {
+    this.t++;
+    if (this.shakeT > 0) this.shakeT--;
+  }
+  draw(ctx, camX, t) {
+    const [sx0, sy] = toScreen(this.x, this.y, 0, camX);
+    const sx = sx0 + (this.shakeT ? Math.sin(this.shakeT * 2) * 3 : 0);
+    if (!this.opened) {
+      // 未开启时向上冒金光，提示可以互动
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createLinearGradient(0, sy - 120, 0, sy);
+      g.addColorStop(0, hexA('#ffd65a', 0));
+      g.addColorStop(1, hexA('#ffd65a', 0.22 + 0.08 * Math.sin(t * 0.08)));
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - 30, sy - 120, 60, 120);
+      ctx.restore();
+    }
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0b0910';
+    ctx.lineWidth = 3;
+    // 箱体
+    ctx.fillStyle = '#5a3a22';
+    ctx.beginPath();
+    ctx.rect(sx - 26, sy - 28, 52, 28);
+    ctx.stroke();
+    ctx.fill();
+    ctx.fillStyle = '#c9a45c';
+    ctx.fillRect(sx - 26, sy - 16, 52, 4);
+    ctx.fillRect(sx - 4, sy - 22, 8, 12);
+    // 箱盖
+    ctx.save();
+    ctx.translate(sx - 26, sy - 28);
+    if (this.opened) ctx.rotate(-1.1);
+    ctx.fillStyle = '#6a4628';
+    ctx.beginPath();
+    ctx.moveTo(0, 0);
+    ctx.lineTo(52, 0);
+    ctx.quadraticCurveTo(52, -16, 26, -18);
+    ctx.quadraticCurveTo(0, -16, 0, 0);
+    ctx.stroke();
+    ctx.fill();
+    ctx.fillStyle = '#c9a45c';
+    ctx.fillRect(22, -18, 8, 18);
+    ctx.restore();
+    if (this.opened) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.fillStyle = hexA('#ffd65a', 0.3);
+      ctx.beginPath();
+      ctx.ellipse(sx, sy - 28, 22, 6, 0, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.restore();
+    }
+  }
+}
+
+export class Shrine {
+  constructor(x, y, used = false, onUse) {
+    Object.assign(this, { x, y, z: 0, vx: 0, w: 60, h: 50, team: 'prop', facing: 1, used, t: 0, onUse });
+  }
+  get alive() { return false; }
+  canBeHit() { return false; }
+  takeHit() { return null; }
+  update(game) {
+    this.t++;
+    const p = game.player;
+    if (!this.used && Math.abs(p.x - this.x) < 60 && Math.abs(p.y - this.y) < 34) {
+      this.used = true;
+      p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.5);
+      p.mp = p.maxMp;
+      for (const k in p.cd) p.cd[k] = 0;
+      game.fx.ring(p.x, p.y, 40, '#6fe38a', 20, 8, 24, 5);
+      game.fx.flash('#6fe38a', 0.15);
+      game.toast('泉水恢复了 50% 生命、全部魔力，技能冷却已重置', '#6fe38a');
+      sfx('heal');
+      this.onUse?.();
+    }
+  }
+  draw(ctx, camX, t) {
+    const [sx, sy] = toScreen(this.x, this.y, 0, camX);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#0b0910';
+    ctx.lineWidth = 3;
+    ctx.fillStyle = '#3a3440';
+    ctx.beginPath();
+    ctx.moveTo(sx - 34, sy);
+    ctx.lineTo(sx + 34, sy);
+    ctx.lineTo(sx + 26, sy - 26);
+    ctx.lineTo(sx - 26, sy - 26);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    const water = this.used ? '#2a4a3a' : '#6fe38a';
+    ctx.fillStyle = water;
+    ctx.beginPath();
+    ctx.ellipse(sx, sy - 26, 26, 7, 0, 0, Math.PI * 2);
+    ctx.fill();
+    if (!this.used) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      for (let i = 0; i < 5; i++) {
+        const ph = (t * 0.02 + i / 5) % 1;
+        ctx.globalAlpha = (1 - ph) * 0.7;
+        ctx.fillStyle = '#b8ffd0';
+        ctx.beginPath();
+        ctx.arc(sx + Math.sin(i * 2.3 + t * 0.03) * 18, sy - 30 - ph * 70, 2.5, 0, Math.PI * 2);
+        ctx.fill();
+      }
+      const g = ctx.createLinearGradient(0, sy - 110, 0, sy - 20);
+      g.addColorStop(0, hexA('#6fe38a', 0));
+      g.addColorStop(1, hexA('#6fe38a', 0.25));
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - 26, sy - 110, 52, 90);
+      ctx.restore();
+    }
+  }
+}
