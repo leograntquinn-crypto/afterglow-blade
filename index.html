@@ -1,0 +1,115 @@
+<meta charset="utf-8">
+<title>残光之刃</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Ma+Shan+Zheng&family=Teko:wght@500;600&display=swap">
+<style>
+  /* 布局：全屏舞台，画布按 16:9 等比缩放居中。刻意只做深色主题（地下墓穴的氛围）。 */
+  :root {
+    --void: #0b0910;
+    --ink: #e9e2d6;
+    --blade: #7ff3ff;
+    --ember: #ffb347;
+    --font-title: "Ma Shan Zheng", "STKaiti", "KaiTi", serif;
+    color-scheme: dark;
+  }
+  html, body {
+    height: 100%;
+    margin: 0;
+    background: var(--void);
+    color: var(--ink);
+    overflow: hidden;
+    overscroll-behavior: none;
+    touch-action: none;
+    -webkit-user-select: none;
+    user-select: none;
+    -webkit-tap-highlight-color: transparent;
+  }
+  #stage {
+    position: fixed;
+    inset: 0;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--void);
+  }
+  #game { display: block; outline: none; }
+
+  #touch { position: fixed; inset: 0; pointer-events: none; }
+  #stick {
+    position: absolute;
+    left: calc(24px + env(safe-area-inset-left, 0px));
+    bottom: calc(24px + env(safe-area-inset-bottom, 0px));
+    width: 128px; height: 128px;
+    border-radius: 50%;
+    border: 2px solid rgba(233, 226, 214, .22);
+    background: rgba(233, 226, 214, .05);
+    pointer-events: auto;
+    touch-action: none;
+  }
+  #stick .knob {
+    position: absolute; left: 50%; top: 50%;
+    width: 52px; height: 52px; margin: -26px 0 0 -26px;
+    border-radius: 50%;
+    background: rgba(127, 243, 255, .28);
+    border: 2px solid rgba(127, 243, 255, .6);
+  }
+  .pad {
+    position: absolute;
+    right: calc(16px + env(safe-area-inset-right, 0px));
+    bottom: calc(16px + env(safe-area-inset-bottom, 0px));
+    width: 236px; height: 200px;
+  }
+  .btn {
+    position: absolute;
+    width: 60px; height: 60px;
+    border-radius: 50%;
+    border: 2px solid rgba(233, 226, 214, .3);
+    background: rgba(11, 9, 16, .45);
+    color: var(--ink);
+    font: 24px var(--font-title);
+    pointer-events: auto;
+    touch-action: none;
+    padding: 0;
+  }
+  .btn.on { background: rgba(127, 243, 255, .35); border-color: var(--blade); }
+  .btn.atk { width: 84px; height: 84px; right: 0; bottom: 0; font-size: 34px; border-color: rgba(127, 243, 255, .6); }
+  .btn.jump { right: 96px; bottom: 0; }
+  .btn.dash { right: 0; bottom: 96px; }
+  .btn.sk { width: 52px; height: 52px; font-size: 22px; color: var(--blade); }
+  .btn.s1 { right: 162px; bottom: 30px; }
+  .btn.s2 { right: 120px; bottom: 90px; }
+  .btn.s3 { right: 64px; bottom: 140px; }
+
+  #rotate {
+    display: none;
+    position: fixed;
+    left: 0; right: 0;
+    top: calc(12px + env(safe-area-inset-top, 0px));
+    text-align: center;
+    font: 14px system-ui, sans-serif;
+    color: var(--ember);
+    pointer-events: none;
+  }
+  @media (orientation: portrait) and (pointer: coarse) { #rotate { display: block; } }
+</style>
+
+<div id="stage">
+  <canvas id="game" tabindex="0" aria-label="残光之刃游戏画面"></canvas>
+</div>
+
+<div id="touch" hidden>
+  <div id="stick"><div class="knob"></div></div>
+  <div class="pad">
+    <button class="btn atk" data-action="attack" aria-label="攻击">攻</button>
+    <button class="btn jump" data-action="jump" aria-label="跳跃">跳</button>
+    <button class="btn dash" data-action="dash" aria-label="闪避">闪</button>
+    <button class="btn sk s1" data-action="skill1" aria-label="裂空斩">裂</button>
+    <button class="btn sk s2" data-action="skill2" aria-label="回风斩">风</button>
+    <button class="btn sk s3" data-action="skill3" aria-label="崩山击">崩</button>
+  </div>
+</div>
+
+<p id="rotate">把手机横过来玩，画面会更大</p>
+
+<script type="module" src="src/main.js"></script>
