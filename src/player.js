@@ -13,6 +13,7 @@ import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
+import { heroSprite, heroFrame } from './sprite.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
 const CHARGE_LV1 = 24, CHARGE_LV2 = 66, CHARGE_HOLD = 14;
@@ -150,7 +151,8 @@ export class Player {
 
   drawTrail(ctx, camX) {
     const T = this.trail;
-    if (T.length < 2) return;
+    // 逐帧精灵的攻击帧里已经画好了斩击光效，程序拖尾的刀身位置也对不上，所以不再叠加
+    if (T.length < 2 || heroSprite.ready) return;
     const L = this.look.weapon.len;
     // 和 rig.js 里的骨骼计算一致：肩膀 → 手（伸出 24）→ 刀身（从手往外 14 到 L）
     const pts = (s, a) => {
@@ -411,7 +413,7 @@ export class Player {
     // 刀光
     const swingAt = m.swingAt ?? m.hits[0]?.at;
     if (f === swingAt && !m.spin && m.hits.length) {
-      game.fx.arc(this.x + this.facing * 6, this.y, this.z + 56, this.facing, m.heavy ? 84 : 64, m.swing[0], m.swing[1], this.glow, m.heavy ? 20 : 13);
+      if (!heroSprite.ready || m.skill || m.id === 'chargeSlash2') game.fx.arc(this.x + this.facing * 6, this.y, this.z + 56, this.facing, m.heavy ? 84 : 64, m.swing[0], m.swing[1], this.glow, m.heavy ? 20 : 13);
       sfx(m.heavy ? 'swingHeavy' : 'swing');
     }
 
@@ -562,19 +564,25 @@ export class Player {
   }
 
   addGhost() {
-    this.ghosts.push({ x: this.x, y: this.y, z: this.z, facing: this.facing, pose: this.pose(0), life: 12 });
+    this.ghosts.push({ x: this.x, y: this.y, z: this.z, facing: this.facing, pose: this.pose(0), frame: heroSprite.ready ? heroFrame(this, 0) : null, life: 12 });
   }
 
   draw(ctx, camX, t) {
+    const sprite = heroSprite.ready;
     for (const g of this.ghosts) {
       const [gx, gy] = toScreen(g.x, g.y, g.z, camX);
-      drawFighter(ctx, gx, gy, this.look, g.pose, { facing: g.facing, ghost: this.glow, alpha: (g.life / 12) * 0.35, t });
+      if (sprite) heroSprite.draw(ctx, g.frame, gx, gy, g.facing, { ghost: this.glow, alpha: (g.life / 12) * 0.4 });
+      else drawFighter(ctx, gx, gy, this.look, g.pose, { facing: g.facing, ghost: this.glow, alpha: (g.life / 12) * 0.35, t });
     }
     const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
     const blink = this.invuln > 0 && (this.state === 'idle' || this.state === 'run') && (t >> 2) % 2;
     const armored = this.state === 'attack' && this.move?.armor;
     if (armored) drawAura(ctx, sx, sy, this.h, this.glow, 1);
     if (this.state === 'charge') drawAura(ctx, sx, sy, this.h, this.chargeLv === 2 ? '#ffffff' : this.glow, 0.6 + this.chargeLv * 0.5 + 0.2 * Math.sin(t * 0.4));
-    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
+    if (sprite) {
+      heroSprite.draw(ctx, heroFrame(this, t), sx, sy, this.facing, { flash: this.flash > 3, alpha: blink ? 0.45 : 1, rim: '#b8d4ff', rimAlpha: 0.28 });
+    } else {
+      drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
+    }
   }
 }

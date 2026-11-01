@@ -12,6 +12,7 @@ import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
 import { BOSSES } from './boss.js';
 import { drawFighter } from './rig.js';
+import { heroSprite } from './sprite.js';
 import { sfx } from './audio.js';
 import { music } from './music.js';
 
@@ -52,6 +53,7 @@ export class Hub {
     const s = this.save, S = this.g.stats;
     const need = xpToNext(s.lv);
     this.root.querySelector('#h-lv').textContent = s.lv;
+    this.root.querySelector('.hname').textContent = heroSprite.ready ? '绯隼' : '残光剑士';
     this.root.querySelector('#h-xp').style.width = `${s.lv >= MAX_LV ? 100 : (s.xp / need) * 100}%`;
     this.root.querySelector('#h-xptext').textContent = s.lv >= MAX_LV ? '满级' : `${s.xp} / ${need}`;
     this.root.querySelector('#h-power').textContent = power(S).toLocaleString();
@@ -341,6 +343,11 @@ export class Hub {
     ctx.beginPath();
     ctx.ellipse(220, 410, 80, 14, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (heroSprite.ready && heroSprite.full) {
+      const H = 440, W = H * (heroSprite.full.width / heroSprite.full.height);
+      ctx.drawImage(heroSprite.full, 220 - W / 2, 6 + Math.sin(t * 0.03) * 3, W, H);
+      return;
+    }
     const look = this.g.playerLook();
     const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };
     ctx.translate(168, 405);

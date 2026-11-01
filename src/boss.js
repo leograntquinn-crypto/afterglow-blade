@@ -10,6 +10,7 @@ import { DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE
 import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
+import { heroSprite, shadowFrame } from './sprite.js';
 import { sfx } from './audio.js';
 
 const sign = (v) => Math.sign(v) || 1;
@@ -394,7 +395,13 @@ export class Boss extends Enemy {
     if (this.state === 'spawn') alpha *= Math.min(1, this.st / 24);
     if (this.tele) drawAura(ctx, sx, sy, this.h, '#ff2a2a', (1.3 + 0.5 * Math.sin(t * 0.6)) * alpha);
     else if (this.alive) drawAura(ctx, sx, sy, this.h, this.armor > 0 ? this.B.glow : COLORS.ember, (0.8 + 0.25 * Math.sin(t * 0.1) + this.phase * 0.3) * alpha);
-    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.game.ticks < (this.flashUntil ?? 0), alpha, t });
+    const flash = this.game.ticks < (this.flashUntil ?? 0);
+    if (this.B === BOSSES.afterimage && heroSprite.ready) {
+      // 残影：和主角同一套动画，盖一层暗紫色，外圈紫色轮廓光
+      heroSprite.draw(ctx, shadowFrame(this, t), sx, sy, this.facing, { alpha, flash, overlay: '#12061f', overlayAlpha: 0.74, rim: '#9a5cff', rimAlpha: 0.5 });
+    } else {
+      drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
+    }
     const top = sy - this.h - 18;
     ctx.save();
     ctx.textAlign = 'center';

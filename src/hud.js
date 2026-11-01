@@ -6,6 +6,7 @@ import { RARITY, itemTitle } from './items.js';
 import { ROOM_INFO } from './dungeon.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { drawFighter } from './rig.js';
+import { heroSprite } from './sprite.js';
 
 const GOLD_HI = '#e9cf8e', GOLD_LO = '#7a5c30';
 
@@ -81,9 +82,13 @@ function drawPlayerFrame(ctx, game) {
   ctx.beginPath();
   ctx.arc(cx, cy, R - 2, 0, Math.PI * 2);
   ctx.clip();
-  ctx.translate(cx - 4, cy + 112);
-  ctx.scale(1.55, 1.55);
-  drawFighter(ctx, 0, 0, p.look, { crouch: 0.05 + Math.sin(t * 0.06) * 0.03, angle: 1.1, walk: 0, lean: 2 }, { facing: 1, t });
+  if (heroSprite.ready && heroSprite.avatar) {
+    ctx.drawImage(heroSprite.avatar, cx - R, cy - R, R * 2, R * 2);
+  } else {
+    ctx.translate(cx - 4, cy + 112);
+    ctx.scale(1.55, 1.55);
+    drawFighter(ctx, 0, 0, p.look, { crouch: 0.05 + Math.sin(t * 0.06) * 0.03, angle: 1.1, walk: 0, lean: 2 }, { facing: 1, t });
+  }
   ctx.restore();
   // 低血量时头像泛红
   if (p.hp / p.maxHp < 0.3) {
@@ -126,7 +131,7 @@ function drawPlayerFrame(ctx, game) {
   ctx.fillStyle = COLORS.ink;
   ctx.shadowColor = 'rgba(0,0,0,.8)';
   ctx.shadowBlur = 4;
-  ctx.fillText('残光剑士', 104, 30);
+  ctx.fillText(heroSprite.ready ? '绯隼' : '残光剑士', 104, 30);
   ctx.shadowBlur = 0;
   fancyBar(ctx, 102, 42, 240, 16, p.hp, p.maxHp, p.hpTrail, '#ff6a78', '#9a1028', { ticks: 10 });
   fancyBar(ctx, 102, 62, 200, 9, p.mp, p.maxMp, null, '#7ac0ff', '#1d4fa8');
@@ -377,9 +382,14 @@ function drawUltCutin(ctx, game) {
     ctx.rotate(0.18);
     ctx.translate(-VIEW_W / 2, -VIEW_H / 2);
     ctx.clip();
-    ctx.translate(lerpX(-200, 300, slide) + t * 0.8, 560);
-    ctx.scale(4.4, 4.4);
-    drawFighter(ctx, 0, 0, p.look, { crouch: 0.3, angle: -2.6, lean: 8, walk: 0.8, backAngle: 3 }, { facing: 1, t: t * 3 });
+    if (heroSprite.ready && heroSprite.full) {
+      const H = 760, W = H * (heroSprite.full.width / heroSprite.full.height);
+      ctx.drawImage(heroSprite.full, lerpX(-420, 120, slide) + t * 0.8, 40, W, H);
+    } else {
+      ctx.translate(lerpX(-200, 300, slide) + t * 0.8, 560);
+      ctx.scale(4.4, 4.4);
+      drawFighter(ctx, 0, 0, p.look, { crouch: 0.3, angle: -2.6, lean: 8, walk: 0.8, backAngle: 3 }, { facing: 1, t: t * 3 });
+    }
     ctx.restore();
     // 大字
     ctx.textAlign = 'center';
@@ -547,9 +557,15 @@ export function drawTitle(ctx, game) {
   ctx.ellipse(hx, hy, 120, 16, 0, 0, Math.PI * 2);
   ctx.fill();
   ctx.save();
-  ctx.translate(hx, hy);
-  ctx.scale(3.3, 3.3);
-  drawFighter(ctx, 0, 0, game.playerLook(), { crouch: 0.22 + Math.sin(t * 0.04) * 0.02, angle: 2.55, lean: 6, walk: 0.7, backAngle: 1.1 }, { facing: 1, t: t * 1.6 });
+  if (heroSprite.ready && heroSprite.full) {
+    // 立绘：缓慢上下浮动
+    const H = 500, W = H * (heroSprite.full.width / heroSprite.full.height);
+    ctx.drawImage(heroSprite.full, hx - W * 0.5, hy - H + 18 + Math.sin(t * 0.03) * 4, W, H);
+  } else {
+    ctx.translate(hx, hy);
+    ctx.scale(3.3, 3.3);
+    drawFighter(ctx, 0, 0, game.playerLook(), { crouch: 0.22 + Math.sin(t * 0.04) * 0.02, angle: 2.55, lean: 6, walk: 0.7, backAngle: 1.1 }, { facing: 1, t: t * 1.6 });
+  }
   ctx.restore();
 
   // 火星
