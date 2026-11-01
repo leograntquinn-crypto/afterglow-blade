@@ -4,6 +4,7 @@ import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
+import { ENEMY_SPRITES, gruntFrame } from './enemy_sprites.js';
 
 export const TYPES = {
   grunt: {
@@ -404,7 +405,14 @@ export class Enemy {
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(1 + q * 0.14, 1 - q * 0.1);
-    drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash: this.game.ticks < (this.flashUntil ?? 0), alpha, t });
+    const flash = this.game.ticks < (this.flashUntil ?? 0);
+    const SP = ENEMY_SPRITES[this.look.rig];
+    if (SP?.sheet.ready) {
+      // 逐帧精灵（目前有腐骨兵）。暖色轮廓光让骨头在暗背景里也看得清
+      SP.sheet.draw(ctx, gruntFrame(this, t), 0, 0, this.facing, { scale: this.look.h / SP.standH, flash, alpha, rim: SP.rim, rimAlpha: SP.rimAlpha, lift: SP.lift });
+    } else {
+      drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
+    }
     ctx.restore();
 
     const top = sy - this.h - 14;

@@ -11,6 +11,7 @@ import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { heroSprite, shadowFrame } from './sprite.js';
+import { gruntSprite, boneLordFrame, ENEMY_SPRITES } from './enemy_sprites.js';
 import { sfx } from './audio.js';
 
 const sign = (v) => Math.sign(v) || 1;
@@ -399,6 +400,9 @@ export class Boss extends Enemy {
     if (this.B === BOSSES.afterimage && heroSprite.ready) {
       // 残影：和主角同一套动画，盖一层暗紫色，外圈紫色轮廓光
       heroSprite.draw(ctx, shadowFrame(this, t), sx, sy, this.facing, { alpha, flash, overlay: '#12061f', overlayAlpha: 0.74, rim: '#9a5cff', rimAlpha: 0.5 });
+    } else if (this.B.base === 'grunt' && gruntSprite.ready) {
+      // 骸骨统领：腐骨兵的逐帧动画放大，压暗一点，外圈用首领的颜色做轮廓光
+      gruntSprite.draw(ctx, boneLordFrame(this, t), sx, sy, this.facing, { scale: this.look.h / ENEMY_SPRITES.grunt.standH, alpha, flash, overlay: '#2a0805', overlayAlpha: 0.32, rim: this.B.glow, rimAlpha: 0.45 });
     } else {
       drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
     }

@@ -1,35 +1,48 @@
-"""把「绯隼」素材包处理成游戏用的图集。
+"""把素材包处理成游戏用的图集。
 
-python3 -I tools/build_hero_sprites.py <素材包根目录>
+python3 -I tools/build_sprites.py <素材包根目录> <角色>      角色：hero（绯隼）/ grunt（腐骨兵）
 
-v2 素材已经是原地动画（头身水平偏差 < 2px，跳跃脚底都在基线上），所以不再做对齐修正。
+素材包都是同一种格式（512×512 单帧、锚点 (220,448)、animations.json），已经是原地动画，不再做对齐修正。
 处理内容：
-1. 512 → 256 缩小（游戏里角色约 95px 高，256 已经够 2 倍屏用）
-2. 打成 8 列的 WebP 图集 + 一个 JSON（每帧的格子、时长、动画的接触帧）
-3. 刀身检测：在每帧里找出刀（细长的钢灰色连通区域），记下刀柄和刀尖的位置。
+1. 512 → 256 缩小（游戏里角色 80～100px 高，256 已经够 2 倍屏用）
+2. 打成 8 列的 WebP 图集 + 一个 JSON（每帧的格子、时长、动画的接触帧和预警帧）
+3. 刀身检测（只有主角需要）：在每帧里找出刀（细长的钢灰色连通区域），记下刀柄和刀尖的位置。
    游戏用它画「贴着真实刀身」的刀光拖尾。检测不到的帧（刀被身体挡住、刀身太短）记为 null。
-另外导出立绘和头像的缩小版。
+4. 立绘、头像的缩小版
 """
 import json, os, sys
 from collections import deque
 import numpy as np
 from PIL import Image
 
-SRC = sys.argv[1]
-OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "hero")
+SRC, WHO = sys.argv[1], sys.argv[2]
+ROOT = os.path.join(os.path.dirname(__file__), "..", "assets")
+TARGETS = {
+    "hero": {
+        "out": "hero", "name": "feisun",
+        # 只有这些动画需要刀光（其他动画不做检测，省时间也避免误检）
+        "blade": {"attack_01", "attack_02", "attack_03", "launcher", "air_slash_01", "air_slash_02",
+                  "starfall_air", "starfall_land", "thrust", "low_sweep", "cast", "charge"},
+        "art": {"hero_fullbody.png": ("fullbody", (512, 768)), "avatar_128.png": ("avatar", None)},
+    },
+    "grunt": {
+        "out": "enemies", "name": "grunt", "blade": set(),
+        "art": {"avatar_128.png": ("avatar", None)},
+    },
+}
+T = TARGETS[WHO]
+OUT = os.path.join(ROOT, T["out"])
 CELL, SCALE = 256, 0.5
 meta = json.load(open(f"{SRC}/animations.json"))
 PX, PY = meta["pivot"]["x"], meta["pivot"]["y"]
-# 只有这些动画需要刀光（其他动画不做检测，省时间也避免误检）
-BLADE_ANIMS = {"attack_01", "attack_02", "attack_03", "launcher", "air_slash_01", "air_slash_02",
-               "starfall_air", "starfall_land", "thrust", "low_sweep", "cast", "charge"}
+BLADE_ANIMS = T["blade"]
 
 # 自动检测漏掉、但刀光需要的帧：手工标注（256 格子坐标：刀柄 x, y, 刀尖 x, y）
 BLADE_FIX = {
     "attack_01_02": [70, 45, 34, 66], "air_slash_01_01": [72, 80, 181, 110], "air_slash_02_04": [138, 98, 62, 45],
     "launcher_04": [82, 60, 185, 72], "thrust_01": [72, 78, 152, 133], "thrust_03": [152, 95, 193, 97],
     "thrust_04": [122, 118, 186, 119],
-}
+} if WHO == "hero" else {}
 
 
 def components(m):
@@ -108,13 +121,17 @@ for aname, anim in meta["animations"].items():
                 # 存成相对锚点（脚底）的坐标
                 fr["blade"] = [round(bl[0] - PX * SCALE, 1), round(bl[1] - PY * SCALE, 1), round(bl[2] - PX * SCALE, 1), round(bl[3] - PY * SCALE, 1)]
         out["frames"][fn] = fr
-    out["anims"][aname] = {"frames": anim["frame_names"], "loop": anim["loop"], "contact": anim.get("suggested_contact_frame_indices", [])}
-atlas.save(f"{OUT}/feisun_atlas.webp", "WEBP", quality=88, method=6)
-json.dump(out, open(f"{OUT}/feisun.json", "w"), ensure_ascii=False, separators=(",", ":"))
+    out["anims"][aname] = {"frames": anim["frame_names"], "loop": anim["loop"], "contact": anim.get("suggested_contact_frame_indices", []),
+                           "windup": anim.get("suggested_windup_frame_indices", [])}
+N = T["name"]
+atlas.save(f"{OUT}/{N}_atlas.webp", "WEBP", quality=88, method=6)
+json.dump(out, open(f"{OUT}/{N}.json", "w"), ensure_ascii=False, separators=(",", ":"))
 
-art = Image.open(f"{SRC}/artwork/hero_fullbody.png").convert("RGBA")
-art.resize((512, 768), Image.LANCZOS).save(f"{OUT}/feisun_fullbody.webp", "WEBP", quality=90, method=6)
-Image.open(f"{SRC}/artwork/avatar_128.png").convert("RGBA").save(f"{OUT}/feisun_avatar.webp", "WEBP", quality=92, method=6)
-for f in sorted(os.listdir(OUT)):
+for src_name, (kind, size) in T["art"].items():
+    im = Image.open(f"{SRC}/artwork/{src_name}").convert("RGBA")
+    if size:
+        im = im.resize(size, Image.LANCZOS)
+    im.save(f"{OUT}/{N}_{kind}.webp", "WEBP", quality=90 if size else 92, method=6)
+for f in sorted(x for x in os.listdir(OUT) if x.startswith(N)):
     print(f"{os.path.getsize(os.path.join(OUT, f)) / 1024:8.1f} KB  {f}")
-print(f"{len(names)} 帧，{len(out['anims'])} 组动画；刀身检测 {found}/{total}")
+print(f"{len(names)} 帧，{len(out['anims'])} 组动画" + (f"；刀身检测 {found}/{total}" if total else ""))

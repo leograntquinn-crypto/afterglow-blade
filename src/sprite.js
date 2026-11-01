@@ -1,9 +1,8 @@
-// 逐帧精灵：「绯隼」素材包（由 tools/build_hero_sprites.py 处理成图集）
+// 逐帧精灵：主角「绯隼」和敌人的素材包（由 tools/build_sprites.py 处理成图集）
 //
 // 每帧都有锚点（脚底）和对齐偏移；朝左时绕锚点镜像。
 // 闪白、残影、轮廓光都要「整帧换成一种颜色」：第一次用到时画一张染色版缓存起来，之后直接复用。
 
-const BASE = 'assets/hero/';
 export const HERO_SCALE = 0.54; // 图集里角色约 179px 高 → 游戏里约 96px
 const TINT_CACHE_MAX = 140; // 染色缓存上限（全是半分辨率时约 9MB，全尺寸时约 36MB）
 
@@ -16,22 +15,26 @@ function loadImage(src) {
   });
 }
 
-class SpriteSheet {
-  constructor() {
+export class SpriteSheet {
+  // base：目录；name：文件名前缀；art：额外要加载的立绘，比如 { full: 'fullbody' } → name_fullbody.webp
+  constructor(base, name, art = {}) {
+    Object.assign(this, { base, name, art });
     this.ready = false;
     this.tints = new Map();
   }
 
   async load() {
     try {
-      const [meta, atlas, full, avatar] = await Promise.all([
-        fetch(BASE + 'feisun.json').then((r) => (r.ok ? r.json() : null)),
-        loadImage(BASE + 'feisun_atlas.webp'),
-        loadImage(BASE + 'feisun_fullbody.webp'),
-        loadImage(BASE + 'feisun_avatar.webp'),
+      const B = this.base + this.name;
+      const keys = Object.keys(this.art);
+      const [meta, atlas, ...imgs] = await Promise.all([
+        fetch(B + '.json').then((r) => (r.ok ? r.json() : null)),
+        loadImage(B + '_atlas.webp'),
+        ...keys.map((k) => loadImage(`${B}_${this.art[k]}.webp`)),
       ]);
       if (!meta || !atlas) return;
-      Object.assign(this, { meta, atlas, full, avatar, C: meta.cell, cols: meta.cols, pivot: meta.pivot });
+      keys.forEach((k, i) => (this[k] = imgs[i]));
+      Object.assign(this, { meta, atlas, C: meta.cell, cols: meta.cols, pivot: meta.pivot });
       this.ready = true;
     } catch {
       this.ready = false; // 加载失败就继续用程序化模型
@@ -101,6 +104,15 @@ class SpriteSheet {
     }
     const [cx, cy] = this.cellOf(name);
     ctx.drawImage(this.atlas, cx, cy, C, C, dx, dy, C, C);
+    // 提亮：同一帧用「相加」再叠一次，颜色按比例变亮（不会像盖白色那样发灰）
+    if (o.lift) {
+      const op = ctx.globalCompositeOperation, a = ctx.globalAlpha;
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a * o.lift;
+      ctx.drawImage(this.atlas, cx, cy, C, C, dx, dy, C, C);
+      ctx.globalCompositeOperation = op;
+      ctx.globalAlpha = a;
+    }
     if (o.overlay) {
       ctx.globalAlpha *= o.overlayAlpha ?? 0.5;
       ctx.drawImage(this.tinted(name, o.overlay), dx, dy);
@@ -113,7 +125,7 @@ class SpriteSheet {
   }
 }
 
-export const heroSprite = new SpriteSheet();
+export const heroSprite = new SpriteSheet('assets/hero/', 'feisun', { full: 'fullbody', avatar: 'avatar' });
 heroSprite.load();
 
 // ---------- 游戏状态 → 动画帧 ----------
