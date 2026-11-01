@@ -1,0 +1,37 @@
+[gd_scene load_steps=6 format=3]
+
+[ext_resource type="Script" path="res://scripts/actors/enemy.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/actors/shadow.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/actors/fighter_view.gd" id="3"]
+[ext_resource type="FontFile" path="res://assets/fonts/Teko-SemiBold.ttf" id="4"]
+
+[sub_resource type="LabelSettings" id="alert"]
+font = ExtResource("4")
+font_size = 40
+font_color = Color(1, 0.23, 0.23, 1)
+outline_size = 6
+outline_color = Color(0.1, 0.02, 0.02, 1)
+
+[node name="Grunt" type="Node2D"]
+script = ExtResource("1")
+w = 36.0
+h = 82.0
+max_hp = 140.0
+
+[node name="Shadow" type="Node2D" parent="."]
+script = ExtResource("2")
+
+[node name="Visual" type="Node2D" parent="."]
+
+[node name="Body" type="Node2D" parent="Visual"]
+script = ExtResource("3")
+
+[node name="Alert" type="Label" parent="Visual"]
+visible = false
+offset_left = -10.0
+offset_top = -140.0
+offset_right = 10.0
+offset_bottom = -95.0
+text = "!"
+label_settings = SubResource("alert")
+horizontal_alignment = 1

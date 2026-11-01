@@ -1,0 +1,38 @@
+; Engine configuration file.
+; 用 Godot 4.3 或更新的 4.x 版本打开本文件夹即可。
+
+config_version=5
+
+[application]
+
+config/name="残光之刃 Afterglow Blade"
+config/description="原创横版 2.5D 动作游戏"
+run/main_scene="res://scenes/main.tscn"
+config/features=PackedStringArray("4.3", "GL Compatibility")
+config/icon="res://icon.svg"
+
+[autoload]
+
+Game="*res://scripts/autoload/game.gd"
+Buffer="*res://scripts/autoload/input_buffer.gd"
+
+[display]
+
+window/size/viewport_width=960
+window/size/viewport_height=540
+window/size/window_width_override=1600
+window/size/window_height_override=900
+window/stretch/mode="canvas_items"
+window/stretch/aspect="keep"
+
+[physics]
+
+common/physics_ticks_per_second=60
+common/max_physics_steps_per_frame=5
+
+[rendering]
+
+renderer/rendering_method="gl_compatibility"
+renderer/rendering_method.mobile="gl_compatibility"
+textures/canvas_textures/default_texture_filter=1
+environment/defaults/default_clear_color=Color(0.043, 0.035, 0.063, 1)
