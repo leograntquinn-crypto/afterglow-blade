@@ -13,7 +13,7 @@ import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
-import { heroSprite, heroFrame } from './sprite.js';
+import { heroSprite, heroFrame, bladeOf } from './sprite.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
 const CHARGE_LV1 = 24, CHARGE_LV2 = 66, CHARGE_HOLD = 14;
@@ -59,6 +59,8 @@ export class Player {
   setState(s) {
     this.state = s;
     this.st = 0;
+    this.teched = false; // 受身翻滚（只在刚受身的那次 air 状态里播）
+    this.touchdown = false; // 刚落地（idle 开头播落地缓冲帧）
   }
 
   // 极限闪避的判定窗口：闪避 / 空中冲刺刚开始的那几帧
@@ -101,6 +103,7 @@ export class Player {
         if (this.st > 8 && this.z > 12 && game.input.buffered('jump')) {
           game.input.consume('jump');
           this.setState('air');
+          this.teched = true;
           this.vz = 6;
           this.vx = -this.facing * 3;
           this.invuln = 24;
@@ -145,14 +148,21 @@ export class Player {
       on = m.spin || m.flurry || m.id === 'rush' || m.plunge || (this.mf >= at - 1 && this.mf <= at + dur + 2);
     } else if (this.state === 'ult') on = true;
     if (!on) { if (this.trail.length) this.trail[this.trail.length - 1].end = true; return; }
+    if (heroSprite.ready) {
+      // 逐帧精灵：记录当前帧里刀柄和刀尖的位置（素材处理时检测出来的）
+      const b = bladeOf(heroFrame(this, 0), this.facing);
+      if (b) this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, b, life: 10 });
+      else if (this.trail.length) this.trail[this.trail.length - 1].end = true;
+      return;
+    }
     const p = this.pose(0);
     this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, a: p.angle, lean: p.lean || 0, crouch: p.crouch || 0, life: 9 });
   }
 
   drawTrail(ctx, camX) {
     const T = this.trail;
-    // 逐帧精灵的攻击帧里已经画好了斩击光效，程序拖尾的刀身位置也对不上，所以不再叠加
-    if (T.length < 2 || heroSprite.ready) return;
+    if (T.length < 2) return;
+    if (heroSprite.ready) return this.drawSpriteTrail(ctx, camX);
     const L = this.look.weapon.len;
     // 和 rig.js 里的骨骼计算一致：肩膀 → 手（伸出 24）→ 刀身（从手往外 14 到 L）
     const pts = (s, a) => {
@@ -198,6 +208,59 @@ export class Player {
     ctx.restore();
   }
 
+  // 精灵刀光：相邻两次采样之间，刀柄直线插值、刀尖绕刀柄按角度插值，扫出一段弧
+  drawSpriteTrail(ctx, camX) {
+    const T = this.trail;
+    const pts = (s, hx, hy, ang, len) => {
+      const [bx, by] = toScreen(s.x, s.y, s.z, camX);
+      const c = Math.cos(ang), si = Math.sin(ang);
+      // 内沿从刀身 30% 处开始，外沿是刀尖
+      return [[bx + hx + c * len * 0.3, by + hy + si * len * 0.3], [bx + hx + c * len, by + hy + si * len]];
+    };
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 1; i < T.length; i++) {
+      const s0 = T[i - 1], s1 = T[i];
+      if (s0.end || s0.f !== s1.f || Math.abs(s0.x - s1.x) > 60) continue;
+      const [h0x, h0y, t0x, t0y] = s0.b, [h1x, h1y, t1x, t1y] = s1.b;
+      const a0 = Math.atan2(t0y - h0y, t0x - h0x), l0 = Math.hypot(t0x - h0x, t0y - h0y);
+      let da = Math.atan2(t1y - h1y, t1x - h1x) - a0;
+      da -= Math.round(da / (2 * Math.PI)) * 2 * Math.PI; // 走短的那一边
+      const l1 = Math.hypot(t1x - h1x, t1y - h1y);
+      const moved = Math.abs(da) > 0.05 || Math.hypot(h1x - h0x, h1y - h0y) > 2 || Math.abs(s1.z - s0.z) > 2 || Math.abs(s1.x - s0.x) > 2;
+      if (!moved) continue;
+      const steps = Math.min(10, 2 + Math.ceil(Math.abs(da) / 0.18));
+      const at = (u) => {
+        const s = { x: s0.x + (s1.x - s0.x) * u, y: s0.y + (s1.y - s0.y) * u, z: s0.z + (s1.z - s0.z) * u };
+        return pts(s, h0x + (h1x - h0x) * u, h0y + (h1y - h0y) * u, a0 + da * u, l0 + (l1 - l0) * u);
+      };
+      let prev = at(0);
+      for (let k = 1; k <= steps; k++) {
+        const u = k / steps;
+        const cur = at(u);
+        const life = (s0.life + (s1.life - s0.life) * u) / 10;
+        ctx.globalAlpha = 0.5 * life * life;
+        ctx.fillStyle = this.glow;
+        ctx.beginPath();
+        ctx.moveTo(prev[0][0], prev[0][1]);
+        ctx.lineTo(prev[1][0], prev[1][1]);
+        ctx.lineTo(cur[1][0], cur[1][1]);
+        ctx.lineTo(cur[0][0], cur[0][1]);
+        ctx.closePath();
+        ctx.fill();
+        ctx.globalAlpha = 0.95 * life;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.4 * life + 0.4;
+        ctx.beginPath();
+        ctx.moveTo(prev[1][0], prev[1][1]);
+        ctx.lineTo(cur[1][0], cur[1][1]);
+        ctx.stroke();
+        prev = cur;
+      }
+    }
+    ctx.restore();
+  }
+
   physics(game) {
     this.x += this.vx;
     this.y += this.vy;
@@ -229,6 +292,7 @@ export class Player {
       this.move = null;
       this.vx = 0;
       this.setState('idle');
+      this.touchdown = true;
       sfx('land');
     }
   }
