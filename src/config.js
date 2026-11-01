@@ -9,7 +9,8 @@ export const VIEW_H = 540;
 //   屏幕坐标 = (x - 镜头, 地面顶部 + y - z)
 export const GROUND_TOP = 318; // 纵深 y=0 在屏幕上的位置
 export const DEPTH = 170; // 可走动的纵深范围 0..DEPTH
-export const ARENA_W = 1800; // 场地总宽度
+// 当前房间的宽度。每个房间大小不同，进入房间时修改 world.w
+export const world = { w: 1800 };
 export const GRAVITY = 0.6;
 
 export const FONT_NUM = '"Teko", "Arial Narrow", Impact, sans-serif';

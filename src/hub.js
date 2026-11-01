@@ -10,8 +10,11 @@ import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, rese
 import { STAGES, isUnlocked } from './stages.js';
 import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
+import { BOSSES } from './boss.js';
 import { drawFighter } from './rig.js';
+import { heroSprite } from './sprite.js';
 import { sfx } from './audio.js';
+import { music } from './music.js';
 
 export class Hub {
   constructor(game, root) {
@@ -50,11 +53,13 @@ export class Hub {
     const s = this.save, S = this.g.stats;
     const need = xpToNext(s.lv);
     this.root.querySelector('#h-lv').textContent = s.lv;
+    this.root.querySelector('.hname').textContent = heroSprite.ready ? '绯隼' : '残光剑士';
     this.root.querySelector('#h-xp').style.width = `${s.lv >= MAX_LV ? 100 : (s.xp / need) * 100}%`;
     this.root.querySelector('#h-xptext').textContent = s.lv >= MAX_LV ? '满级' : `${s.xp} / ${need}`;
     this.root.querySelector('#h-power').textContent = power(S).toLocaleString();
     this.root.querySelector('#h-gold').textContent = s.gold.toLocaleString();
     this.root.querySelector('#h-sync').textContent = this.g.store.status === 'cloud' ? '云存档已同步' : '本地存档';
+    this.root.querySelector('#h-music').textContent = music.muted ? '音乐：关' : '音乐：开';
     this.root.querySelectorAll('[data-tab]').forEach((b) => {
       b.classList.toggle('on', b.dataset.tab === this.tab);
       const dot = (b.dataset.tab === 'hero' && s.statPts > 0) || (b.dataset.tab === 'skills' && this.canLearnAny());
@@ -75,7 +80,8 @@ export class Hub {
     return `<div class="stages">${STAGES.map((st, i) => {
       const open = isUnlocked(s, i);
       const best = s.best[st.id];
-      const kinds = [...new Set(st.waves.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
+      const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
+      const boss = BOSSES[st.boss];
       const under = s.lv < st.lv;
       return `<article class="stage ${open ? '' : 'locked'}">
         <div class="stage-head">
@@ -83,7 +89,8 @@ export class Hub {
           <span class="rec ${under ? 'warn' : ''}">推荐 Lv.${st.lv}</span>
         </div>
         <p>${st.desc}</p>
-        <p class="meta">${st.waves.length} 波 · ${kinds}${st.waves.flat().some((t) => t.endsWith('*')) ? ' · 精英' : ''}</p>
+        <p class="meta">${st.rooms} 个房间 · ${kinds} · 精英</p>
+        <p class="boss-line">首领 <b style="color:${boss.glow}">${boss.name}</b> <span>${boss.title}</span></p>
         <div class="stage-foot">
           ${best ? `<span class="grade g${best.letter}">${best.letter}</span>` : `<span class="first">首通奖励 ×3</span>`}
           ${open ? `<button class="btn primary" data-act="go" data-i="${i}">出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}
@@ -242,6 +249,10 @@ export class Hub {
         return this.renderModal();
       case 'close':
         return this.closeModal();
+      case 'music':
+        music.start();
+        music.toggleMute();
+        return this.render();
       case 'stat':
         if (s.statPts > 0) { s.statPts--; s.stats[el.dataset.k]++; sfx('click'); commit(); }
         return;
@@ -332,6 +343,11 @@ export class Hub {
     ctx.beginPath();
     ctx.ellipse(220, 410, 80, 14, 0, 0, Math.PI * 2);
     ctx.fill();
+    if (heroSprite.ready && heroSprite.full) {
+      const H = 440, W = H * (heroSprite.full.width / heroSprite.full.height);
+      ctx.drawImage(heroSprite.full, 220 - W / 2, 6 + Math.sin(t * 0.03) * 3, W, H);
+      return;
+    }
     const look = this.g.playerLook();
     const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };
     ctx.translate(168, 405);

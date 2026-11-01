@@ -34,6 +34,20 @@ export class Loot {
   draw(ctx, camX, t) {
     const [sx, gy] = toScreen(this.x, this.y, 0, camX);
     const sy = gy - this.z;
+    if (this.heal) {
+      // 回血光球：绿色发光、上下浮动
+      const bob = Math.sin(t * 0.12 + this.x) * 3;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const g = ctx.createRadialGradient(sx, sy - 14 + bob, 1, sx, sy - 14 + bob, 18);
+      g.addColorStop(0, 'rgba(200,255,215,0.95)');
+      g.addColorStop(0.4, 'rgba(111,227,138,0.6)');
+      g.addColorStop(1, 'rgba(111,227,138,0)');
+      ctx.fillStyle = g;
+      ctx.fillRect(sx - 18, sy - 32 + bob, 36, 36);
+      ctx.restore();
+      return;
+    }
     if (this.gold) {
       for (let i = 0; i < 3; i++) {
         const ox = (i - 1) * 5, oy = -i * 2;

@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/hit_data.gd" id="1_sbw4f"]
+[ext_resource type="Script" path="res://scripts/combat/move_data.gd" id="2_pvl31"]
+
+[sub_resource type="Resource" id="Resource_w0xj1"]
+script = ExtResource("1_sbw4f")
+at = 5
+dur = 5
+box_x = 40.0
+box_w = 98.0
+box_d = 34.0
+box_z0 = -70.0
+box_z1 = 70.0
+abs_z = false
+dmg = 16.0
+kb = 2.0
+launch = 0.0
+stun = 20
+stop = 8
+shake = 6.0
+heavy = true
+spike = true
+radial = false
+
+[resource]
+script = ExtResource("2_pvl31")
+id = &"air_slash2"
+total = 24
+cancel = 14
+next_move = &""
+lunge_from = 0
+lunge_to = 0
+lunge_speed = 0.0
+swing_from = -2.4
+swing_to = 1.6
+air = true
+hang = 1.0
+jump_cancel = false
+thrust = false
+heavy = true
+anim = &"air_slash2"
+hits = Array[ExtResource("1_sbw4f")]([SubResource("Resource_w0xj1")])

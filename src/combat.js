@@ -1,5 +1,5 @@
 // 战斗核心：判定框、飞行道具、地面范围攻击
-import { ARENA_W, toScreen, COLORS } from './config.js';
+import { world, toScreen, COLORS } from './config.js';
 import { sfx } from './audio.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
@@ -30,7 +30,7 @@ export class Projectile {
   update(game) {
     this.x += this.vx;
     this.age++;
-    if (--this.life <= 0 || this.x < -50 || this.x > ARENA_W + 50) { this.dead = true; return; }
+    if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; return; }
     const h = this.hit;
     const box = { cx: this.x, hw: h.box.w / 2, cy: this.y, d: h.box.d, z0: this.z + h.box.z0, z1: this.z + h.box.z1 };
     const targets = this.team === 'player' ? game.enemies : [game.player];
@@ -55,8 +55,9 @@ export class Projectile {
         ctx.globalAlpha = a * (0.9 - i * 0.25);
         ctx.strokeStyle = i === 0 ? '#ffffff' : this.color || COLORS.blade;
         ctx.lineWidth = 10 - i * 2.5;
+        const sc = this.scale || 1;
         ctx.beginPath();
-        ctx.ellipse(-i * 14, -50, 18, 52, 0, -Math.PI / 2, Math.PI / 2);
+        ctx.ellipse(-i * 14 * sc, -50 * sc, 18 * sc, 52 * sc, 0, -Math.PI / 2, Math.PI / 2);
         ctx.stroke();
       }
     } else if (this.kind === 'arrow') {
@@ -90,15 +91,16 @@ export class Hazard {
   }
   update(game) {
     this.t++;
-    if (this.t < this.delay && this.owner && this.owner.state !== 'windup') { this.dead = true; return; }
+    // 施法者被打断（比如被破防）→ 取消。普通敌人出招状态叫 windup，Boss 叫 attack
+    if (this.t < this.delay && this.owner && this.owner.state !== (this.ownerState || 'windup')) { this.dead = true; return; }
     if (this.t === this.delay) {
       const p = game.player;
       const dx = (p.x - this.x) / this.rx, dy = (p.y - this.y) / this.ry;
       if (dx * dx + dy * dy <= 1 && p.z < 50) game.applyHit(this, p, this.hit, Math.sign(p.x - this.x) || 1);
       game.fx.shake(this.hit.shake ?? 8, 18);
       game.fx.dust(this.x, this.y, 16, 2.5);
-      game.fx.ring(this.x, this.y, 2, '#ff6a3d', 20, 10, 16, 6);
-      game.fx.crack(this.x, this.y);
+      game.fx.ring(this.x, this.y, 2, this.color || '#ff6a3d', 20, 10, 16, 6);
+      if (this.rx > 90) game.fx.crack(this.x, this.y);
       sfx('heavy');
     }
     if (this.t > this.delay + 14) this.dead = true;
@@ -117,6 +119,21 @@ export class Hazard {
       ctx.beginPath();
       ctx.ellipse(sx, sy, this.rx * u, this.ry * u, 0, 0, Math.PI * 2);
       ctx.fill();
+      if (this.kind === 'meteor') {
+        // 从天而降的光球，落地时刚好爆炸
+        const h = (1 - u) * 340;
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.fillStyle = this.color || '#ff6a3d';
+        ctx.globalAlpha = 0.25;
+        ctx.beginPath();
+        ctx.arc(sx, sy - h, 22, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.arc(sx, sy - h, 9, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.fillRect(sx - 2, sy - h - 40, 4, 34);
+      }
     } else {
       const u = 1 - (this.t - this.delay) / 14;
       ctx.fillStyle = `rgba(255,200,120,${0.5 * u})`;
@@ -124,6 +141,33 @@ export class Hazard {
       ctx.ellipse(sx, sy, this.rx * (1.2 - 0.2 * u), this.ry * (1.2 - 0.2 * u), 0, 0, Math.PI * 2);
       ctx.fill();
     }
+    ctx.restore();
+  }
+}
+
+// 地面预警带：Boss 冲锋 / 齐射前，在它要经过的路线上画一条红色光带（只提示，不造成伤害）
+export class Lane {
+  constructor(o) {
+    Object.assign(this, { t: 0, dead: false, half: 26, color: '#ff4d5e' }, o);
+  }
+  update() {
+    if (this.follow) {
+      this.x = this.follow.x;
+      this.y = this.follow.y;
+      this.facing = this.follow.facing;
+    }
+    if (++this.t >= this.life) this.dead = true;
+  }
+  drawFloor(ctx, camX) {
+    const [sx, sy] = toScreen(this.x, this.y, 0, camX);
+    const len = this.facing > 0 ? world.w - this.x : this.x;
+    const a = 0.12 + 0.18 * (this.t / this.life) + 0.08 * Math.sin(this.t * 0.6);
+    ctx.save();
+    ctx.fillStyle = this.color;
+    ctx.globalAlpha = a;
+    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - this.half / 2, len, this.half);
+    ctx.globalAlpha = a * 2;
+    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - 1, len, 2);
     ctx.restore();
   }
 }

@@ -81,8 +81,29 @@ const SOUNDS = {
   enhance: () => { noise({ dur: 0.08, f: 3000, q: 4, vol: 0.25 }); [880, 1320].forEach((f, i) => tone({ f, f2: f, dur: 0.3, type: 'triangle', vol: 0.12, delay: 0.08 + i * 0.1 })); },
   enhFail: () => { noise({ dur: 0.08, f: 3000, q: 4, vol: 0.25 }); tone({ f: 300, f2: 120, dur: 0.35, type: 'sawtooth', vol: 0.08, delay: 0.08 }); },
   click: () => tone({ f: 900, f2: 700, dur: 0.04, type: 'triangle', vol: 0.06 }),
+  door: () => { noise({ dur: 0.3, type: 'lowpass', f: 400, f2: 120, vol: 0.25 }); tone({ f: 220, f2: 330, dur: 0.25, type: 'triangle', vol: 0.08, delay: 0.1 }); },
+  chest: () => [659, 784, 988, 1318].forEach((f, i) => tone({ f, f2: f, dur: 0.22, type: 'triangle', vol: 0.11, delay: i * 0.06 })),
+  heal: () => [523, 784, 1046].forEach((f, i) => tone({ f, f2: f * 1.01, dur: 0.4, type: 'sine', vol: 0.12, delay: i * 0.1 })),
+  roar: () => { tone({ f: 140, f2: 50, dur: 0.9, type: 'sawtooth', vol: 0.18 }); noise({ dur: 0.8, type: 'lowpass', f: 700, f2: 150, vol: 0.4 }); },
+  bossIntro: () => { tone({ f: 55, f2: 55, dur: 1.4, vol: 0.5 }); [220, 208, 196].forEach((f, i) => tone({ f, f2: f, dur: 0.5, type: 'sawtooth', vol: 0.05, delay: 0.3 + i * 0.35 })); },
+  swingHeavy: () => { noise({ dur: 0.16, f: 500, f2: 2600, q: 0.7, vol: 0.28 }); tone({ f: 140, f2: 90, dur: 0.12, type: 'triangle', vol: 0.1 }); },
+  charge1: () => { tone({ f: 330, f2: 660, dur: 0.18, type: 'triangle', vol: 0.12 }); noise({ dur: 0.15, type: 'highpass', f: 3000, vol: 0.08 }); },
+  charge2: () => { [523, 784, 1046].forEach((f, i) => tone({ f, f2: f, dur: 0.22, type: 'triangle', vol: 0.12, delay: i * 0.04 })); noise({ dur: 0.25, type: 'highpass', f: 4000, f2: 8000, vol: 0.12 }); },
+  witch: () => { tone({ f: 1400, f2: 300, dur: 0.6, type: 'sine', vol: 0.18 }); noise({ dur: 0.5, type: 'bandpass', f: 4000, f2: 400, q: 2, vol: 0.2 }); tone({ f: 80, f2: 60, dur: 0.6, vol: 0.4 }); },
+  rank: () => [784, 1175].forEach((f, i) => tone({ f, f2: f, dur: 0.14, type: 'square', vol: 0.05, delay: i * 0.06 })),
+  rankDown: () => tone({ f: 300, f2: 150, dur: 0.2, type: 'square', vol: 0.05 }),
+  ultReady: () => [523, 659, 784, 1046].forEach((f, i) => tone({ f, f2: f, dur: 0.3, type: 'triangle', vol: 0.1, delay: i * 0.05 })),
+  ultStart: () => { tone({ f: 60, f2: 40, dur: 1.2, vol: 0.6 }); noise({ dur: 0.9, type: 'highpass', f: 1500, f2: 9000, vol: 0.25 }); [392, 523, 659].forEach((f, i) => tone({ f, f2: f * 1.01, dur: 0.8, type: 'sawtooth', vol: 0.04, delay: 0.2 + i * 0.12 })); },
+  parry: () => { [1800, 2700, 3600].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.5 - i * 0.1, type: 'triangle', vol: 0.12 })); noise({ dur: 0.12, f: 5000, q: 3, vol: 0.4 }); tone({ f: 200, f2: 80, dur: 0.15, vol: 0.4 }); },
+  hitBone: () => { noise({ dur: 0.05, f: 3800, q: 2.5, vol: 0.28 }); tone({ f: 950, f2: 500, dur: 0.05, type: 'triangle', vol: 0.12 }); },
+  hitMetal: () => { [1250, 1890].forEach((f) => tone({ f, f2: f * 0.97, dur: 0.22, type: 'triangle', vol: 0.06 })); noise({ dur: 0.05, f: 5000, q: 2, vol: 0.18 }); },
+  hitCloth: () => noise({ dur: 0.09, type: 'lowpass', f: 900, f2: 300, vol: 0.32 }),
+  pot: () => { noise({ dur: 0.18, f: 1400, f2: 600, q: 1.2, vol: 0.4 }); for (let i = 0; i < 4; i++) noise({ dur: 0.04, f: 2500 + i * 600, q: 3, vol: 0.15, delay: 0.03 + i * 0.035 }); },
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.4, type: 'triangle', vol: 0.12, delay: i * 0.18 })),
 };
+
+// 给背景音乐模块用：拿到同一个 AudioContext 和噪声样本
+export const getAudio = () => (ac ? { ac, noiseBuf } : null);
 
 export function sfx(name) {
   if (!ac || ac.state !== 'running') return;

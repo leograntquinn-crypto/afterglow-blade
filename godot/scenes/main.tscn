@@ -1,0 +1,81 @@
+[gd_scene load_steps=10 format=3]
+
+[ext_resource type="Script" path="res://scripts/main.gd" id="1"]
+[ext_resource type="Script" path="res://scripts/world/wall_art.gd" id="2"]
+[ext_resource type="Script" path="res://scripts/world/floor_art.gd" id="3"]
+[ext_resource type="Script" path="res://scripts/world/camera.gd" id="4"]
+[ext_resource type="Shader" path="res://shaders/post.gdshader" id="5"]
+[ext_resource type="Script" path="res://scripts/ui/hud.gd" id="6"]
+[ext_resource type="Script" path="res://scripts/ui/debug_draw.gd" id="7"]
+
+[sub_resource type="ShaderMaterial" id="post"]
+shader = ExtResource("5")
+shader_parameter/bloom_strength = 0.9
+shader_parameter/bloom_threshold = 0.55
+shader_parameter/grade = Color(0.42, 0.24, 0.55, 1)
+shader_parameter/grade_amount = 0.18
+shader_parameter/vignette = 0.55
+shader_parameter/grain = 0.045
+
+[node name="Main" type="Node2D"]
+script = ExtResource("1")
+
+[node name="Backdrop" type="Node2D" parent="."]
+
+[node name="Wall" type="Parallax2D" parent="Backdrop"]
+scroll_scale = Vector2(0.5, 1)
+
+[node name="WallArt" type="Node2D" parent="Backdrop/Wall"]
+script = ExtResource("2")
+
+[node name="Floor" type="Node2D" parent="Backdrop"]
+script = ExtResource("3")
+
+[node name="CanvasModulate" type="CanvasModulate" parent="."]
+color = Color(0.36, 0.31, 0.44, 1)
+
+[node name="World" type="Node2D" parent="."]
+y_sort_enabled = true
+
+[node name="Camera2D" type="Camera2D" parent="."]
+position = Vector2(480, 270)
+limit_left = 0
+limit_top = 0
+limit_right = 1600
+limit_bottom = 540
+script = ExtResource("4")
+
+[node name="FXLayer" type="CanvasLayer" parent="."]
+follow_viewport_enabled = true
+
+[node name="Root" type="Node2D" parent="FXLayer"]
+
+[node name="Debug" type="Node2D" parent="FXLayer/Root"]
+visible = false
+z_index = 200
+script = ExtResource("7")
+
+[node name="PostLayer" type="CanvasLayer" parent="."]
+layer = 50
+
+[node name="Post" type="ColorRect" parent="PostLayer"]
+material = SubResource("post")
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+
+[node name="HUD" type="CanvasLayer" parent="."]
+layer = 60
+
+[node name="HUDRoot" type="Control" parent="HUD"]
+layout_mode = 3
+anchors_preset = 15
+anchor_right = 1.0
+anchor_bottom = 1.0
+grow_horizontal = 2
+grow_vertical = 2
+mouse_filter = 2
+script = ExtResource("6")

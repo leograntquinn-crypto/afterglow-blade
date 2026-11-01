@@ -13,7 +13,9 @@ const KEYMAP = {
   KeyK: 'jump', Space: 'jump',
   KeyL: 'dash', ShiftLeft: 'dash',
   KeyU: 'skill1', KeyI: 'skill2', KeyO: 'skill3', KeyP: 'skill4',
+  KeyH: 'ult',
   Escape: 'pause',
+  KeyM: 'mute',
   Enter: 'start',
 };
 
@@ -23,6 +25,7 @@ export class Input {
   constructor() {
     this.held = new Set(); // 当前按住的动作
     this.pressed = new Map(); // 动作 -> 按下时的帧号
+    this.heldSince = new Map(); // 动作 -> 开始按住的帧号（蓄力用）
     this.frame = 0;
     this.stick = { x: 0, y: 0 }; // 触屏摇杆
     this.listeners = [];
@@ -37,16 +40,18 @@ export class Input {
       const a = KEYMAP[e.code];
       if (a) this.release(a);
     });
-    addEventListener('blur', () => this.held.clear());
+    addEventListener('blur', () => { this.held.clear(); this.heldSince.clear(); });
   }
 
   press(a) {
+    if (!this.held.has(a)) this.heldSince.set(a, this.frame);
     this.held.add(a);
     this.pressed.set(a, this.frame);
     for (const fn of this.listeners) fn(a);
   }
   release(a) {
     this.held.delete(a);
+    this.heldSince.delete(a);
   }
   onPress(fn) {
     this.listeners.push(fn);
@@ -64,6 +69,10 @@ export class Input {
   }
   clearBuffer() {
     this.pressed.clear();
+  }
+  // 已经按住了多少帧（没按住返回 0）
+  heldFor(a) {
+    return this.held.has(a) ? this.frame - (this.heldSince.get(a) ?? this.frame) : 0;
   }
   get dx() {
     const v = (this.isHeld('right') ? 1 : 0) - (this.isHeld('left') ? 1 : 0) + this.stick.x;

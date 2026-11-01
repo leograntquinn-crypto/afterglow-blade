@@ -8,8 +8,10 @@
      刻意只做深色主题：地下墓穴、火把与剑光。 */
   :root {
     --void: #0b0910;
-    --panel: rgba(18, 14, 24, .92);
-    --line: rgba(233, 226, 214, .12);
+    --panel: linear-gradient(180deg, rgba(26, 20, 34, .94), rgba(12, 9, 16, .94));
+    --line: rgba(233, 207, 142, .16);
+    --gold-hi: #e9cf8e;
+    --gold-lo: #7a5c30;
     --ink: #e9e2d6;
     --mute: #9d93a8;
     --blade: #7ff3ff;
@@ -58,7 +60,7 @@
     position: absolute;
     right: calc(16px + env(safe-area-inset-right, 0px));
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    width: 236px; height: 210px;
+    width: 236px; height: 280px;
   }
   .tbtn {
     position: absolute; width: 60px; height: 60px; border-radius: 50%; padding: 0;
@@ -69,11 +71,18 @@
   .tbtn.atk { width: 84px; height: 84px; right: 0; bottom: 0; font-size: 34px; border-color: rgba(127, 243, 255, .6); }
   .tbtn.jump { right: 96px; bottom: 0; }
   .tbtn.dash { right: 0; bottom: 96px; }
-  .tbtn.sk { width: 50px; height: 50px; font-size: 21px; color: var(--blade); }
+  /* 技能按钮：--cd 是剩余冷却比例（0~1），用锥形渐变画出扇形遮罩 */
+  .tbtn.sk {
+    width: 50px; height: 50px; font-size: 21px; color: var(--blade);
+    background: conic-gradient(rgba(0, 0, 0, .7) calc(var(--cd, 0) * 360deg), rgba(11, 9, 16, .45) 0);
+  }
+  .tbtn.sk.locked { opacity: .3; }
+  .tbtn.sk.nomp { color: #4a6c9a; }
   .tbtn.s1 { right: 162px; bottom: 22px; }
   .tbtn.s2 { right: 140px; bottom: 82px; }
   .tbtn.s3 { right: 96px; bottom: 134px; }
   .tbtn.s4 { right: 40px; bottom: 158px; }
+  .tbtn.ult { right: 4px; bottom: 222px; width: 52px; height: 52px; color: var(--gold); border-color: rgba(233, 207, 142, .5); font-size: 22px; }
 
   #pause-btn {
     position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -87,7 +96,15 @@
     position: fixed; inset: 0; display: grid; place-items: center; background: rgba(8, 6, 12, .7);
     padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  #pause .box { display: grid; gap: 12px; text-align: center; min-width: min(280px, 100%); }
+  #pause { overflow-y: auto; }
+  #pause .pause-wrap { display: flex; flex-wrap: wrap; gap: 28px; align-items: center; justify-content: center; max-width: 900px; padding-block: 24px; }
+  #pause .box { display: grid; gap: 12px; text-align: center; min-width: min(260px, 100%); }
+  #pause .moves { flex: 1 1 380px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+  #pause .moves h3 { font: 24px var(--font-title); margin: 0 0 8px; font-weight: 400; }
+  #pause .moves dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+  #pause .moves dt { font: 500 16px var(--font-num); color: var(--gold-hi); white-space: nowrap; }
+  #pause .moves dd { margin: 0; color: var(--ink); }
+  #pause .moves .tip { margin: 10px 0 0; font-size: 12px; color: var(--mute); text-align: left; }
   #pause h2 { font: 56px var(--font-title); margin: 0 0 8px; font-weight: 400; }
   #pause p { margin: 0 0 6px; color: var(--mute); font-size: 13px; }
 
@@ -98,8 +115,11 @@
   }
   .btn:hover:not(:disabled) { background: rgba(233, 226, 214, .13); border-color: rgba(233, 226, 214, .45); }
   .btn:disabled { opacity: .35; cursor: default; }
-  .btn.primary { background: var(--blade); color: #0b0910; border-color: var(--blade); font-weight: 600; }
-  .btn.primary:hover:not(:disabled) { background: #b6f9ff; }
+  .btn.primary {
+    background: linear-gradient(180deg, #f3dca0, #b8893e); color: #1a1008; border-color: var(--gold-hi); font-weight: 600;
+    box-shadow: 0 0 18px rgba(233, 207, 142, .25), inset 0 1px 0 rgba(255, 255, 255, .5);
+  }
+  .btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #fff0c4, #d4a24e); }
   .btn.ghost { background: none; color: var(--mute); }
   .btn.mini { width: 34px; height: 34px; padding: 0; font-size: 20px; line-height: 1; flex: none; }
   .btn.mini-text { padding: 5px 10px; font-size: 12px; }
@@ -121,7 +141,7 @@
     padding-block: 14px 10px; background: linear-gradient(rgba(14, 10, 18, .98) 75%, rgba(14, 10, 18, 0));
   }
   .who { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .hname { font: 28px var(--font-title); }
+  .hname { font: 28px var(--font-title); text-shadow: 0 0 16px rgba(127, 243, 255, .3); }
   .lv { font: 500 22px var(--font-num); color: var(--blade); }
   .xp { display: grid; gap: 2px; min-width: 150px; }
   .xpbar { height: 4px; background: rgba(255, 255, 255, .1); border-radius: 2px; overflow: hidden; }
@@ -136,7 +156,7 @@
     position: relative; background: none; border: 0; padding: 10px 20px 12px; cursor: pointer;
     font: 24px var(--font-title); color: var(--mute); border-bottom: 2px solid transparent; margin-bottom: -1px;
   }
-  .tabs button.on { color: var(--ink); border-bottom-color: var(--blade); }
+  .tabs button.on { color: var(--ink); border-bottom-color: var(--gold-hi); text-shadow: 0 0 14px rgba(233, 207, 142, .45); }
   .tabs button.dot::after { content: ""; position: absolute; top: 10px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); }
 
   h3, h4 { margin: 0; font-weight: 400; }
@@ -150,6 +170,11 @@
     display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: var(--panel);
     border: 1px solid var(--line); border-radius: 10px;
   }
+  .stage, .panel, .skill { position: relative; box-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(233, 207, 142, .12); }
+  .stage::before, .panel::before, .skill::before {
+    content: ""; position: absolute; left: 14px; right: 14px; top: -1px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(233, 207, 142, .6), transparent);
+  }
   .stage.locked { opacity: .5; }
   .stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .stage h3 { font: 30px var(--font-title); }
@@ -157,6 +182,8 @@
   .rec.warn { color: var(--blood); }
   .stage p { margin: 0; font-size: 13px; line-height: 1.6; }
   .stage .meta { color: var(--mute); font-size: 12px; }
+  .stage .boss-line { font-size: 13px; color: var(--mute); }
+  .stage .boss-line b { font: 20px var(--font-title); font-weight: 400; margin: 0 4px; }
   .stage-foot { margin-top: auto; padding-top: 6px; display: flex; align-items: center; justify-content: space-between; gap: 10px; }
   .grade { font: 600 34px/1 var(--font-num); }
   .gS { color: var(--gold); } .gA { color: var(--blade); } .gB, .gC { color: var(--ink); }
@@ -230,7 +257,7 @@
     padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
   }
   .sheet {
-    width: min(400px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: #15111c; border: 1px solid var(--line);
+    width: min(400px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: linear-gradient(180deg, #1c1626, #0f0c14); border: 1px solid var(--line);
     border-radius: 12px; padding: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
   }
   .card-head { display: flex; gap: 12px; align-items: center; }
@@ -280,16 +307,39 @@
     <button class="tbtn sk s2" data-action="skill2" aria-label="回风斩">风</button>
     <button class="tbtn sk s3" data-action="skill3" aria-label="崩山击">崩</button>
     <button class="tbtn sk s4" data-action="skill4" aria-label="千刃残光">千</button>
+    <button class="tbtn ult" data-action="ult" aria-label="残光终焉">觉</button>
   </div>
 </div>
 <button id="pause-btn" aria-label="暂停">❚❚</button>
 
 <div id="pause" hidden>
-  <div class="box">
-    <h2>暂停</h2>
-    <p>撤退会保留已获得的经验、金币和装备</p>
-    <button class="btn primary" data-act="resume">继续战斗</button>
-    <button class="btn" data-act="retreat">撤退回营地</button>
+  <div class="pause-wrap">
+    <div class="box">
+      <h2>暂停</h2>
+      <p>撤退会保留已获得的经验、金币和装备</p>
+      <button class="btn primary" data-act="resume">继续战斗</button>
+      <button class="btn" data-act="retreat">撤退回营地</button>
+    </div>
+    <section class="moves" aria-label="出招表">
+      <h3>出招表</h3>
+      <dl>
+        <dt>J J J</dt><dd>三连斩</dd>
+        <dt>J J ·停顿· J</dt><dd>延迟连段：五连刺 + 推飞（可撞墙）</dd>
+        <dt>按住 J</dt><dd>蓄力斩，蓄满两段松开为「破军」</dd>
+        <dt>W + J</dt><dd>上挑浮空</dd>
+        <dt>S + J</dt><dd>扫腿：绊倒敌人，可追打倒地</dd>
+        <dt>命中后 K</dt><dd>跳跃取消，追到空中继续连</dd>
+        <dt>空中 J J J</dt><dd>空中三连，最后一击砸地反弹</dd>
+        <dt>空中 S + J</dt><dd>坠星斩：砸地冲击波，可追打倒地</dd>
+        <dt>空中 L</dt><dd>空中冲刺（空中命中后也能取消）</dd>
+        <dt>L 闪避</dt><dd>敌人攻击即将命中时闪避 = 极限闪避：子弹时间 + 反击必暴击</dd>
+        <dt>对刀</dt><dd>敌人近战命中的瞬间面朝它出刀 = 弹刀：敌人长硬直，霸体被打破</dd>
+        <dt>被打飞时 K</dt><dd>受身</dd>
+        <dt>倒地时任意键</dt><dd>快速翻滚起身</dd>
+        <dt>H</dt><dd>残光槽满：必杀「残光·终焉」</dd>
+      </dl>
+      <p class="tip">把敌人打飞撞向同伴或墙壁会造成额外伤害。招式越多变，风格评级越高；受伤会掉两级。</p>
+    </section>
   </div>
 </div>
 
@@ -304,6 +354,7 @@
       <span class="stat-chip">战力<b id="h-power">0</b></span>
       <span class="stat-chip gold">金币<b id="h-gold">0</b></span>
       <span class="sync" id="h-sync"></span>
+      <button class="btn ghost mini-text" id="h-music" data-act="music" aria-label="开关背景音乐">音乐：开</button>
     </header>
     <nav class="tabs" aria-label="营地">
       <button data-tab="stages">出征</button>

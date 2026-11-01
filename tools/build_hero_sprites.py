@@ -1,0 +1,120 @@
+"""把「绯隼」素材包处理成游戏用的图集。
+
+python3 -I tools/build_hero_sprites.py <素材包根目录>
+
+v2 素材已经是原地动画（头身水平偏差 < 2px，跳跃脚底都在基线上），所以不再做对齐修正。
+处理内容：
+1. 512 → 256 缩小（游戏里角色约 95px 高，256 已经够 2 倍屏用）
+2. 打成 8 列的 WebP 图集 + 一个 JSON（每帧的格子、时长、动画的接触帧）
+3. 刀身检测：在每帧里找出刀（细长的钢灰色连通区域），记下刀柄和刀尖的位置。
+   游戏用它画「贴着真实刀身」的刀光拖尾。检测不到的帧（刀被身体挡住、刀身太短）记为 null。
+另外导出立绘和头像的缩小版。
+"""
+import json, os, sys
+from collections import deque
+import numpy as np
+from PIL import Image
+
+SRC = sys.argv[1]
+OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "hero")
+CELL, SCALE = 256, 0.5
+meta = json.load(open(f"{SRC}/animations.json"))
+PX, PY = meta["pivot"]["x"], meta["pivot"]["y"]
+# 只有这些动画需要刀光（其他动画不做检测，省时间也避免误检）
+BLADE_ANIMS = {"attack_01", "attack_02", "attack_03", "launcher", "air_slash_01", "air_slash_02",
+               "starfall_air", "starfall_land", "thrust", "low_sweep", "cast", "charge"}
+
+# 自动检测漏掉、但刀光需要的帧：手工标注（256 格子坐标：刀柄 x, y, 刀尖 x, y）
+BLADE_FIX = {
+    "attack_01_02": [70, 45, 34, 66], "air_slash_01_01": [72, 80, 181, 110], "air_slash_02_04": [138, 98, 62, 45],
+    "launcher_04": [82, 60, 185, 72], "thrust_01": [72, 78, 152, 133], "thrust_03": [152, 95, 193, 97],
+    "thrust_04": [122, 118, 186, 119],
+}
+
+
+def components(m):
+    seen = np.zeros_like(m)
+    H, W = m.shape
+    for y0, x0 in zip(*np.nonzero(m)):
+        if seen[y0, x0]:
+            continue
+        q, pts = deque([(y0, x0)]), []
+        seen[y0, x0] = 1
+        while q:
+            y, x = q.popleft()
+            pts.append((x, y))
+            for dy in (-1, 0, 1):
+                for dx in (-1, 0, 1):
+                    yy, xx = y + dy, x + dx
+                    if 0 <= yy < H and 0 <= xx < W and m[yy, xx] and not seen[yy, xx]:
+                        seen[yy, xx] = 1
+                        q.append((yy, xx))
+        yield np.array(pts, float)
+
+
+def blade(small):
+    """返回 [刀柄x, 刀柄y, 刀尖x, 刀尖y]（256 格子坐标），找不到返回 None"""
+    a = np.asarray(small).astype(int)
+    r, g, b, al = a[..., 0], a[..., 1], a[..., 2], a[..., 3]
+    mx, mn = np.maximum(np.maximum(r, g), b), np.minimum(np.minimum(r, g), b)
+    steel = (al > 100) & (mn > 78) & (mx - mn < 50)
+    solid = al > 100
+    best = None
+    for p in components(steel):
+        if len(p) < 15:
+            continue
+        c = p.mean(0)
+        _, _, vt = np.linalg.svd(p - c, full_matrices=False)
+        proj = (p - c) @ vt[0]
+        L = proj.max() - proj.min()
+        if L < 40 or len(p) / L > 6.5:  # 刀：够长、够细
+            continue
+        if best is None or L > best[0]:
+            best = (L, p[proj.argmax()], p[proj.argmin()], vt[0])
+    if best is None:
+        return None
+    _, e1, e2, _ = best
+
+    # 刀柄那头有手（不透明、非钢色的像素多），刀尖那头周围是空的
+    def crowd(e):
+        x, y = int(e[0]), int(e[1])
+        win = (slice(max(0, y - 7), y + 8), slice(max(0, x - 7), x + 8))
+        return int((solid[win] & ~steel[win]).sum())
+
+    hilt, tip = (e1, e2) if crowd(e1) > crowd(e2) else (e2, e1)
+    d = tip - hilt
+    tip = tip + d / max(1, np.hypot(*d)) * 3  # 检测到的端点略缩在刀尖里面
+    return [round(float(v), 1) for v in (*hilt, *tip)]
+
+
+os.makedirs(OUT, exist_ok=True)
+names = [fn for anim in meta["animations"].values() for fn in anim["frame_names"]]
+cols, rows = 8, (len(names) + 7) // 8
+atlas = Image.new("RGBA", (cols * CELL, rows * CELL), (0, 0, 0, 0))
+out = {"cell": CELL, "cols": cols, "pivot": [PX * SCALE, PY * SCALE], "anims": {}, "frames": {}}
+found = total = 0
+for aname, anim in meta["animations"].items():
+    for fn in anim["frame_names"]:
+        im = Image.open(f"{SRC}/{meta['frames'][fn]['file']}").convert("RGBA")
+        small = im.resize((CELL, CELL), Image.LANCZOS)
+        i = names.index(fn)
+        atlas.paste(small, ((i % cols) * CELL, (i // cols) * CELL))
+        fr = {"i": i, "dx": 0, "dy": 0, "ms": meta["frames"][fn].get("duration_ms", 1000 / anim["fps"])}
+        if aname in BLADE_ANIMS:
+            bl = BLADE_FIX.get(fn) or blade(small)
+            total += 1
+            if bl:
+                found += 1
+                # 存成相对锚点（脚底）的坐标
+                fr["blade"] = [round(bl[0] - PX * SCALE, 1), round(bl[1] - PY * SCALE, 1), round(bl[2] - PX * SCALE, 1), round(bl[3] - PY * SCALE, 1)]
+        out["frames"][fn] = fr
+    out["anims"][aname] = {"frames": anim["frame_names"], "loop": anim["loop"], "contact": anim.get("suggested_contact_frame_indices", [])}
+atlas.save(f"{OUT}/feisun_atlas.webp", "WEBP", quality=88, method=6)
+json.dump(out, open(f"{OUT}/feisun.json", "w"), ensure_ascii=False, separators=(",", ":"))
+
+art = Image.open(f"{SRC}/artwork/hero_fullbody.png").convert("RGBA")
+art.resize((512, 768), Image.LANCZOS).save(f"{OUT}/feisun_fullbody.webp", "WEBP", quality=90, method=6)
+Image.open(f"{SRC}/artwork/avatar_128.png").convert("RGBA").save(f"{OUT}/feisun_avatar.webp", "WEBP", quality=92, method=6)
+for f in sorted(os.listdir(OUT)):
+    print(f"{os.path.getsize(os.path.join(OUT, f)) / 1024:8.1f} KB  {f}")
+print(f"{len(names)} 帧，{len(out['anims'])} 组动画；刀身检测 {found}/{total}")

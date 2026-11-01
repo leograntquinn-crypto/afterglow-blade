@@ -8,6 +8,7 @@ export class FX {
     this.shakeT = 0;
     this.shakeDur = 1;
     this.shakeMag = 0;
+    this.rot = 0;        // 旋转震屏（弧度）
     this.flashA = 0;
     this.flashColor = '#fff';
   }
@@ -21,6 +22,8 @@ export class FX {
       this.shakeT = dur;
       this.shakeDur = dur;
     }
+    // 重击带一点旋转，比单纯平移更有冲击力
+    if (mag >= 7 && !REDUCED_MOTION) this.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.03, mag * 0.0022);
   }
   flash(color, a) {
     this.flashColor = color;
@@ -48,6 +51,13 @@ export class FX {
       this.parts.push({ k: 'dust', x: x + rand(-10, 10), y, z: rand(0, 6), vx: rand(-2.5, 2.5) * spread, vz: rand(0.5, 2.5), r: rand(5, 11), life: rand(18, 30) | 0, max: 30 });
     }
   }
+  // 材质碎片：受重力影响、会在地上弹跳翻滚的小块（骨渣、布屑、金属屑）
+  chips(x, y, z, dir, n, color) {
+    for (let i = 0; i < n; i++) {
+      this.parts.push({ k: 'chip', x, y: y + rand(-6, 6), z, vx: dir * rand(1.5, 6) + rand(-1, 1), vz: rand(2, 7), rot: rand(0, 6), vr: rand(-0.5, 0.5), s: rand(2, 4.5), life: rand(40, 70) | 0, max: 70, color });
+    }
+  }
+
   // 刀光：一段圆弧，a0 -> a1（弧度，0 = 正前方，负数 = 向上）
   arc(x, y, z, facing, r, a0, a1, color, w = 14, life = 9) {
     this.parts.push({ k: 'arc', x, y, z, facing, r, a0, a1, color, w, life, max: life });
@@ -76,7 +86,16 @@ export class FX {
   }
 
   // ---------- 文字 ----------
+  // 斩痕：命中点闪过一道沿挥砍方向的锐利白线，先迅速拉长再变细消失
+  cut(x, y, z, angle, len, color) {
+    this.parts.push({ k: 'cut', x, y, z, angle, len, color, life: 9, max: 9 });
+  }
+
   number(x, y, z, value, { crit = false, color = null } = {}) {
+    // 同一位置刚刚冒过数字 → 往上错开，避免叠成一团
+    const near = this.texts.filter((t) => t.k === 'num' && t.max - t.life < 14 && Math.abs(t.x - x) < 60 && Math.abs(t.y - y) < 30).length;
+    z += Math.min(near, 3) * 22;
+    if (near > 3) x += (near % 2 ? 1 : -1) * (18 + (near - 3) * 6);
     this.texts.push({ k: 'num', x: x + rand(-14, 14), y, z, vz: 2.4, life: 48, max: 48, value, crit, color });
   }
   label(x, y, z, text, color, size = 22) {
@@ -85,6 +104,7 @@ export class FX {
 
   update() {
     if (this.shakeT > 0) this.shakeT--;
+    this.rot *= 0.82;
     if (this.flashA > 0) this.flashA = Math.max(0, this.flashA - 0.04);
     for (const p of this.parts) {
       p.life--;
@@ -93,6 +113,13 @@ export class FX {
         case 'ring': p.r += p.grow; p.grow *= 0.85; break;
         case 'dust': p.x += p.vx; p.z += p.vz; p.vx *= 0.9; p.vz *= 0.92; p.r += 0.35; break;
         case 'mote': p.x += p.vx; p.z += p.vz; break;
+        case 'chip':
+          p.vz -= 0.45;
+          p.x += p.vx;
+          p.z += p.vz;
+          p.rot += p.vr;
+          if (p.z < 0) { p.z = 0; p.vz = -p.vz * 0.35; p.vx *= 0.6; p.vr *= 0.6; }
+          break;
       }
     }
     this.parts = this.parts.filter((p) => p.life > 0);
@@ -119,16 +146,31 @@ export class FX {
     }
   }
 
-  draw(ctx, camX) {
+  // glowPass = true 时只画发光的部分（给泛光层用）
+  draw(ctx, camX, glowPass = false) {
     // 尘土：普通混合
     ctx.fillStyle = '#b8aa9a';
     for (const p of this.parts) {
-      if (p.k !== 'dust') continue;
+      if (p.k !== 'dust' || glowPass) continue;
       const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
       ctx.globalAlpha = (p.life / p.max) * 0.35;
       ctx.beginPath();
       ctx.arc(sx, sy, p.r, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // 碎片：普通混合，带一点描边
+    for (const p of this.parts) {
+      if (p.k !== 'chip' || glowPass) continue;
+      const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
+      ctx.globalAlpha = Math.min(1, p.life / 15);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = '#120a16';
+      ctx.fillRect(-p.s / 2 - 1, -p.s / 4 - 1, p.s + 2, p.s / 2 + 2);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
 
@@ -168,6 +210,24 @@ export class FX {
           ctx.stroke();
         }
         ctx.restore();
+      } else if (p.k === 'cut') {
+        const age = p.max - p.life;
+        const grow = Math.min(1, age / 2.5);
+        const half = (p.len / 2) * grow;
+        const w = Math.max(0.6, 7 * t);
+        const dx = Math.cos(p.angle) * half, dy = Math.sin(p.angle) * half;
+        ctx.globalAlpha = Math.min(1, t * 1.6);
+        // 外层彩色光晕 + 内层白芯，两端尖、中间粗
+        for (const [col, mul] of [[p.color, 2.2], ['#ffffff', 1]]) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(sx - dx, sy - dy);
+          ctx.lineTo(sx + Math.sin(p.angle) * w * mul * 0.5, sy - Math.cos(p.angle) * w * mul * 0.5);
+          ctx.lineTo(sx + dx, sy + dy);
+          ctx.lineTo(sx - Math.sin(p.angle) * w * mul * 0.5, sy + Math.cos(p.angle) * w * mul * 0.5);
+          ctx.closePath();
+          ctx.fill();
+        }
       } else if (p.k === 'mote') {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = 1 - t * 0.5;
@@ -192,16 +252,28 @@ export class FX {
       ctx.strokeStyle = 'rgba(16,6,10,.9)';
       ctx.lineWidth = 5;
       if (t.k === 'num') {
-        const size = (t.crit ? 42 : 28) * pop;
-        ctx.font = `600 ${size}px ${FONT_NUM}`;
+        const size = (t.crit ? 46 : 30) * pop;
         const s = String(t.value);
-        ctx.strokeText(s, sx, sy);
-        ctx.fillStyle = t.color || (t.crit ? '#ffd65a' : '#ffffff');
-        ctx.fillText(s, sx, sy);
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.transform(1, 0, -0.16, 1, 0, 0); // 斜体，更有冲击感
+        ctx.font = `600 ${size}px ${FONT_NUM}`;
+        ctx.lineWidth = t.crit ? 5 : 4;
+        ctx.strokeStyle = 'rgba(14,4,10,.92)';
+        ctx.strokeText(s, 0, 0);
+        const g = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.35);
+        if (t.color) { g.addColorStop(0, '#ffb0b8'); g.addColorStop(1, t.color); }
+        else if (t.crit) { g.addColorStop(0, '#fffbe0'); g.addColorStop(0.5, '#ffd65a'); g.addColorStop(1, '#ff7a2e'); }
+        else { g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#c9c0dc'); }
+        ctx.fillStyle = g;
+        ctx.fillText(s, 0, 0);
+        ctx.restore();
         if (t.crit) {
-          ctx.font = `600 ${16 * pop}px ${FONT_NUM}`;
-          ctx.strokeText('CRITICAL', sx, sy - size * 0.62);
-          ctx.fillText('CRITICAL', sx, sy - size * 0.62);
+          ctx.font = `${18 * pop}px ${FONT_TITLE}`;
+          ctx.lineWidth = 4;
+          ctx.strokeText('暴击', sx, sy - size * 0.66);
+          ctx.fillStyle = '#ffd65a';
+          ctx.fillText('暴击', sx, sy - size * 0.66);
         }
       } else {
         ctx.font = `${t.size * pop}px ${FONT_TITLE}`;

@@ -1,0 +1,36 @@
+[gd_scene load_steps=5 format=3]
+
+[ext_resource type="Script" path="res://scripts/fx/one_shot_particles.gd" id="1"]
+[ext_resource type="Texture2D" path="res://assets/gen/soft_dot.tres" id="2"]
+
+[sub_resource type="Gradient" id="ramp_g"]
+offsets = PackedFloat32Array(0, 1)
+colors = PackedColorArray(0.72, 0.67, 0.6, 0.45, 0.72, 0.67, 0.6, 0)
+
+[sub_resource type="GradientTexture1D" id="ramp"]
+gradient = SubResource("ramp_g")
+
+[sub_resource type="ParticleProcessMaterial" id="pm"]
+particle_flag_disable_z = true
+emission_shape = 3
+emission_box_extents = Vector3(14, 2, 1)
+direction = Vector3(0, -1, 0)
+spread = 80.0
+initial_velocity_min = 30.0
+initial_velocity_max = 110.0
+gravity = Vector3(0, 0, 0)
+damping_min = 60.0
+damping_max = 120.0
+scale_min = 0.5
+scale_max = 1.1
+color_ramp = SubResource("ramp")
+
+[node name="Dust" type="GPUParticles2D"]
+emitting = false
+amount = 8
+process_material = SubResource("pm")
+texture = ExtResource("2")
+lifetime = 0.5
+one_shot = true
+explosiveness = 0.9
+script = ExtResource("1")

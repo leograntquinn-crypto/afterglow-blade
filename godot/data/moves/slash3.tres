@@ -1,0 +1,43 @@
+[gd_resource type="Resource" script_class="MoveData" load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/combat/hit_data.gd" id="1_tn48e"]
+[ext_resource type="Script" path="res://scripts/combat/move_data.gd" id="2_yihvr"]
+
+[sub_resource type="Resource" id="Resource_p070l"]
+script = ExtResource("1_tn48e")
+at = 8
+dur = 5
+box_x = 55.0
+box_w = 112.0
+box_d = 34.0
+box_z0 = 0.0
+box_z1 = 110.0
+abs_z = false
+dmg = 22.0
+kb = 8.0
+launch = 0.0
+stun = 26
+stop = 8
+shake = 7.0
+heavy = true
+spike = false
+radial = false
+
+[resource]
+script = ExtResource("2_yihvr")
+id = &"slash3"
+total = 34
+cancel = 20
+next_move = &""
+lunge_from = 3
+lunge_to = 10
+lunge_speed = 4.5
+swing_from = -2.4
+swing_to = 1.2
+air = false
+hang = 0.0
+jump_cancel = false
+thrust = false
+heavy = true
+anim = &"slash3"
+hits = Array[ExtResource("1_tn48e")]([SubResource("Resource_p070l")])
