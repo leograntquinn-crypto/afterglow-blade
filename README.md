@@ -1,6 +1,8 @@
 # 残光之刃 · Afterglow Blade
 
-原创横版 2.5D 动作游戏。纯 HTML5 Canvas + 原生 JavaScript，不依赖任何框架和图片素材。
+原创横版 2.5D 动作游戏。纯 HTML5 Canvas + 原生 JavaScript，不依赖任何框架。
+
+主角「绯隼」是逐帧手绘精灵（`assets/hero/`，21 组动画，素材来源见 `assets/hero/ATTRIBUTION.md`）；敌人、场景和特效目前是程序绘制。美术素材的规格和生成提示词在 `docs/ART_FEISUN.md`（主角）和 `docs/ART_ENEMIES.md`（敌人）。
 
 ## 运行
 
@@ -38,6 +40,7 @@ src/
   config.js   常量、2.5D 坐标换算
   input.js    键盘 + 触屏 → 统一的「动作」，带输入缓冲
   moves.js    ★ 招式帧数据表：调手感就改这里
+  sprite.js   逐帧精灵：图集加载、招式 → 动画帧映射（接触帧对齐出伤帧）、刀身位置、染色缓存
   player.js   主角状态机、招式执行、取消系统
   enemy.js    敌人类型表、AI、受击反应（硬直/浮空/倒地/霸体）
   combat.js   判定框、飞行道具、地面范围攻击

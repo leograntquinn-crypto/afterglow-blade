@@ -215,7 +215,8 @@ export class Player {
       const [bx, by] = toScreen(s.x, s.y, s.z, camX);
       const c = Math.cos(ang), si = Math.sin(ang);
       // 内沿从刀身 30% 处开始，外沿是刀尖
-      return [[bx + hx + c * len * 0.3, by + hy + si * len * 0.3], [bx + hx + c * len, by + hy + si * len]];
+      // 外沿比刀尖再长一点：判定框比画出来的刀略远，刀光把这段距离补上，看起来就是刀风扫到的
+      return [[bx + hx + c * len * 0.3, by + hy + si * len * 0.3], [bx + hx + c * len * 1.2, by + hy + si * len * 1.2]];
     };
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -455,7 +456,9 @@ export class Player {
     this.mf = 0;
     this.landed = false;
     this.hitSets = m.hits.map(() => new Set());
+    const chained = this.state === 'attack';
     this.setState('attack');
+    this.chained = chained; // 从上一招取消接过来的：精灵跳过起手的站姿帧，直接从拉刀开始
     if (!m.air) { this.vx = 0; this.vy = 0; }
     if (m.hang && this.airHangs < 3 && this.vz < m.hang) { this.vz = m.hang; this.airHangs++; }
     if (m.plunge) { this.vz = 3; this.vx = this.facing * 2; }

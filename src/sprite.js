@@ -5,6 +5,7 @@
 
 const BASE = 'assets/hero/';
 export const HERO_SCALE = 0.54; // 图集里角色约 179px 高 → 游戏里约 96px
+const TINT_CACHE_MAX = 140; // 染色缓存上限（全是半分辨率时约 9MB，全尺寸时约 36MB）
 
 function loadImage(src) {
   return new Promise((resolve) => {
@@ -47,20 +48,31 @@ class SpriteSheet {
     return [(i % this.cols) * this.C, Math.floor(i / this.cols) * this.C];
   }
 
-  // 整帧染成一种颜色（保留透明度），结果缓存
-  tinted(name, color) {
-    const key = name + color;
+  // 整帧染成一种颜色（保留透明度），结果缓存。
+  // 剪影类（轮廓光、残影、闪白）只是一块纯色，用半分辨率存，内存是全尺寸的 1/4；
+  // 缓存有上限，最久没用的先丢掉（手机浏览器的画布总内存有限，超了会白屏）
+  tinted(name, color, half = false) {
+    const key = name + color + (half ? 'h' : '');
     let c = this.tints.get(key);
-    if (!c) {
-      c = document.createElement('canvas');
-      c.width = c.height = this.C;
-      const x = c.getContext('2d');
-      const [cx, cy] = this.cellOf(name);
-      x.drawImage(this.atlas, cx, cy, this.C, this.C, 0, 0, this.C, this.C);
-      x.globalCompositeOperation = 'source-in';
-      x.fillStyle = color;
-      x.fillRect(0, 0, this.C, this.C);
+    if (c) {
+      this.tints.delete(key); // 挪到最新
       this.tints.set(key, c);
+      return c;
+    }
+    const R = half ? this.C >> 1 : this.C;
+    c = document.createElement('canvas');
+    c.width = c.height = R;
+    const x = c.getContext('2d');
+    const [cx, cy] = this.cellOf(name);
+    x.drawImage(this.atlas, cx, cy, this.C, this.C, 0, 0, R, R);
+    x.globalCompositeOperation = 'source-in';
+    x.fillStyle = color;
+    x.fillRect(0, 0, R, R);
+    this.tints.set(key, c);
+    if (this.tints.size > TINT_CACHE_MAX) {
+      const [oldKey, old] = this.tints.entries().next().value;
+      this.tints.delete(oldKey);
+      old.width = old.height = 0; // Safari 要手动清零才会马上释放画布内存
     }
     return c;
   }
@@ -75,16 +87,16 @@ class SpriteSheet {
     ctx.scale(facing * s, s);
     ctx.globalAlpha *= o.alpha ?? 1;
     if (o.ghost) {
-      ctx.drawImage(this.tinted(name, o.ghost), dx, dy);
+      ctx.drawImage(this.tinted(name, o.ghost, true), dx, dy, C, C);
       ctx.restore();
       return;
     }
     // 轮廓光：把染色剪影往四个方向错开一点画在身后，深色衣服在暗场景里也能看清轮廓
     if (o.rim) {
-      const rim = this.tinted(name, o.rim);
+      const rim = this.tinted(name, o.rim, true);
       const a = ctx.globalAlpha;
       ctx.globalAlpha = a * (o.rimAlpha ?? 0.32);
-      for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 2]]) ctx.drawImage(rim, dx + ox, dy + oy);
+      for (const [ox, oy] of [[-3, 0], [3, 0], [0, -3], [0, 2]]) ctx.drawImage(rim, dx + ox, dy + oy, C, C);
       ctx.globalAlpha = a;
     }
     const [cx, cy] = this.cellOf(name);
@@ -95,7 +107,7 @@ class SpriteSheet {
     }
     if (o.flash) {
       ctx.globalAlpha = 1;
-      ctx.drawImage(this.tinted(name, '#ffffff'), dx, dy);
+      ctx.drawImage(this.tinted(name, '#ffffff', true), dx, dy, C, C);
     }
     ctx.restore();
   }
@@ -112,22 +124,28 @@ const MOVE_ANIM = {
   airSlash: 'air_slash_01', airSlash2: 'air_slash_02', airSlash3: 'air_slash_01',
   wave: 'cast', whirl: 'attack_02', quake: 'cast', flurry: 'thrust',
 };
-// 素材没标接触帧的动画（施法）在这里补上
-const CONTACT = { cast: [3, 4] };
+// 接触帧修正：施法素材没标；重斩素材标的 3 还在举刀，真正劈下来是 4~5
+const CONTACT = { cast: [3, 4], attack_03: [4] };
+// 收招帧修正：重斩第 6 帧又把刀举起来，收招时停在这一帧像要再砍一刀。改成压低的收势帧停住，再回站姿
+const RECOVER = { attack_03: [5, 7] };
 
 // 把招式的第 f 帧映射到动画的第几帧：
 // 出伤前 → 起手帧（接触帧之前），出伤中 → 接触帧，出伤后 → 收招帧
-function attackIndex(S, anim, m, f) {
+function attackIndex(S, anim, m, f, chained = false) {
   const n = S.meta.anims[anim].frames.length;
   const c = CONTACT[anim] || S.meta.anims[anim].contact;
   const c0 = c.length ? c[0] : Math.floor(n / 2), c1 = c.length ? c[c.length - 1] : c0;
   const at = m.swingAt ?? m.hits[0]?.at ?? 6;
   const dur = (m.swingDur ?? m.hits[0]?.dur ?? 4) + 2;
   const span = (k0, k1, u) => k0 + Math.min(k1 - k0, Math.floor(u * (k1 - k0 + 1)));
-  if (f < at) return c0 > 0 ? span(0, c0 - 1, f / at) : 0;
+  // 连段中接过来的招式跳过开头的站姿帧，否则每一刀之间都会先「回到待机」再拉刀，节奏发拖
+  if (f < at) return c0 > 0 ? span(chained ? Math.max(0, c0 - 2) : 0, c0 - 1, f / at) : 0;
   if (f < at + dur) return span(c0, c1, (f - at) / dur);
+  const u = (f - at - dur) / Math.max(1, m.total - at - dur);
+  const R = RECOVER[anim];
+  if (R) return R[Math.min(R.length - 1, Math.floor(u * R.length * 1.3))]; // 收势帧多停一会儿
   if (c1 >= n - 1) return n - 1;
-  return span(c1 + 1, n - 1, (f - at - dur) / Math.max(1, m.total - at - dur));
+  return span(c1 + 1, n - 1, u);
 }
 
 function loopIndex(S, anim, ms) {
@@ -196,7 +214,7 @@ export function heroFrame(p, t) {
       // 崩山击：前半段蓄力用蓄力循环
       if (m.id === 'quake' && f < 24) return F('charge', loopIndex(S, 'charge', f * 33));
       const anim = MOVE_ANIM[m.id] || 'attack_01';
-      return F(anim, attackIndex(S, anim, m, f));
+      return F(anim, attackIndex(S, anim, m, f, p.chained));
     }
   }
   return F('idle', 0);
