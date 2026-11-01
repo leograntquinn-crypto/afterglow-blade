@@ -51,6 +51,13 @@ export class Enemy {
     this.maxArmor = this.armor = Math.round(T.armor * scale * (elite ? 1.5 : 1));
     this.dmgMul = (1 + (lv - 1) * 0.2) * (elite ? 1.3 : 1);
     this.xp = Math.round(T.xp * (1 + (lv - 1) * 0.35) * (elite ? 3 : 1));
+    // 难度：在等级之外再乘一层血量和伤害
+    const D = game.D;
+    if (D && !this.dummy) {
+      this.maxHp = this.hp = this.hpTrail = Math.round(this.maxHp * D.hp);
+      this.maxArmor = this.armor = Math.round(this.maxArmor * D.hp);
+      this.dmgMul *= D.dmg;
+    }
     this.brokenT = 0;
     this.state = 'spawn';
     this.st = 0;
@@ -81,7 +88,7 @@ export class Enemy {
 
   // 狂暴后移动、出招、冷却都变快
   get spdMul() { return this.enraged ? 1.45 : 1; }
-  get windup() { return Math.round(this.atk.windup * (this.enraged ? 0.72 : 1)); }
+  get windup() { return Math.round(this.atk.windup * (this.enraged ? 0.72 : 1) * (this.game.D?.windup ?? 1)); }
 
   get alive() {
     return this.state !== 'dying';

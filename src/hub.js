@@ -7,7 +7,7 @@ import {
   enhCost, enhRate, sellPrice,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
-import { STAGES, isUnlocked } from './stages.js';
+import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
 import { CHALLENGES } from './training.js';
 import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
@@ -101,8 +101,13 @@ export class Hub {
         <p class="boss-line">首领 <b style="color:${boss.glow}">${boss.name}</b> <span>${boss.title}</span></p>
         <div class="stage-foot">
           ${best ? `<span class="grade g${best.letter}">${best.letter}</span>` : `<span class="first">首通奖励 ×3</span>`}
-          ${open ? `<button class="btn primary" data-act="go" data-i="${i}">出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}
+          ${open ? `<button class="btn primary" data-act="go" data-i="${i}" data-d="0">出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}
         </div>
+        ${s.cleared[st.id] ? `<div class="diffs">${DIFFS.slice(1).map((D, k) => {
+          const d = k + 1, ok = diffUnlocked(s, i, d), b = s.best[stageKey(st, d)];
+          return `<button class="btn diff" style="--dc:${D.color}" data-act="go" data-i="${i}" data-d="${d}" ${ok ? '' : 'disabled'} title="${ok ? `推荐 Lv.${st.lv + D.lvAdd}` : `通关「${DIFFS[d - 1].name}」解锁`}">
+            ${D.name}${b ? ` <b class="g${b.letter}">${b.letter}</b>` : ok ? ` <small>Lv.${st.lv + D.lvAdd}</small>` : ' <small>未解锁</small>'}</button>`;
+        }).join('')}</div>` : ''}
       </article>`;
     }).join('')}</div>`;
   }
@@ -249,7 +254,7 @@ export class Hub {
     switch (act) {
       case 'go':
         sfx('click');
-        this.g.startStage(+el.dataset.i);
+        this.g.startStage(+el.dataset.i, +(el.dataset.d || 0));
         return;
       case 'train':
         sfx('click');

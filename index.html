@@ -178,6 +178,11 @@
   .stage.locked { opacity: .5; }
   .stage.training { border-style: dashed; background: linear-gradient(160deg, rgba(120, 170, 220, .08), transparent 60%), var(--panel); }
   .stage.training h3 { color: var(--blade); }
+  .diffs { display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
+  .btn.diff { flex: 1; padding: 6px 8px; font-size: 13px; color: var(--dc); border-color: color-mix(in srgb, var(--dc) 45%, transparent); }
+  .btn.diff:disabled { opacity: .4; cursor: not-allowed; }
+  .btn.diff small { font-size: 11px; opacity: .75; }
+  .btn.diff b { font: 600 18px/1 var(--font-num); margin-left: 4px; }
   .stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .stage h3 { font: 30px var(--font-title); }
   .rec { font-size: 12px; color: var(--mute); white-space: nowrap; }

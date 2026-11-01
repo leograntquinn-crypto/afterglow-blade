@@ -16,8 +16,10 @@ export const AFFIXES = {
 };
 
 // 按关卡抽词缀：精英第 1 关 1 条、第 3 关起 2 条；第 3 关起普通怪也有小概率带 1 条
-export function rollAffixes(type, elite, stageIdx) {
-  const n = elite ? (stageIdx >= 2 ? 2 : 1) : stageIdx >= 2 && Math.random() < 0.12 ? 1 : 0;
+// 高难度（D）：精英多带 D.affix 条，普通怪带词缀的概率提高到 D.normalAffix
+export function rollAffixes(type, elite, stageIdx, D = null) {
+  const normalChance = Math.max(stageIdx >= 2 ? 0.12 : 0, D?.normalAffix ?? 0);
+  const n = elite ? (stageIdx >= 2 ? 2 : 1) + (D?.affix ?? 0) : Math.random() < normalChance ? 1 : 0;
   const pool = Object.keys(AFFIXES).filter((k) => AFFIXES[k].types.includes(type));
   const out = [];
   while (out.length < n && pool.length) out.push(pool.splice((Math.random() * pool.length) | 0, 1)[0]);

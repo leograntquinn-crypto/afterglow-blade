@@ -43,6 +43,22 @@ export const STAGES = [
 
 export const isUnlocked = (save, i) => i === 0 || !!save.cleared[STAGES[i - 1].id];
 
+// 难度：通关一个关卡的「普通」解锁它的「噩梦」，通关「噩梦」解锁「地狱」。
+// 高难度不只是数值变大：敌人出招更快、同时进攻的人更多、词缀更多，逼你用上闪避、弹刀、破盾这些技巧。
+//   lvAdd    关卡等级加成（敌人等级、掉落装备等级都跟着涨）
+//   hp/dmg   在等级之外再乘的血量 / 伤害倍率
+//   windup   敌人预警时间倍率（越小反应时间越短）；bossSpd 首领出招速度
+//   affix    精英多带几条词缀；normalAffix 普通怪带词缀的概率
+//   attackers 同时进攻的敌人多几个；reward 经验金币倍率；luck 掉落品质加成
+export const DIFFS = [
+  { key: '', name: '普通', color: '#e8e0d0', lvAdd: 0, hp: 1, dmg: 1, windup: 1, bossSpd: 1, affix: 0, normalAffix: 0, attackers: 0, reward: 1, luck: 0 },
+  { key: 'nm', name: '噩梦', color: '#c48bff', lvAdd: 5, hp: 1.3, dmg: 1.25, windup: 0.86, bossSpd: 1.12, affix: 1, normalAffix: 0.3, attackers: 1, reward: 1.3, luck: 0.8 },
+  { key: 'hell', name: '地狱', color: '#ff5a3c', lvAdd: 10, hp: 1.6, dmg: 1.5, windup: 0.74, bossSpd: 1.25, affix: 2, normalAffix: 0.55, attackers: 1, reward: 1.6, luck: 1.6 },
+];
+// 存档里每个难度分开记通关和最佳评价：普通用关卡 id，其他是 id@难度
+export const stageKey = (st, d) => (d ? `${st.id}@${DIFFS[d].key}` : st.id);
+export const diffUnlocked = (save, i, d) => (d === 0 ? isUnlocked(save, i) : !!save.cleared[stageKey(STAGES[i], d - 1)]);
+
 export function fmtTime(sec) {
   const m = Math.floor(sec / 60), s = Math.floor(sec % 60);
   return `${m}:${String(s).padStart(2, '0')}`;

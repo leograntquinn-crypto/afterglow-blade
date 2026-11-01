@@ -732,6 +732,14 @@ export function drawClear(ctx, game) {
     ctx.fillStyle = COLORS.gold;
     ctx.fillText('新纪录', VIEW_W - 260, 370);
   }
+  if (game.unlockedDiff && t > 90) {
+    ctx.textAlign = 'center';
+    ctx.font = `22px ${FONT_TITLE}`;
+    ctx.fillStyle = game.unlockedDiff.color;
+    ctx.globalAlpha = Math.min(1, (t - 90) / 20);
+    ctx.fillText(`解锁「${game.unlockedDiff.name}」难度`, VIEW_W - 260, 410);
+    ctx.globalAlpha = 1;
+  }
   if (t > 110) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 490);
   ctx.restore();
 }

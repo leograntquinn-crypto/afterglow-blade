@@ -14,7 +14,7 @@ import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
 import { Training } from './training.js';
 import { Loot } from './loot.js';
-import { STAGES, grade } from './stages.js';
+import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
@@ -49,6 +49,9 @@ class Game {
     this.ticks = 0;
     this.paused = false;
     this.stage = null;
+    this.stageIdx = 0;
+    this.diff = 0;
+    this.D = DIFFS[0]; // 当前难度的参数
     this.resetWorld();
 
     // 云存档比本地新：不在战斗中就切换过去
@@ -174,11 +177,18 @@ class Game {
     this.roomsCleared = 0;
   }
 
-  startStage(i) {
+  startStage(i, d = 0) {
     this.training = null;
-    this.stage = STAGES[i];
+    this.stageIdx = i;
+    this.diff = d;
+    this.D = DIFFS[d];
+    const st = STAGES[i];
+    this.unlockedDiff = null;
+    // 高难度：关卡等级提高（敌人等级、掉落装备等级跟着涨），名字后面标上难度
+    this.stage = d ? { ...st, lv: st.lv + this.D.lvAdd, name: `${st.name}·${this.D.name}` } : st;
     this.refreshStats();
     this.resetWorld();
+    this.maxAttackers = 2 + this.D.attackers;
     this.dungeon = generateDungeon(this.stage);
     this.run = { xp: 0, gold: 0, items: [], ups: [], firstClear: false, ended: false };
     this.hub.hide();
@@ -187,13 +197,16 @@ class Game {
     this.canvas.focus();
     this.enterRoom(this.dungeon.start, null);
     const B = BOSSES[this.stage.boss];
-    this.banner = { title: this.stage.name, sub: `${this.dungeon.mainLength} 个房间 · 首领「${B.name}」在地图上的「王」处`, t: 0 };
+    this.banner = { title: this.stage.name, sub: `${this.dungeon.mainLength} 个房间 · 首领「${B.name}」在地图上的「王」处`, t: 0, color: d ? this.D.color : undefined };
     sfx('wave');
   }
 
   // 训练场：一个没有门的长房间 + 两个打不死的木人（右边那个靠墙，练撞墙反弹）
   startTraining() {
     this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
+    this.stageIdx = 0;
+    this.diff = 0;
+    this.D = DIFFS[0];
     this.refreshStats();
     this.resetWorld();
     const room = { x: 0, y: 0, type: 'training', doors: {}, w: 1300, waves: [], cleared: true, visited: true };
@@ -287,7 +300,7 @@ class Game {
     const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
     const y = rand(20, DEPTH - 20);
     const type = spec.replace('*', '');
-    const affixes = rollAffixes(type, elite, STAGES.indexOf(this.stage));
+    const affixes = rollAffixes(type, elite, this.stageIdx, this.D);
     const e = new Enemy(type, x, y, this, { lv: this.stage.lv, elite, affixes });
     // 第一次遇到某个词缀时提示打法
     for (const k of affixes) if (!this.seenAffix.has(k)) { this.seenAffix.add(k); this.toast(`${AFFIXES[k].name}：${AFFIXES[k].tip}`, AFFIXES[k].color); }
@@ -386,16 +399,19 @@ class Game {
   finish() {
     const p = this.player, st = this.stage, s = this.save;
     this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, rooms: this.dungeon.mainLength, style: this.style.peak });
-    // 通关奖励
-    const first = !s.cleared[st.id];
-    const mul = first ? 3 : 1;
+    // 通关奖励（每个难度各有一次首通 ×3）
+    const key = stageKey(STAGES[this.stageIdx], this.diff);
+    const first = !s.cleared[key];
+    const mul = (first ? 3 : 1) * this.D.reward;
     this.run.firstClear = first;
     this.gainXp(Math.round(40 * st.lv * mul), false);
     this.gainGold(Math.round(60 * st.lv * mul));
-    s.cleared[st.id] = true;
-    const b = s.best[st.id];
+    s.cleared[key] = true;
+    const b = s.best[key];
     this.newBest = !b || this.result.total > b.total || (this.result.total === b.total && this.frame / 60 < b.time);
-    if (this.newBest) s.best[st.id] = { letter: this.result.letter, total: this.result.total, time: this.frame / 60, maxCombo: this.maxCombo };
+    if (this.newBest) s.best[key] = { letter: this.result.letter, total: this.result.total, time: this.frame / 60, maxCombo: this.maxCombo };
+    // 刚解锁下一个难度时提示一下
+    this.unlockedDiff = first && this.diff < DIFFS.length - 1 ? DIFFS[this.diff + 1] : null;
     this.endRun();
     this.setScene('clear');
     sfx('clear');
@@ -438,15 +454,15 @@ class Game {
   }
 
   dropLoot(e) {
-    const L = this.stage.lv;
-    if (e.minion) return; // Boss 召唤的小怪不掉东西，防止刷
+    const L = this.stage.lv, D = this.D;
+    if (e.minion || e.dummy) return; // Boss 召唤的小怪不掉东西，防止刷
     const coins = e.isBoss ? 8 : e.elite ? 3 : 1;
-    for (let i = 0; i < coins; i++) this.loots.push(new Loot({ x: e.x, y: e.y, gold: Math.round(rand(4, 9) * (1 + L * 0.3)) }));
+    for (let i = 0; i < coins; i++) this.loots.push(new Loot({ x: e.x, y: e.y, gold: Math.round(rand(4, 9) * (1 + L * 0.3) * D.reward) }));
     if (e.isBoss) {
-      // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高
-      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: L > 1 ? 2 : 1, luck: 2 }));
-    } else if (Math.random() < (e.elite ? 1 : e.T.drop)) {
-      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? 1 : 0, luck: e.elite ? 0.6 : 0 }));
+      // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高；地狱难度第一件必定是传说
+      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 3 : L > 1 ? 2 : 1, luck: 2 + D.luck }));
+    } else if (Math.random() < (e.elite ? 1 : e.T.drop * (1 + D.luck * 0.3))) {
+      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + D.luck }));
     }
   }
 
@@ -509,7 +525,7 @@ class Game {
     S.rank = r;
     S.peak = Math.max(S.peak, r);
     if (r >= 4) this.tr('styleS');
-    this.maxAttackers = 2 + (r >= 4 ? 1 : 0); // 打得越好，敌人越凶
+    this.maxAttackers = 2 + (r >= 4 ? 1 : 0) + this.D.attackers; // 打得越好、难度越高，敌人越凶
   }
 
   addUlt(n) {
@@ -853,8 +869,9 @@ class Game {
     this.addUlt(2.5);
     this.addStyle(40, 'kill');
     this.fx.chips(e.x, e.y, e.z + e.h * 0.5, Math.sign(e.vx) || 1, 18, e.look?.bone || e.look?.cloak || e.look?.metal || '#cfc3ad');
-    this.gainXp(e.xp);
-    this.fx.label(e.x, e.y, e.z + e.h + 50, `+${e.xp} EXP`, '#c8b6ff', 16);
+    const xp = Math.round(e.xp * this.D.reward);
+    this.gainXp(xp);
+    this.fx.label(e.x, e.y, e.z + e.h + 50, `+${xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
     onAffixDeath(e, this);
     if (e.isBoss) {

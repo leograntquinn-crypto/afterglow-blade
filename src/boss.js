@@ -317,7 +317,7 @@ export class Boss extends Enemy {
     this.bars = B.bars;
   }
 
-  get spd() { return 1 + this.phase * 0.18; } // 阶段越高出招越快
+  get spd() { return (1 + this.phase * 0.18) * (this.game.D?.bossSpd ?? 1); } // 阶段越高、难度越高，出招越快
 
   setState(s) {
     if (s !== 'attack') { this.act = null; this.tele = false; this.fade = 1; }
