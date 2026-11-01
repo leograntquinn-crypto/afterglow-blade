@@ -17,10 +17,14 @@ export const SLOT_NAME = { weapon: '武器', helm: '头盔', armor: '护甲', ri
 const SLOT_GLYPH = { helm: '盔', armor: '甲', ring: '戒' };
 
 // 武器类型：影响攻击力倍率、外观长度，太刀自带暴击
+// 武器类型 = 流派：除了数值，每种武器还有一个改变打法的特性（school），绯隼的动作不变
+//   长剑「游刃」预判流：破招 / 极限闪避 / 弹刀回转的技能冷却翻倍
+//   太刀「疾斩」手速流：普攻和技能的取消窗口提前 3 帧
+//   巨剑「崩山」破甲流：削霸体 ×1.6，普攻破招也能直接打断有霸体的杂兵
 export const WTYPES = {
-  sword: { name: '长剑', glyph: '剑', atkMul: 1.0, len: 64 },
-  katana: { name: '太刀', glyph: '刀', atkMul: 0.92, len: 72, crit: 0.04 },
-  great: { name: '巨剑', glyph: '巨', atkMul: 1.18, len: 70 },
+  sword: { name: '长剑', glyph: '剑', atkMul: 1.0, len: 64, school: '游刃', schoolDesc: '破招、极限闪避、弹刀成功时，技能冷却回转 3 秒（其他武器 1.5 秒）' },
+  katana: { name: '太刀', glyph: '刀', atkMul: 0.92, len: 72, crit: 0.04, school: '疾斩', schoolDesc: '普攻和技能的取消窗口提前 3 帧，连段更快' },
+  great: { name: '巨剑', glyph: '巨', atkMul: 1.18, len: 70, school: '崩山', schoolDesc: '削霸体 ×1.6；普攻破招也能直接打断有霸体的敌人' },
 };
 
 const TIER_NAMES = {

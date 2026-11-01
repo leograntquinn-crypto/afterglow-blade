@@ -178,6 +178,7 @@
   .stage.locked { opacity: .5; }
   .stage.training { border-style: dashed; background: linear-gradient(160deg, rgba(120, 170, 220, .08), transparent 60%), var(--panel); }
   .stage.training h3 { color: var(--blade); }
+  .school { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; line-height: 1.6; color: #ffd9a0; background: rgba(255,179,71,.08); border-left: 2px solid #ffb347; }
   .diffs { display: flex; gap: 8px; padding-top: 4px; border-top: 1px solid var(--line); }
   .btn.diff { flex: 1; padding: 6px 8px; font-size: 13px; color: var(--dc); border-color: color-mix(in srgb, var(--dc) 45%, transparent); }
   .btn.diff:disabled { opacity: .4; cursor: not-allowed; }
@@ -343,6 +344,8 @@
         <dt>空中 L</dt><dd>空中冲刺（空中命中后也能取消）</dd>
         <dt>L 闪避</dt><dd>敌人攻击即将命中时闪避 = 极限闪避：子弹时间 + 反击必暴击</dd>
         <dt>对刀</dt><dd>敌人近战命中的瞬间面朝它出刀 = 弹刀：敌人长硬直，霸体被打破</dd>
+        <dt>破招</dt><dd>敌人出招预警（红光）时抢先打中它：打断招式、伤害 +50%、技能冷却回转。霸体敌人要用重击才能打断</dd>
+        <dt>首领读条</dt><dd>首领读条释放大招时，在读条结束前打满打断值就能让它倒地；没打断就跳起来或极限闪避躲开</dd>
         <dt>被打飞时 K</dt><dd>受身</dd>
         <dt>倒地时任意键</dt><dd>快速翻滚起身</dd>
         <dt>H</dt><dd>残光槽满：必杀「残光·终焉」</dd>

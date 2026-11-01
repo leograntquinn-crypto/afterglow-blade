@@ -512,7 +512,9 @@ export class Player {
     this.mf++;
 
     // 取消：连招的灵魂。到了 cancel 帧之后，可以提前进入下一个动作
-    const canCancel = f >= (m.cancel ?? m.total);
+    // 太刀「疾斩」：有取消窗口的招式提前 3 帧可以取消
+    const early = this.S.school === 'katana' && m.cancel != null && m.cancel < m.total && !m.plunge ? 3 : 0;
+    const canCancel = f >= (m.cancel ?? m.total) - early;
     if (canCancel && !m.plunge) {
       if (m.next && inp.buffered('attack')) {
         inp.consume('attack');

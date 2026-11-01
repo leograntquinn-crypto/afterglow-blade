@@ -30,46 +30,51 @@ export const BOSSES = {
     name: '骸骨统领', title: '墓穴的守门人', base: 'grunt', scale: 1.5, glow: '#ff5a3c', hp: 1100, armor: 220, bars: 8, speed: 1.6,
     look: { armor: '#6a4a2a', eye: '#ff3b2a', weapon: { type: 'great', len: 60, color: '#b8ad9e', glow: '#ff5a3c', glowA: 0.25 } },
     minion: 'grunt', shot: 'arrow',
+    channel: '亡骨号令',
     phases: [
       { at: 1, attacks: { combo: 3, slam: 2, charge: 1 } },
-      { at: 0.5, line: '骨骸重新拼合，发出愤怒的咆哮', attacks: { combo: 2, slam: 2, charge: 2, summon: 1, shockwave: 1 } },
+      { at: 0.5, line: '骨骸重新拼合，发出愤怒的咆哮', attacks: { combo: 2, slam: 2, charge: 2, summon: 1, shockwave: 1, channel: 1 } },
     ],
   },
   nightRaven: {
     name: '夜鸦', title: '回廊的猎手', base: 'archer', scale: 1.35, glow: '#ff4dd2', hp: 1300, armor: 200, bars: 9, speed: 2.2,
     look: { cloak: '#1a1222', eye: '#ff4dd2', weapon: { type: 'bow', color: '#5a3a6a' } },
     minion: 'archer', shot: 'arrow', keepAway: 300,
+    channel: '夜幕箭雨',
     phases: [
       { at: 1, attacks: { volley: 3, teleport: 2, rain: 1 } },
-      { at: 0.5, line: '夜色笼罩了整条回廊', attacks: { volley: 2, teleport: 2, rain: 2, summon: 1 } },
+      { at: 0.5, line: '夜色笼罩了整条回廊', attacks: { volley: 2, teleport: 2, rain: 2, summon: 1, channel: 1 } },
     ],
   },
   ironJaw: {
     name: '铁颚', title: '刑场之主', base: 'brute', scale: 1.3, glow: '#ff7a2e', hp: 2200, armor: 480, bars: 12, speed: 1.3,
     look: { metal: '#7a3a2a', skin: '#9a6f5e', eye: '#ff3b2a' },
     minion: 'grunt', shot: 'arrow',
+    channel: '断头重锤',
     phases: [
       { at: 1, attacks: { slam: 3, charge: 2, combo: 1 } },
-      { at: 0.55, line: '铁颚扯断了身上的锁链', attacks: { slam: 2, charge: 2, shockwave: 2, summon: 1 } },
+      { at: 0.55, line: '铁颚扯断了身上的锁链', attacks: { slam: 2, charge: 2, shockwave: 2, summon: 1, channel: 1 } },
     ],
   },
   warden: {
     name: '祭坛守护者', title: '深渊的看门者', base: 'brute', scale: 1.35, glow: '#6fe38a', hp: 2600, armor: 560, bars: 14, speed: 1.25,
     look: { metal: '#2e4a3a', skin: '#5a6a5e', leather: '#1e2a22', eye: '#6fe38a', weapon: { type: 'axe', len: 64, color: '#8fb8a0' } },
     minion: 'archer', shot: 'wave',
+    channel: '祭坛炎狱',
     phases: [
       { at: 1, attacks: { slam: 2, shockwave: 2, charge: 1 } },
-      { at: 0.6, line: '祭坛的火焰变成了绿色', attacks: { shockwave: 2, rain: 2, charge: 2 } },
-      { at: 0.3, line: '守护者燃尽了最后的生命', attacks: { rain: 2, shockwave: 2, summon: 1, charge: 2, slam: 1 } },
+      { at: 0.6, line: '祭坛的火焰变成了绿色', attacks: { shockwave: 2, rain: 2, charge: 2, channel: 1 } },
+      { at: 0.3, line: '守护者燃尽了最后的生命', attacks: { rain: 2, shockwave: 2, summon: 1, charge: 2, slam: 1, channel: 1 } },
     ],
   },
   afterimage: {
     name: '残影', title: '深渊中的另一个你', base: null, scale: 1, glow: '#b46bff', hp: 2800, armor: 380, bars: 16, speed: 2.6,
     look: HERO_DARK, minion: 'grunt', shot: 'wave',
+    channel: '残光逆转',
     phases: [
       { at: 1, attacks: { combo: 3, teleport: 2, volley: 1 } },
-      { at: 0.6, line: '残影的剑光变得更加锋利', attacks: { combo: 2, teleport: 2, volley: 2, charge: 2 } },
-      { at: 0.3, line: '它开始模仿你的每一个动作', attacks: { teleport: 3, rain: 2, volley: 2, combo: 2, charge: 1 } },
+      { at: 0.6, line: '残影的剑光变得更加锋利', attacks: { combo: 2, teleport: 2, volley: 2, charge: 2, channel: 1 } },
+      { at: 0.3, line: '它开始模仿你的每一个动作', attacks: { teleport: 3, rain: 2, volley: 2, combo: 2, charge: 1, channel: 1 } },
     ],
   },
 };
@@ -276,6 +281,37 @@ const ATTACKS = {
       return t >= 76;
     },
   },
+  // 读条大招（第二阶段起）：首领原地读条约 3 秒，脚下的红圈慢慢铺满整个房间。
+  // 读条期间每次命中都累计打断值（见 main.js 的 applyHit），读条结束前打满 → 首领倒地破防；
+  // 没打断 → 全场爆炸，跳到空中或极限闪避可以躲开。一场战斗里隔一段时间才会再读条
+  channel: {
+    ok: (b) => (b.channelCd ?? 0) <= 0,
+    tick(b, g, t, d) {
+      if (t === 0) {
+        d.T = Math.round(180 / b.spd);
+        d.need = 16 + b.phase * 3; // 打断值：普通命中 +1，重击 / 技能命中 +2，必杀 +4
+        d.pts = 0;
+        b.channel = d;
+        b.channelCd = 900;
+        g.hazards.push(new Hazard({ x: b.x, y: b.y, rx: 900, ry: 260, delay: d.T, owner: b, ownerState: 'attack', color: b.B.glow,
+          hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
+        g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
+        g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
+        sfx('roar');
+      }
+      b.tele = true;
+      b.vx = b.vy = 0;
+      b.pa = -2.6; b.pc = 0.3; b.pl = -4;
+      if (t % 20 === 0) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t >= d.T) {
+        b.channel = null;
+        g.fx.flash(b.B.glow, 0.45);
+        g.fx.shake(18, 34);
+        return true;
+      }
+      return false;
+    },
+  },
   // 进入新阶段：咆哮，把玩家震开（不造成伤害）
   roar: {
     tick(b, g, t) {
@@ -325,6 +361,8 @@ export class Boss extends Enemy {
   }
 
   update(game) {
+    if (this.channelCd > 0) this.channelCd--;
+    if (this.state !== 'attack' || this.act?.name !== 'channel') this.channel = null; // 被打断 / 破防时读条作废
     const next = this.B.phases[this.phase + 1];
     if (next && this.alive && this.z <= 0 && this.state !== 'spawn' && this.hp / this.maxHp <= next.at) {
       this.phase++;

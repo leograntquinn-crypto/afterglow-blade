@@ -231,6 +231,12 @@ function drawSkillBar(ctx, game) {
       ctx.fillStyle = '#fff';
       ctx.fillText(cd > 60 ? Math.ceil(cd / 60) : (cd / 60).toFixed(1), x + size / 2, y + size / 2 + 3);
     }
+    // 冷却回转（破招 / 极限闪避 / 弹刀）：橙色光从下往上扫过，让玩家看到冷却跳了
+    if ((game.cdRefundT ?? 0) > 0 && learned) {
+      const u = 1 - game.cdRefundT / 24;
+      ctx.fillStyle = `rgba(255,179,71,${0.45 * (1 - u)})`;
+      ctx.fillRect(x, y + size * (1 - u), size, size * u);
+    }
     // 边框：可用时金色，冷却好的一瞬间闪一下
     ctx.lineWidth = ready ? 1.5 : 1;
     ctx.strokeStyle = ready ? goldStroke(ctx, y, y + size) : 'rgba(255,255,255,.14)';
@@ -807,6 +813,28 @@ function drawBossBar(ctx, game) {
     ctx.textAlign = 'center';
     ctx.fillStyle = COLORS.ember;
     ctx.fillText('破防！伤害 +30%，可以浮空连击', x + w / 2, by + bh + 20);
+  }
+  // 读条：上面是读条进度（满了就爆炸），下面是打断进度（满了就打断）
+  const ch = b.channel;
+  if (ch) {
+    const cy = by + bh + 14, cw = w - 60, cx = x + 30;
+    const tp = Math.min(1, (b.act?.t ?? 0) / ch.T), ip = Math.min(1, ch.pts / ch.need);
+    ctx.textAlign = 'center';
+    ctx.font = `18px ${FONT_TITLE}`;
+    ctx.fillStyle = b.B.glow;
+    ctx.fillText(`读条「${b.B.channel}」`, x + w / 2, cy + 6);
+    ctx.fillStyle = 'rgba(0,0,0,.6)';
+    ctx.fillRect(cx, cy + 18, cw, 8);
+    ctx.fillStyle = tp > 0.75 && (game.ticks >> 2) % 2 ? '#ff4040' : b.B.glow;
+    ctx.fillRect(cx, cy + 18, cw * tp, 8);
+    ctx.fillStyle = 'rgba(0,0,0,.6)';
+    ctx.fillRect(cx, cy + 30, cw, 6);
+    ctx.fillStyle = '#ffb347';
+    ctx.fillRect(cx, cy + 30, cw * ip, 6);
+    ctx.font = `13px ${FONT_UI}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = '#ffd9a0';
+    ctx.fillText(`打断 ${ch.pts} / ${ch.need}　·　打满之前别让读条走完`, x + w / 2, cy + 48);
   }
   ctx.restore();
   return true;

@@ -539,6 +539,76 @@ class Game {
   }
 
   // ---------------- 极限闪避 → 子弹时间 + 反击 ----------------
+  // ---------------- 破招 ----------------
+  // 返回加强过的命中数据；奖励（风格、残光、冷却回转）同一个敌人 40 帧内只给一次，多段技能不会刷
+  counterHit(target, h) {
+    const boss = target.isBoss;
+    const out = { ...h, counterMul: boss ? 1.25 : 1.5, stun: Math.round((h.stun ?? 16) * 1.6), armorDmg: (h.armorDmg ?? 1) * (boss ? 2.5 : 3) };
+    // 有霸体的杂兵：重击、浮空、撞墙、必杀（或巨剑的任何攻击）破招直接打断；普攻只削霸体
+    const strong = h.heavy || (h.launch ?? 0) >= 8 || h.wallBounce || h.ult || this.stats.school === 'great';
+    if (!boss && target.armor > 0 && strong) {
+      target.armor = 0;
+      target.brokenT = Math.max(target.brokenT, 150);
+    }
+    if (this.frame - (target.counterAt ?? -99) > 40) {
+      target.counterAt = this.frame;
+      const hz = target.z + target.h * 0.6;
+      this.fx.label(target.x, target.y, hz + target.h * 0.5 + 20, '破 招', '#ffb347', 30);
+      this.fx.ring(target.x, target.y, hz, '#ffb347', 8, 9, 16, 5);
+      this.hitstop = Math.max(this.hitstop, 7);
+      if (!REDUCED_MOTION) this.zoom = Math.max(this.zoom, 0.035);
+      sfx('counter');
+      this.addStyle(120, 'counter');
+      this.addUlt(5);
+      this.player.mp = Math.min(this.player.maxMp, this.player.mp + 8);
+      this.refundCooldowns();
+      this.tr('counter');
+      if (!this.save.seenCounter) {
+        this.save.seenCounter = true;
+        this.toast('破招：在敌人出招预警（红光）时击中它，打断招式并回转技能冷却', '#ffb347');
+      }
+    }
+    return out;
+  }
+
+  // 首领读条：累计打断值，打满 → 读条中断、首领倒地破防
+  channelHit(b, h) {
+    const d = b.channel;
+    d.pts += h.ult ? 4 : h.heavy || h.skill ? 2 : 1;
+    if (d.pts < d.need) return;
+    b.channel = null;
+    b.armor = 0;
+    b.brokenT = 240;
+    b.setState('hurt'); // 离开出招状态：读条和脚下的红圈一起作废
+    b.hitstun = 150;
+    b.vx = 0;
+    this.fx.label(b.x, b.y, b.h + 60, '打 断 !', '#ffb347', 40);
+    this.fx.ring(b.x, b.y, b.h * 0.5, '#ffffff', 10, 14, 26, 6);
+    this.fx.flash('#ffffff', 0.3);
+    this.fx.shake(12, 24);
+    this.hitstop = Math.max(this.hitstop, 14);
+    this.slowmo = Math.max(this.slowmo, 24);
+    this.impactUntil = this.ticks + 3;
+    this.addStyle(300, 'interrupt');
+    this.addUlt(15);
+    this.refundCooldowns();
+    sfx('break');
+  }
+
+  // 冷却回转：破招、极限闪避、弹刀成功时触发。长剑「游刃」翻倍
+  refundCooldowns() {
+    const p = this.player, n = this.stats.school === 'sword' ? 180 : 90;
+    let any = false;
+    for (const k in p.cd) {
+      if (p.cd[k] > 0) {
+        any = true;
+        p.cd[k] = Math.max(0, p.cd[k] - n);
+        if (p.cd[k] === 0) p.readyFlash[k] = 20;
+      }
+    }
+    if (any) this.cdRefundT = 24; // 技能栏闪一下，让玩家看到冷却跳了
+  }
+
   // 训练场挑战：机制触发时打勾（不在训练场时什么也不做）
   tr(id) {
     this.training?.event(id);
@@ -546,6 +616,7 @@ class Game {
 
   perfectDodge() {
     this.tr('perfect');
+    if (this.witch <= 0) this.refundCooldowns();
     const p = this.player;
     p.invuln = Math.max(p.invuln, 24);
     if (this.witch > 0) return;
@@ -572,6 +643,7 @@ class Game {
 
   parry(e) {
     this.tr('parry');
+    this.refundCooldowns();
     const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
     this.impactUntil = this.ticks + 2;
     const mx = (p.x + e.x) / 2, mz = 60;
@@ -733,6 +805,7 @@ class Game {
       crit = Math.random() < S.crit || this.counterT > 0; // 极限闪避后的反击必定暴击
       if (crit) dmg *= S.critDmg;
       if (this.counterT > 0) dmg *= 1.35;
+      if (h.counterMul) dmg *= h.counterMul; // 破招
       if (target.brokenT > 0) dmg *= 1.3;
       if (target.state === 'down') dmg *= 0.6; // 追打倒地伤害打折
     } else {
@@ -771,6 +844,13 @@ class Game {
       }
       sfx('hitMetal');
       return true;
+    }
+    // 破招：命中正在出招预警的敌人 → 打断 + 额外伤害 + 冷却回转（见 docs/DESIGN_COMBAT_DEPTH.md）
+    if (src.team === 'player') {
+      if (this.stats.school === 'great') h = { ...h, armorDmg: (h.armorDmg ?? 1) * 1.6 }; // 巨剑「崩山」
+      if (target.team !== 'prop' && target.alive && (target.isBoss ? target.state === 'attack' && target.tele : target.state === 'windup')) {
+        h = this.counterHit(target, h);
+      }
     }
     const { dmg, crit } = this.calcDamage(src, target, h);
     const r = target.takeHit(h, dir, dmg, this);
@@ -843,6 +923,7 @@ class Game {
         sfx('break');
       }
       if (r.killed) this.onKill(target);
+      if (target.channel && target.alive) this.channelHit(target, h);
       if (this.training) {
         const id = src.move?.id;
         this.training.onDamage(dmg);
@@ -930,6 +1011,7 @@ class Game {
       this.updateRank();
     }
     if (this.counterT > 0) this.counterT--;
+    if (this.cdRefundT > 0) this.cdRefundT--;
     this.camKick *= 0.8;
 
     // 必杀演出期间：敌人全部定格

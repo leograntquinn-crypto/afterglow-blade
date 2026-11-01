@@ -4,7 +4,7 @@
 
 import {
   RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, itemScore, itemGlyph, itemTitle, itemKind,
-  enhCost, enhRate, sellPrice,
+  enhCost, enhRate, sellPrice, WTYPES,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
@@ -220,6 +220,7 @@ export class Hub {
         <button class="close" data-act="close" aria-label="关闭">×</button>
       </div>
       <ul class="istats">${statRows}${affix}</ul>
+      ${it.slot === 'weapon' ? `<p class="school">流派「${WTYPES[it.wtype].school}」${WTYPES[it.wtype].schoolDesc}</p>` : ''}
       ${compare}
       <div class="actions">
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : `<button class="btn primary" data-act="equip">穿戴</button>`}

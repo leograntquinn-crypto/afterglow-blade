@@ -97,6 +97,8 @@ const SOUNDS = {
   parry: () => { [1800, 2700, 3600].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.5 - i * 0.1, type: 'triangle', vol: 0.12 })); noise({ dur: 0.12, f: 5000, q: 3, vol: 0.4 }); tone({ f: 200, f2: 80, dur: 0.15, vol: 0.4 }); },
   hitBone: () => { noise({ dur: 0.05, f: 3800, q: 2.5, vol: 0.28 }); tone({ f: 950, f2: 500, dur: 0.05, type: 'triangle', vol: 0.12 }); },
   hitMetal: () => { [1250, 1890].forEach((f) => tone({ f, f2: f * 0.97, dur: 0.22, type: 'triangle', vol: 0.06 })); noise({ dur: 0.05, f: 5000, q: 2, vol: 0.18 }); },
+  // 破招：清脆的金属「锵」+ 一声上扬，和弹刀区分开
+  counter: () => { noise({ dur: 0.07, f: 4200, q: 3, vol: 0.35 }); tone({ f: 660, f2: 1320, dur: 0.18, type: 'square', vol: 0.07 }); tone({ f: 160, f2: 60, dur: 0.16, vol: 0.5 }); },
   hitCloth: () => noise({ dur: 0.09, type: 'lowpass', f: 900, f2: 300, vol: 0.32 }),
   pot: () => { noise({ dur: 0.18, f: 1400, f2: 600, q: 1.2, vol: 0.4 }); for (let i = 0; i < 4; i++) noise({ dur: 0.04, f: 2500 + i * 600, q: 3, vol: 0.15, delay: 0.03 + i * 0.035 }); },
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.4, type: 'triangle', vol: 0.12, delay: i * 0.18 })),

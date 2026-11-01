@@ -96,6 +96,7 @@ export function computeStats(save) {
     normalMul: 1 + sk.mastery * 0.06,
     intMul: 1 + int * 0.012,
     skillLv: { skill1: sk.skill1, skill2: sk.skill2, skill3: sk.skill3, skill4: sk.skill4 },
+    school: save.equip.weapon?.wtype || 'sword', // 武器流派（见 items.js 的 WTYPES）
   };
 }
 

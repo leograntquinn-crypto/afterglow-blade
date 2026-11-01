@@ -19,6 +19,7 @@ export const CHALLENGES = [
   { id: 'perfect', name: '极限闪避', how: '木人出刀的瞬间 L', counter: true },
   { id: 'parry', name: '弹刀', how: '木人出刀的瞬间面朝它 J', counter: true },
   { id: 'tech', name: '受身', how: '被打飞时按 K', counter: true },
+  { id: 'counter', name: '破招', how: '木人举刀（红光）时抢先打中它', counter: true },
   { id: 'combo30', name: '30 连击', how: '浮空、追打、取消串起来' },
   { id: 'styleS', name: '风格 S', how: '少重复，多换招' },
   { id: 'ult', name: '残光·终焉', how: '残光槽满了按 H' },
@@ -63,7 +64,7 @@ export class Training {
   event(id) {
     const g = this.g;
     this.flashAt[id] = g.frame;
-    if (this.done.has(id)) return;
+    if (this.done.has(id) || !CHALLENGES.some((x) => x.id === id)) return;
     this.done.add(id);
     g.save.training = [...this.done];
     const c = CHALLENGES.find((x) => x.id === id);
