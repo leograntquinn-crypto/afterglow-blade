@@ -14,6 +14,7 @@ const KEYMAP = {
   KeyL: 'dash', ShiftLeft: 'dash',
   KeyU: 'skill1', KeyI: 'skill2', KeyO: 'skill3', KeyP: 'skill4',
   Escape: 'pause',
+  KeyM: 'mute',
   Enter: 'start',
 };
 

@@ -119,11 +119,12 @@ export class FX {
     }
   }
 
-  draw(ctx, camX) {
+  // glowPass = true 时只画发光的部分（给泛光层用）
+  draw(ctx, camX, glowPass = false) {
     // 尘土：普通混合
     ctx.fillStyle = '#b8aa9a';
     for (const p of this.parts) {
-      if (p.k !== 'dust') continue;
+      if (p.k !== 'dust' || glowPass) continue;
       const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
       ctx.globalAlpha = (p.life / p.max) * 0.35;
       ctx.beginPath();
@@ -192,16 +193,28 @@ export class FX {
       ctx.strokeStyle = 'rgba(16,6,10,.9)';
       ctx.lineWidth = 5;
       if (t.k === 'num') {
-        const size = (t.crit ? 42 : 28) * pop;
-        ctx.font = `600 ${size}px ${FONT_NUM}`;
+        const size = (t.crit ? 46 : 30) * pop;
         const s = String(t.value);
-        ctx.strokeText(s, sx, sy);
-        ctx.fillStyle = t.color || (t.crit ? '#ffd65a' : '#ffffff');
-        ctx.fillText(s, sx, sy);
+        ctx.save();
+        ctx.translate(sx, sy);
+        ctx.transform(1, 0, -0.16, 1, 0, 0); // 斜体，更有冲击感
+        ctx.font = `600 ${size}px ${FONT_NUM}`;
+        ctx.lineWidth = t.crit ? 5 : 4;
+        ctx.strokeStyle = 'rgba(14,4,10,.92)';
+        ctx.strokeText(s, 0, 0);
+        const g = ctx.createLinearGradient(0, -size * 0.4, 0, size * 0.35);
+        if (t.color) { g.addColorStop(0, '#ffb0b8'); g.addColorStop(1, t.color); }
+        else if (t.crit) { g.addColorStop(0, '#fffbe0'); g.addColorStop(0.5, '#ffd65a'); g.addColorStop(1, '#ff7a2e'); }
+        else { g.addColorStop(0, '#ffffff'); g.addColorStop(1, '#c9c0dc'); }
+        ctx.fillStyle = g;
+        ctx.fillText(s, 0, 0);
+        ctx.restore();
         if (t.crit) {
-          ctx.font = `600 ${16 * pop}px ${FONT_NUM}`;
-          ctx.strokeText('CRITICAL', sx, sy - size * 0.62);
-          ctx.fillText('CRITICAL', sx, sy - size * 0.62);
+          ctx.font = `${18 * pop}px ${FONT_TITLE}`;
+          ctx.lineWidth = 4;
+          ctx.strokeText('暴击', sx, sy - size * 0.66);
+          ctx.fillStyle = '#ffd65a';
+          ctx.fillText('暴击', sx, sy - size * 0.66);
         }
       } else {
         ctx.font = `${t.size * pop}px ${FONT_TITLE}`;

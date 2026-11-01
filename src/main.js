@@ -5,7 +5,7 @@
 // 固定时间步长（Fixed Timestep）：不管显示器是 60Hz 还是 144Hz，
 // 游戏逻辑都按每秒 60 次更新。这样帧数据（招式第几帧出判定）在任何设备上都一致。
 
-import { VIEW_W, VIEW_H, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, clamp, rand } from './config.js';
+import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, clamp, rand } from './config.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -21,7 +21,10 @@ import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX } from '
 import { RARITY, randomDrop, sellPrice, itemTitle } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
-import { drawBackground, drawDoors, drawVignette, drawShadow, THEMES } from './draw.js';
+import { drawDoors, drawVignette, drawShadow } from './draw.js';
+import { THEMES, drawScenery, drawFog, drawForeground } from './scenery.js';
+import { Post } from './post.js';
+import { music } from './music.js';
 import { drawHUD, drawTitle, drawDead, drawClear } from './hud.js';
 
 class Game {
@@ -34,6 +37,10 @@ class Game {
     this.stats = computeStats(this.save);
     this.hub = new Hub(this, document.getElementById('hub'));
     this.pauseEl = document.getElementById('pause');
+    this.post = new Post();
+    this.quality = 2;
+    this.zoom = 0; // 镜头推近量，重击时短暂变大
+    this.hitLights = []; // 命中瞬间的闪光，给光照系统用
     this.scene = 'title';
     this.sceneT = 0;
     this.ticks = 0;
@@ -53,6 +60,8 @@ class Game {
 
     this.input.onPress((a) => {
       initAudio(); // 浏览器要求：声音必须由用户操作启动
+      music.start();
+      if (a === 'mute') { this.toggleMusic(); return; }
       if (this.scene === 'play') {
         if (a === 'pause') this.setPaused(!this.paused);
         return;
@@ -62,6 +71,7 @@ class Game {
     canvas.addEventListener('pointerdown', () => {
       canvas.focus();
       initAudio();
+      music.start();
       this.advance();
     });
     this.pauseEl.addEventListener('click', (e) => {
@@ -86,8 +96,15 @@ class Game {
     document.body.dataset.scene = s;
   }
 
+  toggleMusic() {
+    const muted = music.toggleMute();
+    if (this.scene === 'hub') this.hub.render();
+    else this.toast(muted ? '音乐已关闭（M 键开关）' : '音乐已开启', COLORS.ink);
+  }
+
   setPaused(v) {
     this.paused = v;
+    music.setDuck(v);
     this.pauseEl.hidden = !v;
   }
 
@@ -116,6 +133,7 @@ class Game {
     this.slowmo = 0;
     this.camX = 0;
     this.combo = 0;
+    this.comboDmg = 0;
     this.comboT = 0;
     this.comboPop = 0;
     this.maxCombo = 0;
@@ -437,13 +455,16 @@ class Game {
     this.fx.number(target.x, target.y, target.z + target.h + 6, dmg, { crit, color: fromPlayer ? null : COLORS.blood });
     // 3. 顿帧：整个世界停住几帧，让「砍中」的瞬间被看清
     this.hitstop = Math.max(this.hitstop, (h.stop ?? 4) + (crit ? 2 : 0));
-    // 4. 震屏
+    // 4. 震屏 + 命中闪光 + 重击时镜头轻推
     if (h.shake) this.fx.shake(h.shake, 10 + h.shake);
+    this.hitLights.push({ x: hx, y: target.y, z: hz, r: h.heavy ? 280 : 180, life: 8 });
+    if (fromPlayer && (h.heavy || crit) && !REDUCED_MOTION) this.zoom = Math.max(this.zoom, h.heavy ? 0.045 : 0.025);
     // 5. 音效
     sfx(h.heavy || crit ? 'heavy' : 'hit');
 
     if (fromPlayer) {
       this.combo++;
+      this.comboDmg += dmg;
       this.comboT = 110;
       this.comboPop = 8;
       this.maxCombo = Math.max(this.maxCombo, this.combo);
@@ -492,9 +513,14 @@ class Game {
   // ---------------- 每帧逻辑 ----------------
   update() {
     this.ticks++;
+    music.setMode(this.scene === 'play' ? (this.boss?.alive ? 'boss' : this.enemies.some((e) => e.alive) ? 'battle' : 'calm')
+      : this.scene === 'title' || this.scene === 'hub' ? this.scene : 'calm');
     if (this.paused) return;
     this.sceneT++;
     this.fx.update();
+    this.zoom *= 0.86;
+    for (const hl of this.hitLights) hl.life--;
+    this.hitLights = this.hitLights.filter((hl) => hl.life > 0);
     if (this.slowmo > 0) this.slowmo--;
     if (this.banner && ++this.banner.t > 130) this.banner = null;
     for (const t of this.toasts) t.life--;
@@ -508,7 +534,7 @@ class Game {
     this.input.tick();
     this.frame++;
     if (this.comboPop > 0) this.comboPop--;
-    if (this.comboT > 0 && --this.comboT === 0) this.combo = 0;
+    if (this.comboT > 0 && --this.comboT === 0) { this.combo = 0; this.comboDmg = 0; }
 
     this.player.update(this);
     for (const e of this.enemies) e.update(this);
@@ -554,38 +580,95 @@ class Game {
 
   // ---------------- 绘制 ----------------
   render() {
-    const ctx = this.ctx, camX = this.camX, t = this.ticks;
+    const ctx = this.ctx, camX = this.camX, t = this.ticks, post = this.post;
+    const themeName = this.stage && (this.scene === 'play' || this.scene === 'clear' || this.scene === 'dead') ? this.stage.theme : 'crypt';
+    const th = THEMES[themeName];
+    const inWorld = this.scene !== 'hub';
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
-    const [ox, oy] = this.fx.shakeOffset();
 
+    // 世界层的变换：震屏 + 以主角为中心的镜头推近
+    const [ox, oy] = this.fx.shakeOffset();
+    const z = 1 + this.zoom;
+    const fx0 = this.player.x - camX, fy0 = GROUND_TOP + this.player.y - 40;
+    const view = (c) => { c.translate(ox, oy); c.translate(fx0, fy0); c.scale(z, z); c.translate(-fx0, -fy0); };
+    const toView = (x, y) => [(x - fx0) * z + fx0 + ox, (y - fy0) * z + fy0 + oy];
+    const at = (wx, wy, wz = 0) => toView(wx - camX, GROUND_TOP + wy - wz);
+
+    // 1. 场景 + 角色
     ctx.save();
-    ctx.translate(ox, oy);
-    drawBackground(ctx, camX, t, THEMES[this.stage && this.scene !== 'hub' ? this.stage.theme : 'crypt']);
-    if (this.scene !== 'hub') {
+    view(ctx);
+    const torches = drawScenery(ctx, camX, t, themeName);
+    if (inWorld) {
       drawDoors(ctx, camX, this.room, t);
       this.fx.drawFloor(ctx, camX);
       for (const h of this.hazards) h.drawFloor(ctx, camX);
-      const actors = [this.player, ...this.enemies];
+      const actors = this.scene === 'title' ? [] : [this.player, ...this.enemies];
       for (const a of actors) drawShadow(ctx, a, camX);
       // 按纵深排序：靠前（y 大）的后画，挡住靠后的
       const list = [...actors, ...this.projectiles, ...this.loots].sort((a, b) => a.y - b.y);
       for (const o of list) o.draw(ctx, camX, t);
-      this.fx.draw(ctx, camX);
-      this.fx.drawTexts(ctx, camX);
     }
+    if (this.quality > 0) drawFog(ctx, camX, t, themeName);
     ctx.restore();
 
+    // 2. 光照：收集这一帧的所有光源，然后压暗其余部分
+    for (const [tx, ty, fl] of torches) post.addLight(...toView(tx, ty), 240 * fl, 0.8);
+    if (inWorld) {
+      const p = this.player;
+      post.addLight(...at(p.x, p.y, p.z + 45), 270, 0.95);
+      for (const e of this.enemies) {
+        if (e.isBoss && e.alive) post.addLight(...at(e.x, e.y, e.h * 0.5), 230, 0.7);
+        else if (e.alive || e.team === 'prop') post.addLight(...at(e.x, e.y, 40), 120, 0.45);
+      }
+      for (const h of this.hazards) post.addLight(...at(h.x, h.y), (h.rx || 140) * 1.5, 0.6);
+      for (const pr of this.projectiles) post.addLight(...at(pr.x, pr.y, pr.z + 30), 110, 0.8);
+      for (const l of this.loots) post.addLight(...at(l.x, l.y, 20), l.item ? 70 + l.item.rar * 30 : 50, 0.65);
+      for (const hl of this.hitLights) post.addLight(...at(hl.x, hl.y, hl.z), hl.r, hl.life / 8);
+      if (this.room?.cleared) {
+        if (this.room.doors.e) post.addLight(...at(world.w - 40, DEPTH / 2), 200, 0.7);
+        if (this.room.doors.w) post.addLight(...at(40, DEPTH / 2), 200, 0.7);
+      }
+    }
+    if (this.scene === 'title') post.addLight(VIEW_W * 0.3, 360, 340, 1);
+    post.applyLighting(ctx, th.ambient);
+
+    // 3. 自发光的特效画在黑暗之上，再加泛光
+    if (inWorld) {
+      const g = post.beginGlow(view);
+      this.fx.draw(g, camX, true);
+      for (const pr of this.projectiles) pr.draw(g, camX, t);
+      for (const l of this.loots) if (l.item) l.draw(g, camX, t);
+      ctx.save();
+      view(ctx);
+      this.fx.draw(ctx, camX);
+      ctx.restore();
+      if (this.quality > 0) post.applyBloom(ctx);
+      ctx.save();
+      view(ctx);
+      this.fx.drawTexts(ctx, camX);
+      ctx.restore();
+    }
+
+    // 4. 前景、暗角、调色、颗粒
+    ctx.save();
+    view(ctx);
+    drawForeground(ctx, camX, t, themeName);
+    ctx.restore();
     drawVignette(ctx);
+    post.applyGrade(ctx, th.grade, t, this.quality > 1);
+
     if (this.transition) {
       const tt = this.transition.t;
       ctx.fillStyle = `rgba(5,4,8,${tt < 16 ? tt / 16 : (32 - tt) / 16})`;
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     }
     if (this.fx.flashA > 0) {
-      ctx.globalAlpha = this.fx.flashA;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = this.fx.flashA * 0.8;
       ctx.fillStyle = this.fx.flashColor;
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-      ctx.globalAlpha = 1;
+      ctx.restore();
     }
 
     if (this.scene === 'play') {
@@ -613,15 +696,29 @@ class Game {
     });
   }
 
+  // 画质：2 高（原生分辨率）/ 1 中（最高 1280 宽，关颗粒）/ 0 低（960 宽，关雾和泛光）
+  // 帧率持续偏低时自动降一档
   resize() {
     const stage = this.canvas.parentElement;
     const s = Math.min(stage.clientWidth / VIEW_W, stage.clientHeight / VIEW_H);
     const dpr = Math.min(2, window.devicePixelRatio || 1);
+    const maxW = [960, 1280, 3840][this.quality ?? 2];
+    const w = Math.min(Math.round(VIEW_W * s * dpr), maxW);
     this.canvas.style.width = `${VIEW_W * s}px`;
     this.canvas.style.height = `${VIEW_H * s}px`;
-    this.canvas.width = Math.round(VIEW_W * s * dpr);
-    this.canvas.height = Math.round(VIEW_H * s * dpr);
-    this.scale = s * dpr;
+    this.canvas.width = w;
+    this.canvas.height = Math.round((w * VIEW_H) / VIEW_W);
+    this.scale = w / VIEW_W;
+  }
+
+  watchPerf(dt) {
+    this.frameEma = this.frameEma == null ? 16 : this.frameEma * 0.95 + dt * 0.05;
+    this.perfT = (this.perfT || 0) + 1;
+    if (this.perfT > 150 && this.frameEma > 24 && this.quality > 0) {
+      this.quality--;
+      this.perfT = 0;
+      this.resize();
+    }
   }
 }
 
@@ -647,6 +744,7 @@ let last = performance.now(), acc = 0;
 function frame(now) {
   const dt = Math.min(100, now - last);
   last = now;
+  if (!document.hidden) game.watchPerf(dt);
   acc += dt * (game.slowmo > 0 ? 0.3 : 1);
   let steps = 0;
   while (acc >= STEP && steps < 5) {

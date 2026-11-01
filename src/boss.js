@@ -9,7 +9,7 @@
 import { DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
 import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
-import { drawFighter } from './rig.js';
+import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 
 const sign = (v) => Math.sign(v) || 1;
@@ -391,11 +391,9 @@ export class Boss extends Enemy {
     let alpha = this.fade;
     if (this.state === 'dying' && this.z <= 0) alpha *= Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha *= Math.min(1, this.st / 24);
-    ctx.save();
-    if (this.tele) { ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 16 + 10 * Math.sin(t * 0.6); }
-    else if (this.alive) { ctx.shadowColor = this.armor > 0 ? this.B.glow : COLORS.ember; ctx.shadowBlur = 12 + 6 * Math.sin(t * 0.1) + this.phase * 6; }
+    if (this.tele) drawAura(ctx, sx, sy, this.h, '#ff2a2a', (1.3 + 0.5 * Math.sin(t * 0.6)) * alpha);
+    else if (this.alive) drawAura(ctx, sx, sy, this.h, this.armor > 0 ? this.B.glow : COLORS.ember, (0.8 + 0.25 * Math.sin(t * 0.1) + this.phase * 0.3) * alpha);
     drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
-    ctx.restore();
     const top = sy - this.h - 18;
     ctx.save();
     ctx.textAlign = 'center';

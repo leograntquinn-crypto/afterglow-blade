@@ -1,152 +1,364 @@
-// 战斗界面：血条、技能栏、连击数、目标血条、拾取提示，以及标题 / 结算画面
+// 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
 import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './config.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE, xpToNext, MAX_LV, power } from './progression.js';
 import { RARITY, itemTitle } from './items.js';
 import { ROOM_INFO } from './dungeon.js';
+import { drawFighter } from './rig.js';
 
-function bar(ctx, x, y, w, h, val, max, trail, color) {
-  ctx.fillStyle = 'rgba(8,6,12,.75)';
-  ctx.fillRect(x - 2, y - 2, w + 4, h + 4);
-  if (trail != null) {
-    ctx.fillStyle = '#efe6d6';
-    ctx.fillRect(x, y, w * clamp(trail / max, 0, 1), h);
-  }
-  ctx.fillStyle = color;
-  ctx.fillRect(x, y, w * clamp(val / max, 0, 1), h);
-  ctx.fillStyle = 'rgba(255,255,255,.18)';
-  ctx.fillRect(x, y, w * clamp(val / max, 0, 1), Math.max(1, h * 0.3));
+const GOLD_HI = '#e9cf8e', GOLD_LO = '#7a5c30';
+
+// 金属描边：上亮下暗的渐变，像打磨过的黄铜
+function goldStroke(ctx, y0, y1) {
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, GOLD_HI);
+  g.addColorStop(1, GOLD_LO);
+  return g;
 }
 
-export function drawHUD(ctx, game) {
-  const p = game.player, s = game.save;
+// 斜切的平行四边形路径（血条、面板都用它，比圆角矩形更有锋利感）
+function slant(ctx, x, y, w, h, s) {
+  ctx.beginPath();
+  ctx.moveTo(x + s, y);
+  ctx.lineTo(x + w, y);
+  ctx.lineTo(x + w - s, y + h);
+  ctx.lineTo(x, y + h);
+  ctx.closePath();
+}
+
+// 精致的条：深色槽 + 残影 + 渐变填充 + 高光 + 刻度 + 金边
+function fancyBar(ctx, x, y, w, h, val, max, trail, top, bot, { ticks = 0, slantW = h * 0.6, border = true } = {}) {
+  const r = clamp(val / max, 0, 1), tr = trail == null ? 0 : clamp(trail / max, 0, 1);
   ctx.save();
+  slant(ctx, x, y, w, h, slantW);
+  ctx.fillStyle = 'rgba(6,4,10,.88)';
+  ctx.fill();
+  ctx.clip();
+  if (tr > r) {
+    ctx.fillStyle = 'rgba(255,236,214,.75)';
+    ctx.fillRect(x, y, w * tr, h);
+  }
+  const g = ctx.createLinearGradient(0, y, 0, y + h);
+  g.addColorStop(0, top);
+  g.addColorStop(1, bot);
+  ctx.fillStyle = g;
+  ctx.fillRect(x, y, w * r, h);
+  ctx.fillStyle = 'rgba(255,255,255,.22)';
+  ctx.fillRect(x, y, w * r, Math.max(1, h * 0.32));
+  if (r > 0 && r < 1) {
+    ctx.fillStyle = 'rgba(255,255,255,.7)';
+    ctx.fillRect(x + w * r - 1.5, y, 1.5, h);
+  }
+  if (ticks) {
+    ctx.fillStyle = 'rgba(0,0,0,.35)';
+    for (let i = 1; i < ticks; i++) ctx.fillRect(x + (w * i) / ticks, y + h * 0.45, 1, h * 0.55);
+  }
+  ctx.restore();
+  if (border) {
+    slant(ctx, x - 0.5, y - 0.5, w + 1, h + 1, slantW);
+    ctx.strokeStyle = 'rgba(233,207,142,.45)';
+    ctx.lineWidth = 1;
+    ctx.stroke();
+  }
+}
+
+// ---------------- 左上：头像框 + 状态条 ----------------
+function drawPlayerFrame(ctx, game) {
+  const p = game.player, s = game.save, t = game.ticks;
+  const cx = 56, cy = 58, R = 36;
+  ctx.save();
+  // 头像底
+  const bg = ctx.createRadialGradient(cx, cy - 10, 4, cx, cy, R);
+  bg.addColorStop(0, '#22324a');
+  bg.addColorStop(1, '#07060c');
+  ctx.beginPath();
+  ctx.arc(cx, cy, R, 0, Math.PI * 2);
+  ctx.fillStyle = bg;
+  ctx.fill();
+  // 半身像（就是游戏里的角色模型，装备变了头像也会变）
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(cx, cy, R - 2, 0, Math.PI * 2);
+  ctx.clip();
+  ctx.translate(cx - 4, cy + 112);
+  ctx.scale(1.55, 1.55);
+  drawFighter(ctx, 0, 0, p.look, { crouch: 0.05 + Math.sin(t * 0.06) * 0.03, angle: 1.1, walk: 0, lean: 2 }, { facing: 1, t });
+  ctx.restore();
+  // 低血量时头像泛红
+  if (p.hp / p.maxHp < 0.3) {
+    ctx.beginPath();
+    ctx.arc(cx, cy, R, 0, Math.PI * 2);
+    ctx.fillStyle = `rgba(255,40,60,${0.18 + 0.12 * Math.sin(t * 0.2)})`;
+    ctx.fill();
+  }
+  // 双层金属环
+  ctx.lineWidth = 3;
+  ctx.strokeStyle = goldStroke(ctx, cy - R, cy + R);
+  ctx.beginPath();
+  ctx.arc(cx, cy, R + 1.5, 0, Math.PI * 2);
+  ctx.stroke();
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = 'rgba(127,243,255,.45)';
+  ctx.beginPath();
+  ctx.arc(cx, cy, R - 2.5, 0, Math.PI * 2);
+  ctx.stroke();
+  // 等级徽章
+  const bx = cx - 26, by = cy + 26;
+  ctx.save();
+  ctx.translate(bx, by);
+  ctx.rotate(Math.PI / 4);
+  ctx.fillStyle = '#0b0910';
+  ctx.fillRect(-12, -12, 24, 24);
+  ctx.strokeStyle = goldStroke(ctx, -12, 12);
+  ctx.lineWidth = 2;
+  ctx.strokeRect(-12, -12, 24, 24);
+  ctx.restore();
+  ctx.font = `600 19px ${FONT_NUM}`;
+  ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
+  ctx.fillStyle = GOLD_HI;
+  ctx.fillText(s.lv, bx, by + 2);
 
-  // 左上：角色
-  ctx.font = `24px ${FONT_TITLE}`;
-  ctx.fillStyle = COLORS.ink;
-  ctx.fillText('残光剑士', 22, 28);
-  ctx.font = `500 20px ${FONT_NUM}`;
-  ctx.fillStyle = COLORS.blade;
-  ctx.fillText(`LV.${s.lv}`, 122, 30);
-  bar(ctx, 22, 48, 260, 14, p.hp, p.maxHp, p.hpTrail, COLORS.blood);
-  bar(ctx, 22, 68, 200, 8, p.mp, p.maxMp, null, COLORS.mp);
-  bar(ctx, 22, 82, 200, 3, s.lv >= MAX_LV ? 1 : s.xp, s.lv >= MAX_LV ? 1 : xpToNext(s.lv), null, '#c8b6ff');
-  ctx.font = `500 17px ${FONT_NUM}`;
-  ctx.fillStyle = '#fff';
-  ctx.textAlign = 'right';
-  ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 278, 56);
+  // 名字与状态条
   ctx.textAlign = 'left';
+  ctx.font = `22px ${FONT_TITLE}`;
+  ctx.fillStyle = COLORS.ink;
+  ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.shadowBlur = 4;
+  ctx.fillText('残光剑士', 104, 30);
+  ctx.shadowBlur = 0;
+  fancyBar(ctx, 102, 42, 240, 16, p.hp, p.maxHp, p.hpTrail, '#ff6a78', '#9a1028', { ticks: 10 });
+  fancyBar(ctx, 102, 62, 200, 9, p.mp, p.maxMp, null, '#7ac0ff', '#1d4fa8');
+  fancyBar(ctx, 102, 75, 200, 4, s.lv >= MAX_LV ? 1 : s.xp, s.lv >= MAX_LV ? 1 : xpToNext(s.lv), null, '#d8c8ff', '#7a5ad8', { border: false });
+  ctx.font = `500 16px ${FONT_NUM}`;
+  ctx.textAlign = 'right';
+  ctx.fillStyle = '#fff';
+  ctx.shadowColor = 'rgba(0,0,0,.9)';
+  ctx.shadowBlur = 3;
+  ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 330, 51);
+  ctx.font = `500 13px ${FONT_NUM}`;
+  ctx.fillStyle = '#cfe4ff';
+  ctx.fillText(`${Math.floor(p.mp)}`, 296, 67);
+  ctx.restore();
+}
 
-  // 拾取提示
-  game.toasts.forEach((t, i) => {
-    ctx.globalAlpha = Math.min(1, t.life / 30);
-    ctx.font = `15px ${FONT_UI}`;
-    ctx.fillStyle = t.color;
-    ctx.fillText(t.text, 22, 104 + i * 22);
-  });
-  ctx.globalAlpha = 1;
+// ---------------- 右下：技能栏 ----------------
+function drawSkillBar(ctx, game) {
+  const p = game.player, s = game.save, t = game.ticks;
+  const size = 54, gap = 10, n = SKILL_KEYS.length;
+  const W = n * size + (n - 1) * gap;
+  const x0 = VIEW_W - W - 26, y0 = VIEW_H - size - 24;
+  // 底板
+  ctx.save();
+  slant(ctx, x0 - 22, y0 - 10, W + 40, size + 20, 14);
+  const pg = ctx.createLinearGradient(0, y0 - 10, 0, y0 + size + 10);
+  pg.addColorStop(0, 'rgba(14,10,20,.55)');
+  pg.addColorStop(1, 'rgba(6,4,10,.85)');
+  ctx.fillStyle = pg;
+  ctx.fill();
+  ctx.strokeStyle = 'rgba(233,207,142,.25)';
+  ctx.lineWidth = 1;
+  ctx.stroke();
 
-  // 顶部中央：首领血条，或者最近攻击的敌人
-  const f = game.focus;
-  if (drawBossBar(ctx, game)) {
-    // 首领在场时只显示首领血条
-  } else if (f && !f.remove) {
-    const w = 360, x = VIEW_W / 2 - w / 2, y = game.touch ? 62 : 26; // 触屏时让出顶部暂停按钮
-    ctx.font = `20px ${FONT_TITLE}`;
-    ctx.fillStyle = f.elite ? COLORS.gold : COLORS.ink;
-    ctx.fillText(f.name, x, y);
-    const nw = ctx.measureText(f.name).width;
-    ctx.font = `500 18px ${FONT_NUM}`;
-    ctx.fillStyle = '#b9aec4';
-    ctx.fillText(`LV.${f.lv}`, x + nw + 10, y + 2);
-    bar(ctx, x, y + 16, w, 12, f.hp, f.maxHp, f.hpTrail, COLORS.blood);
-    if (f.maxArmor > 0) {
-      const broken = f.brokenT > 0;
-      bar(ctx, x, y + 34, w, 5, broken ? 0 : f.armor, f.maxArmor, null, COLORS.ember);
-      ctx.font = `13px ${FONT_UI}`;
-      ctx.fillStyle = broken ? COLORS.ember : '#b9aec4';
-      ctx.textAlign = 'right';
-      ctx.fillText(broken ? '破防中 · 伤害 +30%' : '霸体', x + w, y);
-      ctx.textAlign = 'left';
-    }
-  }
-  drawMinimap(ctx, game);
-
-  // 右侧：连击
-  const comboY = 160;
-  if (game.combo >= 2) {
-    const pop = 1 + (game.comboPop / 8) * 0.35;
-    const c = game.combo >= 30 ? COLORS.blade : game.combo >= 12 ? COLORS.gold : '#ffffff';
-    ctx.textAlign = 'right';
-    ctx.font = `600 ${64 * pop}px ${FONT_NUM}`;
-    ctx.lineWidth = 6;
-    ctx.strokeStyle = 'rgba(10,4,8,.85)';
-    ctx.strokeText(game.combo, VIEW_W - 78, comboY);
-    ctx.fillStyle = c;
-    ctx.fillText(game.combo, VIEW_W - 78, comboY);
-    ctx.font = `26px ${FONT_TITLE}`;
-    ctx.fillStyle = COLORS.ink;
-    ctx.fillText('连击', VIEW_W - 24, comboY + 6);
-    ctx.fillStyle = c;
-    ctx.fillRect(VIEW_W - 24 - 140 * (game.comboT / 110), comboY + 32, 140 * (game.comboT / 110), 3);
-  }
-
-  // 技能栏（触屏时冷却直接显示在按钮上，这里不画）
-  const size = 52, gap = 8;
-  const sx0 = VIEW_W - (size + gap) * SKILL_KEYS.length - 14;
-  const sy0 = VIEW_H - size - 22;
-  if (!game.touch) SKILL_KEYS.forEach((key, i) => {
-    const sk = SKILLS[key], x = sx0 + i * (size + gap), y = sy0;
+  SKILL_KEYS.forEach((key, i) => {
+    const sk = SKILLS[key], x = x0 + i * (size + gap), y = y0;
     const learned = s.skills[key] > 0;
     const cd = p.cd[key], ready = learned && cd <= 0 && p.mp >= sk.mp;
-    ctx.fillStyle = 'rgba(12,9,16,.8)';
+    const flash = p.readyFlash?.[key] || 0;
+    // 槽
+    const bg = ctx.createRadialGradient(x + size / 2, y + size * 0.4, 4, x + size / 2, y + size / 2, size * 0.75);
+    bg.addColorStop(0, ready ? 'rgba(40,70,90,.95)' : 'rgba(26,22,32,.95)');
+    bg.addColorStop(1, 'rgba(6,4,10,.95)');
+    ctx.fillStyle = bg;
     ctx.fillRect(x, y, size, size);
-    ctx.strokeStyle = ready ? 'rgba(127,243,255,.7)' : 'rgba(255,255,255,.15)';
-    ctx.lineWidth = 1.5;
-    ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+    // 字形图标
     ctx.textAlign = 'center';
-    ctx.font = `32px ${FONT_TITLE}`;
-    ctx.fillStyle = !learned ? '#3a3440' : ready ? p.glow : p.mp < sk.mp && cd <= 0 ? '#4a6c9a' : '#6c6474';
+    ctx.textBaseline = 'middle';
+    ctx.font = `34px ${FONT_TITLE}`;
+    if (ready) {
+      const gl = ctx.createRadialGradient(x + size / 2, y + size / 2, 2, x + size / 2, y + size / 2, size * 0.55);
+      gl.addColorStop(0, p.glow);
+      gl.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.globalAlpha = 0.25;
+      ctx.fillStyle = gl;
+      ctx.fillRect(x, y, size, size);
+      ctx.globalAlpha = 1;
+    }
+    ctx.fillStyle = !learned ? '#2e2834' : ready ? p.glow : p.mp < sk.mp && cd <= 0 ? '#4a6c9a' : '#5c5466';
     ctx.fillText(sk.glyph, x + size / 2, y + size / 2 + 2);
+    ctx.shadowBlur = 0;
     if (!learned) {
       ctx.font = `500 15px ${FONT_NUM}`;
       ctx.fillStyle = '#8f859a';
-      ctx.fillText(`LV.${SKILL_TREE.find((n) => n.key === key).unlock}`, x + size / 2, y + size / 2 + 3);
+      ctx.fillText(`LV.${SKILL_TREE.find((nd) => nd.key === key).unlock}`, x + size / 2, y + size / 2 + 3);
     } else if (cd > 0) {
-      // 冷却遮罩：按剩余比例画扇形，裁剪在方框内
-      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      // 冷却：时钟式扇形遮罩 + 亮色的边线
+      const frac = cd / p.cdMax[key];
+      const a0 = -Math.PI / 2, a1 = a0 + Math.PI * 2 * frac;
       ctx.save();
       ctx.beginPath();
       ctx.rect(x, y, size, size);
       ctx.clip();
+      ctx.fillStyle = 'rgba(0,0,0,.66)';
       ctx.beginPath();
       ctx.moveTo(x + size / 2, y + size / 2);
-      ctx.arc(x + size / 2, y + size / 2, size * 0.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / p.cdMax[key]));
+      ctx.arc(x + size / 2, y + size / 2, size, a0, a1);
       ctx.closePath();
       ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,255,.55)';
+      ctx.lineWidth = 1.5;
+      ctx.beginPath();
+      ctx.moveTo(x + size / 2, y + size / 2);
+      ctx.lineTo(x + size / 2 + Math.cos(a1) * size, y + size / 2 + Math.sin(a1) * size);
+      ctx.stroke();
       ctx.restore();
-      ctx.font = `600 22px ${FONT_NUM}`;
+      ctx.font = `600 24px ${FONT_NUM}`;
       ctx.fillStyle = '#fff';
-      ctx.fillText(Math.ceil(cd / 60), x + size / 2, y + size / 2 + 3);
+      ctx.fillText(cd > 60 ? Math.ceil(cd / 60) : (cd / 60).toFixed(1), x + size / 2, y + size / 2 + 3);
     }
+    // 边框：可用时金色，冷却好的一瞬间闪一下
+    ctx.lineWidth = ready ? 1.5 : 1;
+    ctx.strokeStyle = ready ? goldStroke(ctx, y, y + size) : 'rgba(255,255,255,.14)';
+    ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+    if (flash > 0) {
+      ctx.strokeStyle = `rgba(255,255,255,${flash / 20})`;
+      ctx.lineWidth = 2 + (20 - flash) * 0.3;
+      ctx.strokeRect(x - (20 - flash) * 0.4, y - (20 - flash) * 0.4, size + (20 - flash) * 0.8, size + (20 - flash) * 0.8);
+    }
+    // 按键标签
+    ctx.fillStyle = 'rgba(6,4,10,.9)';
+    ctx.fillRect(x - 3, y - 3, 15, 15);
+    ctx.strokeStyle = 'rgba(233,207,142,.5)';
+    ctx.lineWidth = 1;
+    ctx.strokeRect(x - 2.5, y - 2.5, 14, 14);
     ctx.font = `500 14px ${FONT_NUM}`;
-    if (!game.touch) {
-      ctx.textAlign = 'left';
-      ctx.fillStyle = COLORS.ink;
-      ctx.fillText(sk.key, x + 5, y + 10);
-    }
+    ctx.fillStyle = COLORS.ink;
+    ctx.fillText(sk.key, x + 4.5, y + 5.5);
+    // 魔力消耗
     ctx.textAlign = 'right';
-    ctx.fillStyle = COLORS.mp;
-    ctx.fillText(sk.mp, x + size - 4, y + size - 8);
+    ctx.font = `500 13px ${FONT_NUM}`;
+    ctx.fillStyle = p.mp >= sk.mp ? '#8fc4ff' : '#ff6a78';
+    ctx.fillText(sk.mp, x + size - 4, y + size - 7);
   });
+  ctx.restore();
+}
 
-  if (!game.touch) {
+// ---------------- 右侧：连击 ----------------
+function drawCombo(ctx, game) {
+  if (game.combo < 2) return;
+  const x = VIEW_W - 34, y = 168;
+  const pop = 1 + (game.comboPop / 8) * 0.3;
+  const hi = game.combo >= 50 ? '#ffffff' : game.combo >= 30 ? '#b6f9ff' : game.combo >= 12 ? '#fff0b0' : '#ffffff';
+  const lo = game.combo >= 50 ? '#ff9a2e' : game.combo >= 30 ? COLORS.blade : game.combo >= 12 ? '#ffb347' : '#b9aec4';
+  ctx.save();
+  ctx.translate(x, y);
+  ctx.transform(1, 0, -0.18, 1, 0, 0); // 斜体
+  ctx.scale(pop, pop);
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `600 70px ${FONT_NUM}`;
+  ctx.lineWidth = 6;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(8,3,8,.9)';
+  ctx.strokeText(game.combo, -62, 0);
+  const g = ctx.createLinearGradient(0, -52, 0, 0);
+  g.addColorStop(0, hi);
+  g.addColorStop(1, lo);
+  ctx.fillStyle = g;
+  ctx.fillText(game.combo, -62, 0);
+  ctx.restore();
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.font = `26px ${FONT_TITLE}`;
+  ctx.fillStyle = COLORS.ink;
+  ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.shadowBlur = 4;
+  ctx.fillText('连击', x, y - 4);
+  ctx.font = `500 13px ${FONT_NUM}`;
+  ctx.fillStyle = 'rgba(233,226,214,.55)';
+  ctx.fillText('C O M B O', x, y - 32);
+  ctx.font = `500 18px ${FONT_NUM}`;
+  ctx.fillStyle = '#ffd65a';
+  ctx.fillText(`${game.comboDmg.toLocaleString()}`, x, y + 22);
+  ctx.font = `12px ${FONT_UI}`;
+  ctx.fillStyle = 'rgba(233,226,214,.6)';
+  ctx.fillText('总伤害', x - ctx.measureText(`${game.comboDmg.toLocaleString()}`).width * 1.05 - 26, y + 21);
+  const bw = 160 * (game.comboT / 110);
+  const bg = ctx.createLinearGradient(x - 160, 0, x, 0);
+  bg.addColorStop(0, 'rgba(0,0,0,0)');
+  bg.addColorStop(1, lo);
+  ctx.fillStyle = bg;
+  ctx.fillRect(x - bw, y + 32, bw, 2);
+  ctx.restore();
+}
+
+// ---------------- 左侧：拾取 / 系统提示 ----------------
+function drawToasts(ctx, game) {
+  game.toasts.forEach((t, i) => {
+    const age = 200 - t.life;
+    const slide = Math.min(1, age / 10);
+    const a = Math.min(1, t.life / 30) * slide;
+    const x = 18 - (1 - slide) * 30, y = 110 + i * 26;
+    ctx.save();
+    ctx.globalAlpha = a;
+    ctx.font = `14px ${FONT_UI}`;
+    const w = ctx.measureText(t.text).width + 26;
+    const g = ctx.createLinearGradient(x, 0, x + w + 40, 0);
+    g.addColorStop(0, 'rgba(6,4,10,.85)');
+    g.addColorStop(1, 'rgba(6,4,10,0)');
+    ctx.fillStyle = g;
+    ctx.fillRect(x, y - 10, w + 40, 21);
+    ctx.fillStyle = t.color;
+    ctx.fillRect(x, y - 10, 2, 21);
+    ctx.textBaseline = 'middle';
+    ctx.fillText(t.text, x + 12, y + 1);
+    ctx.restore();
+  });
+}
+
+export function drawHUD(ctx, game) {
+  ctx.save();
+  ctx.textBaseline = 'middle';
+  drawPlayerFrame(ctx, game);
+  drawToasts(ctx, game);
+
+  // 顶部中央：首领血条，或者最近攻击的敌人
+  const f = game.focus;
+  if (!drawBossBar(ctx, game) && f && !f.remove) {
+    const w = 320, x = VIEW_W / 2 - w / 2 + 20, y = game.touch ? 64 : 28;
+    ctx.textAlign = 'left';
+    ctx.font = `20px ${FONT_TITLE}`;
+    ctx.fillStyle = f.elite ? COLORS.gold : COLORS.ink;
+    ctx.shadowColor = 'rgba(0,0,0,.8)';
+    ctx.shadowBlur = 4;
+    ctx.fillText(f.name, x, y);
+    ctx.shadowBlur = 0;
+    const nw = ctx.measureText(f.name).width;
+    ctx.font = `500 17px ${FONT_NUM}`;
+    ctx.fillStyle = '#b9aec4';
+    ctx.fillText(`LV.${f.lv}`, x + nw + 10, y + 2);
+    fancyBar(ctx, x, y + 14, w, 11, f.hp, f.maxHp, f.hpTrail, '#ff6a78', '#9a1028');
+    if (f.maxArmor > 0) {
+      const broken = f.brokenT > 0;
+      fancyBar(ctx, x, y + 29, w, 4, broken ? 0 : f.armor, f.maxArmor, null, '#ffd08a', '#c7782a', { border: false });
+      ctx.font = `13px ${FONT_UI}`;
+      ctx.fillStyle = broken ? COLORS.ember : '#b9aec4';
+      ctx.textAlign = 'right';
+      ctx.fillText(broken ? '破防中 · 伤害 +30%' : '霸体', x + w, y);
+    }
+  }
+  drawMinimap(ctx, game);
+  drawCombo(ctx, game);
+  if (!game.touch) drawSkillBar(ctx, game);
+
+  // 操作提示：只在前几次出征的开头出现，然后淡出
+  if (!game.touch && game.save.runs < 3 && game.frame < 900) {
+    ctx.globalAlpha = Math.min(1, (900 - game.frame) / 120) * 0.6;
     ctx.textAlign = 'left';
     ctx.font = `13px ${FONT_UI}`;
-    ctx.fillStyle = 'rgba(233,226,214,.5)';
-    ctx.fillText('WASD 移动  J 攻击  K 跳跃  L 闪避  W+J 上挑  U I O P 技能  Esc 暂停', 22, VIEW_H - 22);
+    ctx.fillStyle = COLORS.ink;
+    ctx.fillText('WASD 移动   J 攻击   K 跳跃   L 闪避   W+J 上挑   U I O P 技能   Esc 暂停', 24, VIEW_H - 24);
+    ctx.globalAlpha = 1;
   }
 
   // 横幅：进入地下城、首领登场、阶段切换、精英房间……
@@ -155,25 +367,36 @@ export function drawHUD(ctx, game) {
     const a = b.t < 15 ? b.t / 15 : b.t > 100 ? Math.max(0, 1 - (b.t - 100) / 30) : 1;
     ctx.globalAlpha = a;
     ctx.textAlign = 'center';
-    const big = !b.small, y = big ? 225 : 210;
-    ctx.fillStyle = 'rgba(8,6,12,.55)';
-    ctx.fillRect(0, y - (big ? 55 : 36), VIEW_W, big ? 110 : 70);
-    if (b.boss) {
-      const g = ctx.createLinearGradient(VIEW_W / 2 - 300, 0, VIEW_W / 2 + 300, 0);
-      g.addColorStop(0, 'rgba(0,0,0,0)');
-      g.addColorStop(0.5, b.color);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(VIEW_W / 2 - 300, y - 55, 600, 2);
-      ctx.fillRect(VIEW_W / 2 - 300, y + 53, 600, 2);
-    }
-    ctx.font = `${big ? 64 : 42}px ${FONT_TITLE}`;
+    const big = !b.small, y = big ? 228 : 214;
+    const hh = big ? 112 : 72;
+    const band = ctx.createLinearGradient(0, 0, VIEW_W, 0);
+    band.addColorStop(0, 'rgba(6,4,10,0)');
+    band.addColorStop(0.3, 'rgba(6,4,10,.78)');
+    band.addColorStop(0.7, 'rgba(6,4,10,.78)');
+    band.addColorStop(1, 'rgba(6,4,10,0)');
+    ctx.fillStyle = band;
+    ctx.fillRect(0, y - hh / 2, VIEW_W, hh);
+    const line = ctx.createLinearGradient(VIEW_W / 2 - 320, 0, VIEW_W / 2 + 320, 0);
+    line.addColorStop(0, 'rgba(0,0,0,0)');
+    line.addColorStop(0.5, b.color || GOLD_HI);
+    line.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = line;
+    ctx.fillRect(VIEW_W / 2 - 320, y - hh / 2, 640, 1);
+    ctx.fillRect(VIEW_W / 2 - 320, y + hh / 2 - 1, 640, 1);
+    // 标题逐渐拉开字距
+    const spread = Math.min(1, b.t / 40);
+    ctx.font = `${big ? 62 : 40}px ${FONT_TITLE}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${4 + spread * 8}px`;
+    ctx.shadowColor = b.color || 'rgba(233,207,142,.6)';
+    ctx.shadowBlur = 18;
     ctx.fillStyle = b.color || COLORS.ink;
-    ctx.fillText(b.title, VIEW_W / 2, y - (b.sub ? 11 : 0));
+    ctx.fillText(b.title, VIEW_W / 2, y - (b.sub ? 12 : 0));
+    ctx.shadowBlur = 0;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
     if (b.sub) {
-      ctx.font = `17px ${FONT_UI}`;
-      ctx.fillStyle = b.boss ? COLORS.ink : COLORS.ember;
-      ctx.fillText(b.sub, VIEW_W / 2, y + (big ? 33 : 22));
+      ctx.font = `16px ${FONT_UI}`;
+      ctx.fillStyle = b.boss ? COLORS.ink : '#e3c98e';
+      ctx.fillText(b.sub, VIEW_W / 2, y + (big ? 32 : 21));
     }
     ctx.globalAlpha = 1;
   }
@@ -194,49 +417,105 @@ function prompt(ctx, game, text, y) {
   ctx.globalAlpha = 1;
 }
 
+// ---------------- 标题画面 ----------------
+const titleEmbers = Array.from({ length: 50 }, (_, i) => ({ x: Math.random() * VIEW_W, y: Math.random() * VIEW_H, v: 0.4 + Math.random() * 1.2, ph: i }));
+
 export function drawTitle(ctx, game) {
+  const t = game.ticks;
   ctx.save();
-  dim(ctx, 0.62);
+  // 右侧压暗，让标题更清楚
+  const side = ctx.createLinearGradient(VIEW_W * 0.35, 0, VIEW_W, 0);
+  side.addColorStop(0, 'rgba(6,4,10,0)');
+  side.addColorStop(1, 'rgba(6,4,10,.82)');
+  ctx.fillStyle = side;
+  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+
+  // 主角立绘：放大的游戏模型，背后一圈剑光
+  const hx = 290, hy = 470;
+  const halo = ctx.createRadialGradient(hx, hy - 150, 10, hx, hy - 150, 260);
+  halo.addColorStop(0, 'rgba(127,243,255,.22)');
+  halo.addColorStop(1, 'rgba(127,243,255,0)');
+  ctx.fillStyle = halo;
+  ctx.fillRect(hx - 280, hy - 420, 560, 560);
+  ctx.fillStyle = 'rgba(0,0,0,.55)';
+  ctx.beginPath();
+  ctx.ellipse(hx, hy, 120, 16, 0, 0, Math.PI * 2);
+  ctx.fill();
+  ctx.save();
+  ctx.translate(hx, hy);
+  ctx.scale(3.3, 3.3);
+  drawFighter(ctx, 0, 0, game.playerLook(), { crouch: 0.22 + Math.sin(t * 0.04) * 0.02, angle: 2.55, lean: 6, walk: 0.7, backAngle: 1.1 }, { facing: 1, t: t * 1.6 });
+  ctx.restore();
+
+  // 火星
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const e of titleEmbers) {
+    e.y -= e.v;
+    e.x += Math.sin(t * 0.02 + e.ph) * 0.5;
+    if (e.y < -5) { e.y = VIEW_H + 5; e.x = Math.random() * VIEW_W; }
+    ctx.globalAlpha = 0.4 + 0.4 * Math.sin(t * 0.08 + e.ph);
+    ctx.fillStyle = e.ph % 3 ? '#ffb347' : '#7ff3ff';
+    ctx.fillRect(e.x, e.y, 2, 2);
+  }
+  ctx.restore();
+
+  // 标题
+  const lx = 690;
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.shadowColor = COLORS.blade;
-  ctx.shadowBlur = 26;
-  ctx.font = `104px ${FONT_TITLE}`;
-  ctx.fillStyle = COLORS.ink;
-  ctx.fillText('残光之刃', VIEW_W / 2, 150);
+  // 墨迹笔触衬底
+  ctx.fillStyle = 'rgba(120,20,30,.55)';
+  ctx.beginPath();
+  ctx.moveTo(lx - 230, 196);
+  ctx.quadraticCurveTo(lx - 40, 178, lx + 240, 186);
+  ctx.lineTo(lx + 210, 204);
+  ctx.quadraticCurveTo(lx - 30, 200, lx - 220, 214);
+  ctx.closePath();
+  ctx.fill();
+  ctx.font = `110px ${FONT_TITLE}`;
+  ctx.shadowColor = 'rgba(127,243,255,.55)';
+  ctx.shadowBlur = 30;
+  const tg = ctx.createLinearGradient(0, 100, 0, 210);
+  tg.addColorStop(0, '#ffffff');
+  tg.addColorStop(0.6, '#e9e2d6');
+  tg.addColorStop(1, '#9d93a8');
+  ctx.fillStyle = tg;
+  ctx.fillText('残光之刃', lx, 150);
   ctx.shadowBlur = 0;
-  const w = 260 + 30 * Math.sin(game.ticks * 0.05);
-  const g = ctx.createLinearGradient(VIEW_W / 2 - w, 0, VIEW_W / 2 + w, 0);
-  g.addColorStop(0, 'rgba(127,243,255,0)');
-  g.addColorStop(0.5, COLORS.blade);
-  g.addColorStop(1, 'rgba(127,243,255,0)');
-  ctx.fillStyle = g;
-  ctx.fillRect(VIEW_W / 2 - w, 214, w * 2, 2);
-  ctx.font = `500 22px ${FONT_NUM}`;
-  ctx.fillStyle = '#9d93a8';
-  ctx.fillText('A F T E R G L O W   B L A D E', VIEW_W / 2, 240);
+  ctx.font = `500 21px ${FONT_NUM}`;
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '9px';
+  ctx.fillStyle = GOLD_HI;
+  ctx.fillText('AFTERGLOW BLADE', lx + 4, 240);
+  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  ctx.font = `15px ${FONT_UI}`;
+  ctx.fillStyle = 'rgba(233,226,214,.7)';
+  ctx.fillText('坠入墓穴深处，用剑光斩开一条归路', lx, 280);
 
-  const rows = game.touch
-    ? [['左摇杆', '移动'], ['攻', '攻击（连按三连斩）'], ['跳 / 闪', '跳跃 / 无敌闪避'], ['摇杆上推 + 攻', '上挑浮空'], ['裂 风 崩 千', '技能']]
-    : [['WASD', '移动'], ['J', '攻击（连按三连斩）'], ['K / L', '跳跃 / 无敌闪避'], ['W + J', '上挑浮空，再按 K 追击'], ['U I O P', '技能，可取消普攻']];
-  ctx.font = `16px ${FONT_UI}`;
-  rows.forEach(([k, v], i) => {
-    const y = 296 + i * 28;
-    ctx.textAlign = 'right';
-    ctx.fillStyle = COLORS.blade;
-    ctx.fillText(k, VIEW_W / 2 - 14, y);
-    ctx.textAlign = 'left';
-    ctx.fillStyle = COLORS.ink;
-    ctx.fillText(v, VIEW_W / 2 + 14, y);
-  });
-  prompt(ctx, game, game.touch ? '点击画面进入营地' : '按 J 或点击画面进入营地', 456);
+  // 开始提示
+  const a = 0.55 + 0.45 * Math.sin(t * 0.07);
+  const line = ctx.createLinearGradient(lx - 150, 0, lx + 150, 0);
+  line.addColorStop(0, 'rgba(233,207,142,0)');
+  line.addColorStop(0.5, `rgba(233,207,142,${a})`);
+  line.addColorStop(1, 'rgba(233,207,142,0)');
+  ctx.fillStyle = line;
+  ctx.fillRect(lx - 150, 362, 300, 1);
+  ctx.fillRect(lx - 150, 398, 300, 1);
+  ctx.globalAlpha = a;
+  ctx.font = `20px ${FONT_TITLE}`;
+  ctx.fillStyle = COLORS.ink;
+  ctx.fillText(game.touch ? '点 击 进 入' : '按 J 或点击进入', lx, 381);
+  ctx.globalAlpha = 1;
+
   const s = game.save;
-  if (s.runs > 0) {
-    ctx.font = `14px ${FONT_UI}`;
-    ctx.fillStyle = '#8f859a';
-    ctx.textAlign = 'center';
-    ctx.fillText(`Lv.${s.lv} · 战力 ${power(game.stats).toLocaleString()} · 已出征 ${s.runs} 次`, VIEW_W / 2, 494);
-  }
+  ctx.font = `13px ${FONT_UI}`;
+  ctx.fillStyle = '#8f859a';
+  if (s.runs > 0) ctx.fillText(`Lv.${s.lv} · 战力 ${power(game.stats).toLocaleString()} · 已出征 ${s.runs} 次`, lx, 430);
+  if (!game.touch) ctx.fillText('WASD 移动 · J 攻击 · K 跳跃 · L 闪避 · U I O P 技能 · M 音乐', lx, 500);
+  ctx.textAlign = 'right';
+  ctx.font = `500 14px ${FONT_NUM}`;
+  ctx.fillStyle = 'rgba(157,147,168,.6)';
+  ctx.fillText('v0.6', VIEW_W - 16, VIEW_H - 14);
   ctx.restore();
 }
 
@@ -336,27 +615,29 @@ export function drawClear(ctx, game) {
 
 // ---------------- 首领血条（多管血，DNF 风格）----------------
 // 总血量切成 N 管，每管一种颜色，右边显示「×剩余管数」。比一条长血条更有「在推进」的感觉
-const BAR_COLORS = ['#ff4d5e', '#ff9a2e', '#ffd65a', '#6fe38a', '#4fa3ff', '#b46bff'];
+const BAR_COLORS = [['#ff7a86', '#a8142e'], ['#ffb15a', '#b0521a'], ['#ffe08a', '#b0841a'], ['#8ff0a8', '#1f8a48'], ['#7ac0ff', '#1d4fa8'], ['#d0a0ff', '#6a2ab0']];
 function drawBossBar(ctx, game) {
   const b = game.boss;
   if (!b || b.remove || b.state === 'spawn') return false;
-  const w = 520, x = (VIEW_W - w) / 2, y = game.touch ? 60 : 24;
+  const w = 420, x = 372, y = game.touch ? 62 : 26;
   ctx.save();
   ctx.textBaseline = 'middle';
+  ctx.textAlign = 'left';
   ctx.font = `24px ${FONT_TITLE}`;
   ctx.fillStyle = b.B.glow;
-  ctx.textAlign = 'left';
+  ctx.shadowColor = b.B.glow;
+  ctx.shadowBlur = 12;
   ctx.fillText(b.name, x, y);
+  ctx.shadowBlur = 0;
   const nw = ctx.measureText(b.name).width;
-  ctx.font = `500 18px ${FONT_NUM}`;
+  ctx.font = `500 17px ${FONT_NUM}`;
   ctx.fillStyle = '#b9aec4';
   ctx.fillText(`LV.${b.lv}`, x + nw + 10, y + 2);
-  // 阶段标记
   b.B.phases.forEach((ph, i) => {
-    ctx.fillStyle = i <= b.phase ? b.B.glow : 'rgba(255,255,255,.2)';
     ctx.save();
     ctx.translate(x + w - 8 - (b.B.phases.length - 1 - i) * 16, y);
     ctx.rotate(Math.PI / 4);
+    ctx.fillStyle = i <= b.phase ? b.B.glow : 'rgba(255,255,255,.15)';
     ctx.fillRect(-4, -4, 8, 8);
     ctx.restore();
   });
@@ -365,33 +646,37 @@ function drawBossBar(ctx, game) {
   const idx = Math.max(0, Math.ceil(b.hp / per) - 1);
   const frac = b.hp <= 0 ? 0 : (b.hp - idx * per) / per;
   const trailFrac = Math.min(1, Math.max(0, (b.hpTrail - idx * per) / per));
-  const by = y + 16, bh = 16;
-  ctx.fillStyle = 'rgba(8,6,12,.85)';
-  ctx.fillRect(x - 2, by - 2, w + 4, bh + 4);
+  const by = y + 15, bh = 17;
+  // 下一管的颜色铺在底下
   if (idx > 0 && b.hp > 0) {
-    ctx.fillStyle = BAR_COLORS[(idx - 1) % BAR_COLORS.length];
-    ctx.fillRect(x, by, w, bh);
-  }
-  ctx.fillStyle = '#efe6d6';
+    const [t2, b2] = BAR_COLORS[(idx - 1) % BAR_COLORS.length];
+    fancyBar(ctx, x, by, w, bh, 1, 1, null, t2, b2, { border: false });
+  } else fancyBar(ctx, x, by, w, bh, 0, 1, null, '#000', '#000', { border: false });
+  const [t1, b1] = BAR_COLORS[idx % BAR_COLORS.length];
+  ctx.save();
+  slant(ctx, x, by, w, bh, bh * 0.6);
+  ctx.clip();
+  ctx.fillStyle = 'rgba(255,236,214,.75)';
   ctx.fillRect(x, by, w * trailFrac, bh);
-  ctx.fillStyle = BAR_COLORS[idx % BAR_COLORS.length];
-  ctx.fillRect(x, by, w * frac, bh);
-  ctx.fillStyle = 'rgba(255,255,255,.2)';
-  ctx.fillRect(x, by, w * frac, 4);
+  ctx.restore();
+  fancyBar(ctx, x, by, w * Math.max(frac, 0.0001), bh, 1, 1, null, t1, b1, { border: false });
+  slant(ctx, x - 0.5, by - 0.5, w + 1, bh + 1, bh * 0.6);
+  ctx.strokeStyle = goldStroke(ctx, by, by + bh);
+  ctx.lineWidth = 1.2;
+  ctx.stroke();
   ctx.font = `600 26px ${FONT_NUM}`;
-  ctx.textAlign = 'left';
   ctx.fillStyle = COLORS.ink;
-  ctx.fillText(`×${b.hp > 0 ? idx + 1 : 0}`, x + w + 10, by + bh / 2 + 2);
+  ctx.fillText(`×${b.hp > 0 ? idx + 1 : 0}`, x + w + 8, by + bh / 2 + 2);
   // 霸体条
   const broken = b.brokenT > 0;
-  ctx.fillStyle = 'rgba(8,6,12,.85)';
-  ctx.fillRect(x - 2, by + bh + 3, w + 4, 7);
-  ctx.fillStyle = broken ? 'rgba(255,179,71,.35)' : COLORS.ember;
-  ctx.fillRect(x, by + bh + 4, w * (broken ? 1 - b.brokenT / 240 : b.armor / b.maxArmor), 5);
-  ctx.font = `13px ${FONT_UI}`;
-  ctx.textAlign = 'right';
-  ctx.fillStyle = broken ? COLORS.ember : '#b9aec4';
-  ctx.fillText(broken ? '破防中！伤害 +30%，可以浮空连击' : '霸体', x + w - 60, y);
+  fancyBar(ctx, x + 6, by + bh + 4, w - 12, 5, broken ? 240 - b.brokenT : b.armor, broken ? 240 : b.maxArmor, null,
+    broken ? 'rgba(255,208,138,.4)' : '#ffd08a', broken ? 'rgba(199,120,42,.4)' : '#c7782a', { border: false });
+  if (broken) {
+    ctx.font = `14px ${FONT_UI}`;
+    ctx.textAlign = 'center';
+    ctx.fillStyle = COLORS.ember;
+    ctx.fillText('破防！伤害 +30%，可以浮空连击', x + w / 2, by + bh + 20);
+  }
   ctx.restore();
   return true;
 }
@@ -409,7 +694,7 @@ function drawMinimap(ctx, game) {
   const known = (r) => r.visited || r.type === 'boss' || linked(r);
   const xs = rooms.map((r) => r.x), ys = rooms.map((r) => r.y);
   const minX = Math.min(...xs), maxX = Math.max(...xs), minY = Math.min(...ys), maxY = Math.max(...ys);
-  const cw = 22, ch = 15, gap = 5;
+  const cw = 18, ch = 12, gap = 5;
   const W = (maxX - minX + 1) * (cw + gap) - gap, H = (maxY - minY + 1) * (ch + gap) - gap;
   const x0 = VIEW_W - 18 - W, y0 = 18;
   const pos = (r) => [x0 + (r.x - minX) * (cw + gap), y0 + (r.y - minY) * (ch + gap)];
@@ -429,7 +714,7 @@ function drawMinimap(ctx, game) {
   ctx.stroke();
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `12px ${FONT_TITLE}`;
+  ctx.font = `11px ${FONT_TITLE}`;
   for (const r of rooms) {
     if (!known(r)) continue;
     const [x, y] = pos(r);

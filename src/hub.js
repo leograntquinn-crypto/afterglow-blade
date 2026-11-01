@@ -13,6 +13,7 @@ import { SKILLS } from './moves.js';
 import { BOSSES } from './boss.js';
 import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
+import { music } from './music.js';
 
 export class Hub {
   constructor(game, root) {
@@ -56,6 +57,7 @@ export class Hub {
     this.root.querySelector('#h-power').textContent = power(S).toLocaleString();
     this.root.querySelector('#h-gold').textContent = s.gold.toLocaleString();
     this.root.querySelector('#h-sync').textContent = this.g.store.status === 'cloud' ? '云存档已同步' : '本地存档';
+    this.root.querySelector('#h-music').textContent = music.muted ? '音乐：关' : '音乐：开';
     this.root.querySelectorAll('[data-tab]').forEach((b) => {
       b.classList.toggle('on', b.dataset.tab === this.tab);
       const dot = (b.dataset.tab === 'hero' && s.statPts > 0) || (b.dataset.tab === 'skills' && this.canLearnAny());
@@ -245,6 +247,10 @@ export class Hub {
         return this.renderModal();
       case 'close':
         return this.closeModal();
+      case 'music':
+        music.start();
+        music.toggleMute();
+        return this.render();
       case 'stat':
         if (s.statPts > 0) { s.statPts--; s.stats[el.dataset.k]++; sfx('click'); commit(); }
         return;

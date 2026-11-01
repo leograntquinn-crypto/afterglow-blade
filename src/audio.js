@@ -89,6 +89,9 @@ const SOUNDS = {
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.4, type: 'triangle', vol: 0.12, delay: i * 0.18 })),
 };
 
+// 给背景音乐模块用：拿到同一个 AudioContext 和噪声样本
+export const getAudio = () => (ac ? { ac, noiseBuf } : null);
+
 export function sfx(name) {
   if (!ac || ac.state !== 'running') return;
   // 同一帧多个敌人被打中时，只播一次，避免爆音

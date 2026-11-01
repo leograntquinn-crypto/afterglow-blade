@@ -10,7 +10,7 @@
 
 import { clamp } from './config.js';
 
-const OUT = '#0b0910';
+const OUT = '#120a16'; // 描边不用纯黑，带一点紫，和场景更融合
 const cache = new Map();
 export function shade(hex, f) {
   const key = hex + f;
@@ -38,7 +38,7 @@ function path(ctx, pts, close) {
 function seg(ctx, pts, w, color, ol) {
   if (ol) {
     ctx.strokeStyle = ol;
-    ctx.lineWidth = w + 3;
+    ctx.lineWidth = w + 2.4;
     path(ctx, pts);
     ctx.stroke();
   }
@@ -51,11 +51,21 @@ function poly(ctx, pts, color, ol) {
   path(ctx, pts, true);
   if (ol) {
     ctx.strokeStyle = ol;
-    ctx.lineWidth = 3;
+    ctx.lineWidth = 2.6;
     ctx.stroke();
   }
   ctx.fillStyle = color;
   ctx.fill();
+}
+
+// 竖直方向的明暗渐变：上亮下暗（顶光），用于躯干、披风这类大面积色块
+function lit(ctx, pal, hex, y0, y1, f = 1) {
+  if (pal.ghost || pal.flash) return pal.c(hex);
+  const g = ctx.createLinearGradient(0, y0, 0, y1);
+  g.addColorStop(0, shade(hex, 1.32 * f));
+  g.addColorStop(0.55, shade(hex, 1 * f));
+  g.addColorStop(1, shade(hex, 0.68 * f));
+  return g;
 }
 function circle(ctx, x, y, r, color, ol) {
   ctx.beginPath();
@@ -157,6 +167,7 @@ function arm(ctx, J, side, col, pal, { ws = 1, hand = true } = {}) {
 
 function torso(ctx, J, color, pal, belly = 0) {
   const { k, hip, chest, tw } = J;
+  if (typeof color === 'string' && color[0] === '#') color = lit(ctx, pal, color, chest[1] - 2 * k, hip[1] + 4 * k);
   const pts = [add(hip, -tw * 0.85, 3 * k), add(hip, tw * 0.85, 3 * k)];
   if (belly) pts.push(add(mix(hip, chest, 0.4), tw * (0.9 + belly), 0));
   pts.push(add(chest, tw, 0), add(chest, -tw, -1 * k));
@@ -235,13 +246,13 @@ const BODY = {
 
     // 头带飘带、长衣后摆（在身体后面）
     seg(ctx, [add(head, -hr * 0.7, -hr * 0.35), add(head, -15 * k - drift, 1 * k + sway), add(head, -27 * k - drift * 1.5, 6 * k - sway)], 3 * k, pal.c(L.ribbon), pal.ol);
-    poly(ctx, [add(hip, -tw * 0.9, -5 * k), add(hip, tw * 0.2, -3 * k), add(hip, -3 * k - drift * 0.6, 26 * k + sway * 0.4), add(hip, -16 * k - drift, 21 * k - sway)], pal.c(L.coat, 0.62), pal.ol);
+    poly(ctx, [add(hip, -tw * 0.9, -5 * k), add(hip, tw * 0.2, -3 * k), add(hip, -3 * k - drift * 0.6, 26 * k + sway * 0.4), add(hip, -16 * k - drift, 21 * k - sway)], lit(ctx, pal, L.coat, hip[1] - 5 * k, hip[1] + 26 * k, 0.62), pal.ol);
 
     arm(ctx, J, 'B', { up: L.coat, fore: L.glove }, pal);
     leg(ctx, J, 'B', { thigh: L.pants, shin: L.pants, boot: L.boots }, pal);
     leg(ctx, J, 'F', { thigh: L.pants, shin: L.pants, boot: L.boots }, pal);
 
-    torso(ctx, J, pal.c(L.coat), pal);
+    torso(ctx, J, pal.flash || pal.ghost ? pal.c(L.coat) : L.coat, pal);
     poly(ctx, [add(hip, 1 * k, 1 * k), add(hip, tw * 0.75, 1 * k), add(chest, tw * 0.85, 1.5 * k), add(chest, 2 * k, 1.5 * k)], pal.c(L.coat, 1.22), null);
     poly(ctx, [add(hip, -2 * k, 1 * k), add(hip, tw * 0.9, 1 * k), add(hip, tw + drift * 0.2, 15 * k), add(hip, 1 * k - drift * 0.3, 17 * k)], pal.c(L.coat, 0.85), pal.ol);
     seg(ctx, [add(chest, tw * 0.55, 1 * k), add(hip, tw * 0.5, 2 * k), add(hip, tw * 0.62, 15 * k)], 1.6 * k, pal.c(L.trim), null);
@@ -294,7 +305,7 @@ const BODY = {
       const s = mix(chest, hip, 0.25 + i * 0.18);
       seg(ctx, [add(s, -1 * k, 0), add(s, 7 * k - i * k, 2 * k), add(s, 6 * k - i * k, 5 * k)], 2.2 * k, pal.c(L.bone), pal.ol);
     }
-    poly(ctx, [add(chest, -tw * 0.85, -1 * k), add(chest, tw * 0.95, -1 * k), add(chest, tw * 0.7, 8 * k), add(chest, -tw * 0.6, 6 * k)], pal.c(L.armor), pal.ol);
+    poly(ctx, [add(chest, -tw * 0.85, -1 * k), add(chest, tw * 0.95, -1 * k), add(chest, tw * 0.7, 8 * k), add(chest, -tw * 0.6, 6 * k)], lit(ctx, pal, L.armor, chest[1] - k, chest[1] + 8 * k), pal.ol);
     seg(ctx, [add(chest, -tw * 0.5, 2 * k), add(chest, tw * 0.6, 2 * k)], 1.2 * k, pal.c(L.armor, 1.35), null);
     // 骷髅头
     seg(ctx, [add(chest, 1 * k, 0), add(head, 0, hr * 0.6)], 3 * k, pal.c(L.bone, 0.85), pal.ol);
@@ -314,14 +325,14 @@ const BODY = {
   archer(ctx, J, L, P, pal) {
     const { k, hip, chest, tw, head, hr } = J;
     const sway = Math.sin(pal.t * 0.15 + 1) * 3 * k, drift = (P.lean || 0) * 0.6 * k;
-    poly(ctx, [add(chest, -tw * 0.9, -2 * k), add(chest, 2 * k, -1 * k), add(hip, -2 * k - drift * 0.4, 30 * k + sway * 0.4), add(hip, -18 * k - drift, 26 * k - sway)], pal.c(L.cloak, 0.7), pal.ol);
+    poly(ctx, [add(chest, -tw * 0.9, -2 * k), add(chest, 2 * k, -1 * k), add(hip, -2 * k - drift * 0.4, 30 * k + sway * 0.4), add(hip, -18 * k - drift, 26 * k - sway)], lit(ctx, pal, L.cloak, chest[1], hip[1] + 30 * k, 0.75), pal.ol);
     poly(ctx, [add(chest, -9 * k, -9 * k), add(chest, -4 * k, -11 * k), add(chest, -1 * k, 10 * k), add(chest, -6 * k, 12 * k)], pal.c(L.leather), pal.ol);
     for (let i = 0; i < 3; i++) seg(ctx, [add(chest, -8 * k + i * 1.8 * k, -9 * k - i * 0.6 * k), add(chest, -9 * k + i * 1.8 * k, -15 * k - i * 0.6 * k)], 1.6 * k, pal.c('#d9c9a8'), null);
     const wrap = { thigh: L.wrap, shin: L.wrap, boot: L.boots, up: L.cloth, fore: L.wrap };
     arm(ctx, J, 'B', wrap, pal);
     leg(ctx, J, 'B', wrap, pal, 0.85);
     leg(ctx, J, 'F', wrap, pal, 0.85);
-    torso(ctx, J, pal.c(L.cloth), pal);
+    torso(ctx, J, pal.flash || pal.ghost ? pal.c(L.cloth) : L.cloth, pal);
     seg(ctx, [add(chest, -tw * 0.8, 1 * k), add(hip, tw * 0.8, -2 * k)], 2.5 * k, pal.c(L.leather), null);
     seg(ctx, [add(hip, -tw * 0.9, 0), add(hip, tw * 0.9, 0)], 3.4 * k, pal.c(L.leather), pal.ol);
     // 兜帽
@@ -344,7 +355,7 @@ const BODY = {
     arm(ctx, J, 'B', { up: L.skin, fore: L.skin, bracer: L.metal }, pal, { hand: false });
     leg(ctx, J, 'B', { thigh: L.pants, shin: L.pants, boot: L.metal }, pal);
     leg(ctx, J, 'F', { thigh: L.pants, shin: L.pants, boot: L.metal }, pal);
-    torso(ctx, J, pal.c(L.skin), pal, 0.28);
+    torso(ctx, J, pal.flash || pal.ghost ? pal.c(L.skin) : L.skin, pal, 0.28);
     poly(ctx, [add(hip, 0, 1 * k), add(mix(hip, chest, 0.4), tw * 0.9, 0), add(chest, tw * 0.9, 2 * k), add(chest, tw * 0.1, 3 * k)], pal.c(L.skin, 1.12), null);
     seg(ctx, [add(chest, -tw * 0.75, 0), add(hip, tw * 0.85, -5 * k)], 3.8 * k, pal.c(L.leather), pal.ol);
     poly(ctx, [add(hip, -tw * 0.2, 0), add(hip, tw * 1.0, 0), add(hip, tw * 1.05, 25 * k), add(hip, tw * 0.1, 27 * k)], pal.c(L.leather), pal.ol);
@@ -369,6 +380,20 @@ const BODY = {
     circle(ctx, J.handF[0], J.handF[1], 4.6 * k, pal.c(L.skin), pal.ol);
   },
 };
+
+// 角色身后的光晕（代替 shadowBlur：shadowBlur 会对每一笔都做模糊，非常慢）
+export function drawAura(ctx, sx, sy, h, color, strength = 1) {
+  const cy = sy - h * 0.5, r = h * 0.85;
+  const g = ctx.createRadialGradient(sx, cy, h * 0.1, sx, cy, r);
+  g.addColorStop(0, color);
+  g.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = Math.max(0, Math.min(1, 0.45 * strength));
+  ctx.fillStyle = g;
+  ctx.fillRect(sx - r, cy - r, r * 2, r * 2);
+  ctx.restore();
+}
 
 // look = 外观（颜色、武器、体型），pose = 姿势，o = { facing, flash, ghost, alpha, t }
 export function drawFighter(ctx, sx, sy, look, pose, o = {}) {

@@ -12,7 +12,7 @@ import { GRAVITY, DEPTH, world, clamp, lerp, toScreen } from './config.js';
 import { MOVES, SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
-import { drawFighter } from './rig.js';
+import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
@@ -63,7 +63,11 @@ export class Player {
     if (this.dashCd > 0) this.dashCd--;
     this.mp = Math.min(this.maxMp, this.mp + this.S.mpRegen);
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.004) : this.hp;
-    for (const k in this.cd) if (this.cd[k] > 0) this.cd[k]--;
+    this.readyFlash ??= {};
+    for (const k in this.cd) {
+      if (this.cd[k] > 0 && --this.cd[k] === 0) this.readyFlash[k] = 20; // 冷却结束，技能栏闪一下
+      if (this.readyFlash[k] > 0) this.readyFlash[k]--;
+    }
     for (const g of this.ghosts) g.life--;
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
 
@@ -358,9 +362,7 @@ export class Player {
     const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
     const blink = this.invuln > 0 && (this.state === 'idle' || this.state === 'run') && (t >> 2) % 2;
     const armored = this.state === 'attack' && this.move?.armor;
-    ctx.save();
-    if (armored) { ctx.shadowColor = this.glow; ctx.shadowBlur = 16; }
+    if (armored) drawAura(ctx, sx, sy, this.h, this.glow, 1);
     drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
-    ctx.restore();
   }
 }

@@ -1,7 +1,7 @@
 // 敌人：类型表 + 简单 AI + 受击反应（硬直 / 浮空 / 倒地 / 霸体破防）
 import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
-import { drawFighter } from './rig.js';
+import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 
 export const TYPES = {
@@ -294,12 +294,10 @@ export class Enemy {
     if (this.state === 'dying' && this.z <= 0) alpha = Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
 
-    ctx.save();
-    if (this.state === 'windup') { ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 12 + 8 * Math.sin(this.st * 0.6); }
-    else if (this.armor > 0 && this.alive) { ctx.shadowColor = COLORS.ember; ctx.shadowBlur = 12; }
-    else if (this.elite && this.alive) { ctx.shadowColor = COLORS.gold; ctx.shadowBlur = 10 + 4 * Math.sin(t * 0.1); }
+    if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
+    else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
+    else if (this.elite && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.gold, 0.8 + 0.2 * Math.sin(t * 0.1));
     drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
-    ctx.restore();
 
     const top = sy - this.h - 14;
     ctx.save();

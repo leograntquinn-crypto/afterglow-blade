@@ -8,8 +8,10 @@
      刻意只做深色主题：地下墓穴、火把与剑光。 */
   :root {
     --void: #0b0910;
-    --panel: rgba(18, 14, 24, .92);
-    --line: rgba(233, 226, 214, .12);
+    --panel: linear-gradient(180deg, rgba(26, 20, 34, .94), rgba(12, 9, 16, .94));
+    --line: rgba(233, 207, 142, .16);
+    --gold-hi: #e9cf8e;
+    --gold-lo: #7a5c30;
     --ink: #e9e2d6;
     --mute: #9d93a8;
     --blade: #7ff3ff;
@@ -104,8 +106,11 @@
   }
   .btn:hover:not(:disabled) { background: rgba(233, 226, 214, .13); border-color: rgba(233, 226, 214, .45); }
   .btn:disabled { opacity: .35; cursor: default; }
-  .btn.primary { background: var(--blade); color: #0b0910; border-color: var(--blade); font-weight: 600; }
-  .btn.primary:hover:not(:disabled) { background: #b6f9ff; }
+  .btn.primary {
+    background: linear-gradient(180deg, #f3dca0, #b8893e); color: #1a1008; border-color: var(--gold-hi); font-weight: 600;
+    box-shadow: 0 0 18px rgba(233, 207, 142, .25), inset 0 1px 0 rgba(255, 255, 255, .5);
+  }
+  .btn.primary:hover:not(:disabled) { background: linear-gradient(180deg, #fff0c4, #d4a24e); }
   .btn.ghost { background: none; color: var(--mute); }
   .btn.mini { width: 34px; height: 34px; padding: 0; font-size: 20px; line-height: 1; flex: none; }
   .btn.mini-text { padding: 5px 10px; font-size: 12px; }
@@ -127,7 +132,7 @@
     padding-block: 14px 10px; background: linear-gradient(rgba(14, 10, 18, .98) 75%, rgba(14, 10, 18, 0));
   }
   .who { display: flex; align-items: baseline; gap: 10px; flex-wrap: wrap; }
-  .hname { font: 28px var(--font-title); }
+  .hname { font: 28px var(--font-title); text-shadow: 0 0 16px rgba(127, 243, 255, .3); }
   .lv { font: 500 22px var(--font-num); color: var(--blade); }
   .xp { display: grid; gap: 2px; min-width: 150px; }
   .xpbar { height: 4px; background: rgba(255, 255, 255, .1); border-radius: 2px; overflow: hidden; }
@@ -142,7 +147,7 @@
     position: relative; background: none; border: 0; padding: 10px 20px 12px; cursor: pointer;
     font: 24px var(--font-title); color: var(--mute); border-bottom: 2px solid transparent; margin-bottom: -1px;
   }
-  .tabs button.on { color: var(--ink); border-bottom-color: var(--blade); }
+  .tabs button.on { color: var(--ink); border-bottom-color: var(--gold-hi); text-shadow: 0 0 14px rgba(233, 207, 142, .45); }
   .tabs button.dot::after { content: ""; position: absolute; top: 10px; right: 10px; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); }
 
   h3, h4 { margin: 0; font-weight: 400; }
@@ -155,6 +160,11 @@
   .stage {
     display: flex; flex-direction: column; gap: 8px; padding: 16px 18px; background: var(--panel);
     border: 1px solid var(--line); border-radius: 10px;
+  }
+  .stage, .panel, .skill { position: relative; box-shadow: 0 10px 30px rgba(0, 0, 0, .35), inset 0 1px 0 rgba(233, 207, 142, .12); }
+  .stage::before, .panel::before, .skill::before {
+    content: ""; position: absolute; left: 14px; right: 14px; top: -1px; height: 1px;
+    background: linear-gradient(90deg, transparent, rgba(233, 207, 142, .6), transparent);
   }
   .stage.locked { opacity: .5; }
   .stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
@@ -238,7 +248,7 @@
     padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px));
   }
   .sheet {
-    width: min(400px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: #15111c; border: 1px solid var(--line);
+    width: min(400px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: linear-gradient(180deg, #1c1626, #0f0c14); border: 1px solid var(--line);
     border-radius: 12px; padding: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
   }
   .card-head { display: flex; gap: 12px; align-items: center; }
@@ -312,6 +322,7 @@
       <span class="stat-chip">战力<b id="h-power">0</b></span>
       <span class="stat-chip gold">金币<b id="h-gold">0</b></span>
       <span class="sync" id="h-sync"></span>
+      <button class="btn ghost mini-text" id="h-music" data-act="music" aria-label="开关背景音乐">音乐：开</button>
     </header>
     <nav class="tabs" aria-label="营地">
       <button data-tab="stages">出征</button>
