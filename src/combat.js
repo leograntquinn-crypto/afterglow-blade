@@ -53,7 +53,7 @@ export class Projectile {
       const a = Math.min(1, this.life / 10);
       for (let i = 0; i < 3; i++) {
         ctx.globalAlpha = a * (0.9 - i * 0.25);
-        ctx.strokeStyle = i === 0 ? '#ffffff' : COLORS.blade;
+        ctx.strokeStyle = i === 0 ? '#ffffff' : this.color || COLORS.blade;
         ctx.lineWidth = 10 - i * 2.5;
         ctx.beginPath();
         ctx.ellipse(-i * 14, -50, 18, 52, 0, -Math.PI / 2, Math.PI / 2);

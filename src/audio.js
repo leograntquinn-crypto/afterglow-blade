@@ -70,6 +70,17 @@ const SOUNDS = {
   kill: () => tone({ f: 660, f2: 1320, dur: 0.15, type: 'triangle', vol: 0.1, delay: 0.02 }),
   wave: () => { tone({ f: 330, f2: 330, dur: 0.3, type: 'triangle', vol: 0.12 }); tone({ f: 495, f2: 495, dur: 0.4, type: 'triangle', vol: 0.1, delay: 0.12 }); },
   clear: () => [523, 659, 784, 1046].forEach((f, i) => tone({ f, f2: f, dur: 0.35, type: 'triangle', vol: 0.12, delay: i * 0.1 })),
+  coin: () => { tone({ f: 1320, f2: 1320, dur: 0.05, type: 'square', vol: 0.05 }); tone({ f: 1760, f2: 1760, dur: 0.08, type: 'square', vol: 0.05, delay: 0.05 }); },
+  pickup: () => tone({ f: 600, f2: 900, dur: 0.08, type: 'triangle', vol: 0.1 }),
+  rare: () => [784, 988, 1175].forEach((f, i) => tone({ f, f2: f, dur: 0.25, type: 'triangle', vol: 0.1, delay: i * 0.07 })),
+  legend: () => {
+    tone({ f: 110, f2: 55, dur: 0.6, vol: 0.5 });
+    [523, 659, 784, 1046, 1318].forEach((f, i) => tone({ f, f2: f, dur: 0.5, type: 'triangle', vol: 0.12, delay: 0.1 + i * 0.08 }));
+  },
+  levelup: () => [392, 523, 659, 784, 1046].forEach((f, i) => tone({ f, f2: f, dur: 0.3, type: 'triangle', vol: 0.13, delay: i * 0.07 })),
+  enhance: () => { noise({ dur: 0.08, f: 3000, q: 4, vol: 0.25 }); [880, 1320].forEach((f, i) => tone({ f, f2: f, dur: 0.3, type: 'triangle', vol: 0.12, delay: 0.08 + i * 0.1 })); },
+  enhFail: () => { noise({ dur: 0.08, f: 3000, q: 4, vol: 0.25 }); tone({ f: 300, f2: 120, dur: 0.35, type: 'sawtooth', vol: 0.08, delay: 0.08 }); },
+  click: () => tone({ f: 900, f2: 700, dur: 0.04, type: 'triangle', vol: 0.06 }),
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.4, type: 'triangle', vol: 0.12, delay: i * 0.18 })),
 };
 

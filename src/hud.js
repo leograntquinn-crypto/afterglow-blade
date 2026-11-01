@@ -1,7 +1,8 @@
-// 界面：血条、技能栏、连击数、目标血条、标题 / 结算画面
+// 战斗界面：血条、技能栏、连击数、目标血条、拾取提示，以及标题 / 结算画面
 import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './config.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
-import { fmtTime } from './waves.js';
+import { SKILL_TREE, xpToNext, MAX_LV, power } from './progression.js';
+import { RARITY, itemTitle } from './items.js';
 
 function bar(ctx, x, y, w, h, val, max, trail, color) {
   ctx.fillStyle = 'rgba(8,6,12,.75)';
@@ -17,7 +18,7 @@ function bar(ctx, x, y, w, h, val, max, trail, color) {
 }
 
 export function drawHUD(ctx, game) {
-  const p = game.player;
+  const p = game.player, s = game.save;
   ctx.save();
   ctx.textBaseline = 'middle';
 
@@ -27,25 +28,36 @@ export function drawHUD(ctx, game) {
   ctx.fillText('残光剑士', 22, 28);
   ctx.font = `500 20px ${FONT_NUM}`;
   ctx.fillStyle = COLORS.blade;
-  ctx.fillText('LV.1', 122, 30);
+  ctx.fillText(`LV.${s.lv}`, 122, 30);
   bar(ctx, 22, 48, 260, 14, p.hp, p.maxHp, p.hpTrail, COLORS.blood);
   bar(ctx, 22, 68, 200, 8, p.mp, p.maxMp, null, COLORS.mp);
+  bar(ctx, 22, 82, 200, 3, s.lv >= MAX_LV ? 1 : s.xp, s.lv >= MAX_LV ? 1 : xpToNext(s.lv), null, '#c8b6ff');
   ctx.font = `500 17px ${FONT_NUM}`;
   ctx.fillStyle = '#fff';
   ctx.textAlign = 'right';
   ctx.fillText(`${Math.ceil(p.hp)} / ${p.maxHp}`, 278, 56);
   ctx.textAlign = 'left';
 
+  // 拾取提示
+  game.toasts.forEach((t, i) => {
+    ctx.globalAlpha = Math.min(1, t.life / 30);
+    ctx.font = `15px ${FONT_UI}`;
+    ctx.fillStyle = t.color;
+    ctx.fillText(t.text, 22, 104 + i * 22);
+  });
+  ctx.globalAlpha = 1;
+
   // 顶部中央：最近攻击的敌人
   const f = game.focus;
   if (f && !f.remove) {
-    const w = 360, x = VIEW_W / 2 - w / 2, y = 26;
+    const w = 360, x = VIEW_W / 2 - w / 2, y = game.touch ? 62 : 26; // 触屏时让出顶部暂停按钮
     ctx.font = `20px ${FONT_TITLE}`;
-    ctx.fillStyle = COLORS.ink;
-    ctx.fillText(f.T.name, x, y);
+    ctx.fillStyle = f.elite ? COLORS.gold : COLORS.ink;
+    ctx.fillText(f.name, x, y);
+    const nw = ctx.measureText(f.name).width;
     ctx.font = `500 18px ${FONT_NUM}`;
     ctx.fillStyle = '#b9aec4';
-    ctx.fillText(`LV.${f.T.lv}`, x + 92, y + 2);
+    ctx.fillText(`LV.${f.lv}`, x + nw + 10, y + 2);
     bar(ctx, x, y + 16, w, 12, f.hp, f.maxHp, f.hpTrail, COLORS.blood);
     if (f.maxArmor > 0) {
       const broken = f.brokenT > 0;
@@ -56,6 +68,12 @@ export function drawHUD(ctx, game) {
       ctx.fillText(broken ? '破防中 · 伤害 +30%' : '霸体', x + w, y);
       ctx.textAlign = 'left';
     }
+  } else if (game.stage) {
+    ctx.textAlign = 'center';
+    ctx.font = `20px ${FONT_TITLE}`;
+    ctx.fillStyle = 'rgba(233,226,214,.6)';
+    ctx.fillText(`${game.stage.name} · ${Math.min(game.wave + 1, game.stage.waves.length)} / ${game.stage.waves.length}`, VIEW_W / 2, game.touch ? 64 : 28);
+    ctx.textAlign = 'left';
   }
 
   // 右侧：连击
@@ -78,23 +96,28 @@ export function drawHUD(ctx, game) {
   }
 
   // 技能栏
-  const size = 56, gap = 10;
-  const sx0 = VIEW_W - (size + gap) * 3 - 14;
+  const size = 52, gap = 8;
+  const sx0 = VIEW_W - (size + gap) * SKILL_KEYS.length - 14;
   const sy0 = game.touch ? 20 : VIEW_H - size - 22;
   SKILL_KEYS.forEach((key, i) => {
-    const s = SKILLS[key], x = sx0 + i * (size + gap), y = sy0;
-    const cd = p.cd[key], ready = cd <= 0 && p.mp >= s.mp;
+    const sk = SKILLS[key], x = sx0 + i * (size + gap), y = sy0;
+    const learned = s.skills[key] > 0;
+    const cd = p.cd[key], ready = learned && cd <= 0 && p.mp >= sk.mp;
     ctx.fillStyle = 'rgba(12,9,16,.8)';
     ctx.fillRect(x, y, size, size);
     ctx.strokeStyle = ready ? 'rgba(127,243,255,.7)' : 'rgba(255,255,255,.15)';
     ctx.lineWidth = 1.5;
     ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
     ctx.textAlign = 'center';
-    ctx.font = `34px ${FONT_TITLE}`;
-    ctx.fillStyle = ready ? COLORS.blade : p.mp < s.mp && cd <= 0 ? '#4a6c9a' : '#6c6474';
-    ctx.fillText(s.glyph, x + size / 2, y + size / 2 + 2);
-    if (cd > 0) {
-      // 冷却遮罩：按剩余比例画一个扇形，裁剪在方框内
+    ctx.font = `32px ${FONT_TITLE}`;
+    ctx.fillStyle = !learned ? '#3a3440' : ready ? p.glow : p.mp < sk.mp && cd <= 0 ? '#4a6c9a' : '#6c6474';
+    ctx.fillText(sk.glyph, x + size / 2, y + size / 2 + 2);
+    if (!learned) {
+      ctx.font = `500 15px ${FONT_NUM}`;
+      ctx.fillStyle = '#8f859a';
+      ctx.fillText(`LV.${SKILL_TREE.find((n) => n.key === key).unlock}`, x + size / 2, y + size / 2 + 3);
+    } else if (cd > 0) {
+      // 冷却遮罩：按剩余比例画扇形，裁剪在方框内
       ctx.fillStyle = 'rgba(0,0,0,.6)';
       ctx.save();
       ctx.beginPath();
@@ -102,11 +125,11 @@ export function drawHUD(ctx, game) {
       ctx.clip();
       ctx.beginPath();
       ctx.moveTo(x + size / 2, y + size / 2);
-      ctx.arc(x + size / 2, y + size / 2, size * 0.7, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / s.cd));
+      ctx.arc(x + size / 2, y + size / 2, size * 0.75, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * (cd / p.cdMax[key]));
       ctx.closePath();
       ctx.fill();
       ctx.restore();
-      ctx.font = `600 24px ${FONT_NUM}`;
+      ctx.font = `600 22px ${FONT_NUM}`;
       ctx.fillStyle = '#fff';
       ctx.fillText(Math.ceil(cd / 60), x + size / 2, y + size / 2 + 3);
     }
@@ -114,19 +137,18 @@ export function drawHUD(ctx, game) {
     if (!game.touch) {
       ctx.textAlign = 'left';
       ctx.fillStyle = COLORS.ink;
-      ctx.fillText(s.key, x + 5, y + 10);
+      ctx.fillText(sk.key, x + 5, y + 10);
     }
     ctx.textAlign = 'right';
     ctx.fillStyle = COLORS.mp;
-    ctx.fillText(s.mp, x + size - 4, y + size - 8);
+    ctx.fillText(sk.mp, x + size - 4, y + size - 8);
   });
 
-  // 左下：按键提示
   if (!game.touch) {
     ctx.textAlign = 'left';
     ctx.font = `13px ${FONT_UI}`;
     ctx.fillStyle = 'rgba(233,226,214,.5)';
-    ctx.fillText('WASD 移动   J 攻击   K 跳跃   L 闪避   W+J 上挑   U I O 技能', 22, VIEW_H - 22);
+    ctx.fillText('WASD 移动  J 攻击  K 跳跃  L 闪避  W+J 上挑  U I O P 技能  Esc 暂停', 22, VIEW_H - 22);
   }
 
   // 波次横幅
@@ -138,7 +160,7 @@ export function drawHUD(ctx, game) {
     ctx.fillStyle = 'rgba(8,6,12,.55)';
     ctx.fillRect(0, 170, VIEW_W, 110);
     ctx.font = `64px ${FONT_TITLE}`;
-    ctx.fillStyle = COLORS.ink;
+    ctx.fillStyle = b.color || COLORS.ink;
     ctx.fillText(b.title, VIEW_W / 2, 214);
     ctx.font = `17px ${FONT_UI}`;
     ctx.fillStyle = COLORS.ember;
@@ -157,6 +179,7 @@ function prompt(ctx, game, text, y) {
   ctx.globalAlpha = 0.55 + 0.45 * Math.sin(game.ticks * 0.08);
   ctx.font = `18px ${FONT_UI}`;
   ctx.fillStyle = COLORS.ink;
+  ctx.textAlign = 'center';
   ctx.fillText(text, VIEW_W / 2, y);
   ctx.globalAlpha = 1;
 }
@@ -184,8 +207,8 @@ export function drawTitle(ctx, game) {
   ctx.fillText('A F T E R G L O W   B L A D E', VIEW_W / 2, 240);
 
   const rows = game.touch
-    ? [['左摇杆', '移动'], ['攻', '攻击（连按三连斩）'], ['跳 / 闪', '跳跃 / 无敌闪避'], ['摇杆上推 + 攻', '上挑浮空'], ['裂 风 崩', '技能']]
-    : [['WASD', '移动'], ['J', '攻击（连按三连斩）'], ['K / L', '跳跃 / 无敌闪避'], ['W + J', '上挑浮空，再按 K 追击'], ['U I O', '技能，可取消普攻']];
+    ? [['左摇杆', '移动'], ['攻', '攻击（连按三连斩）'], ['跳 / 闪', '跳跃 / 无敌闪避'], ['摇杆上推 + 攻', '上挑浮空'], ['裂 风 崩 千', '技能']]
+    : [['WASD', '移动'], ['J', '攻击（连按三连斩）'], ['K / L', '跳跃 / 无敌闪避'], ['W + J', '上挑浮空，再按 K 追击'], ['U I O P', '技能，可取消普攻']];
   ctx.font = `16px ${FONT_UI}`;
   rows.forEach(([k, v], i) => {
     const y = 296 + i * 28;
@@ -196,77 +219,107 @@ export function drawTitle(ctx, game) {
     ctx.fillStyle = COLORS.ink;
     ctx.fillText(v, VIEW_W / 2 + 14, y);
   });
-  ctx.textAlign = 'center';
-  prompt(ctx, game, game.touch ? '点击画面开始' : '按 J 或点击画面开始', 456);
-  if (game.best) {
+  prompt(ctx, game, game.touch ? '点击画面进入营地' : '按 J 或点击画面进入营地', 456);
+  const s = game.save;
+  if (s.runs > 0) {
     ctx.font = `14px ${FONT_UI}`;
     ctx.fillStyle = '#8f859a';
-    ctx.fillText(`最佳评价 ${game.best.letter} · ${fmtTime(game.best.time)} · 最高 ${game.best.maxCombo} 连击`, VIEW_W / 2, 494);
+    ctx.textAlign = 'center';
+    ctx.fillText(`Lv.${s.lv} · 战力 ${power(game.stats).toLocaleString()} · 已出征 ${s.runs} 次`, VIEW_W / 2, 494);
   }
   ctx.restore();
 }
 
+// 结算里的奖励列表
+function drawRewards(ctx, game, x, y, t) {
+  const r = game.run;
+  const lines = [
+    [`经验 +${r.xp}`, '#c8b6ff'],
+    [`金币 +${r.gold}`, COLORS.gold],
+  ];
+  if (r.ups.length) lines.push([`升级！Lv.${game.save.lv}`, COLORS.blade]);
+  if (r.firstClear) lines.push(['首次通关奖励 ×3', COLORS.ember]);
+  const best = [...r.items].sort((a, b) => b.rar - a.rar)[0];
+  lines.push([r.items.length ? `获得装备 ${r.items.length} 件` : '没有获得装备', COLORS.ink]);
+  ctx.textAlign = 'left';
+  lines.forEach(([text, color], i) => {
+    if (t < i * 8) return;
+    ctx.font = `18px ${FONT_UI}`;
+    ctx.fillStyle = color;
+    ctx.fillText(text, x, y + i * 28);
+  });
+  if (best && t > lines.length * 8) {
+    ctx.font = `17px ${FONT_UI}`;
+    ctx.fillStyle = RARITY[best.rar].color;
+    ctx.fillText(`最佳：[${RARITY[best.rar].name}] ${itemTitle(best)}`, x, y + lines.length * 28);
+  }
+}
+
 export function drawDead(ctx, game) {
+  const t = game.sceneT;
   ctx.save();
-  dim(ctx, Math.min(0.7, game.sceneT / 40));
+  dim(ctx, Math.min(0.72, t / 40));
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `110px ${FONT_TITLE}`;
+  ctx.font = `100px ${FONT_TITLE}`;
   ctx.fillStyle = COLORS.blood;
-  ctx.fillText('力 竭', VIEW_W / 2, 220);
+  ctx.fillText('力 竭', VIEW_W / 2, 150);
   ctx.font = `17px ${FONT_UI}`;
   ctx.fillStyle = '#b9aec4';
-  ctx.fillText(`倒在第 ${game.wave + 1} 波 · 击败 ${game.kills} 个敌人 · 最高 ${game.maxCombo} 连击`, VIEW_W / 2, 300);
-  if (game.sceneT > 40) prompt(ctx, game, game.touch ? '点击画面重新挑战' : '按 J 重新挑战', 380);
+  ctx.fillText(`倒在「${game.stage.name}」第 ${game.wave + 1} 波 · 已获得的经验、金币和装备都会保留`, VIEW_W / 2, 230);
+  drawRewards(ctx, game, VIEW_W / 2 - 110, 290, t - 20);
+  if (t > 60) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 480);
   ctx.restore();
 }
 
 export function drawClear(ctx, game) {
   const r = game.result, t = game.sceneT;
   ctx.save();
-  dim(ctx, Math.min(0.72, t / 30));
+  dim(ctx, Math.min(0.75, t / 30));
   ctx.textAlign = 'center';
   ctx.textBaseline = 'middle';
-  ctx.font = `56px ${FONT_TITLE}`;
+  ctx.font = `52px ${FONT_TITLE}`;
   ctx.fillStyle = COLORS.ink;
-  ctx.fillText('墓 穴 肃 清', VIEW_W / 2, 92);
+  ctx.fillText(`${game.stage.name} · 肃清`, VIEW_W / 2, 80);
 
   r.rows.forEach(([name, val, pts], i) => {
     if (t < 20 + i * 14) return;
-    const y = 170 + i * 44;
+    const y = 160 + i * 44;
+    ctx.textAlign = 'left';
     ctx.font = `18px ${FONT_UI}`;
     ctx.fillStyle = '#b9aec4';
-    ctx.textAlign = 'left';
-    ctx.fillText(name, VIEW_W / 2 - 260, y);
+    ctx.fillText(name, 120, y);
     ctx.font = `500 30px ${FONT_NUM}`;
     ctx.fillStyle = COLORS.ink;
-    ctx.fillText(val, VIEW_W / 2 - 140, y + 2);
+    ctx.fillText(val, 230, y + 2);
     ctx.fillStyle = COLORS.gold;
-    ctx.fillText('◆'.repeat(pts) + '◇'.repeat(3 - pts), VIEW_W / 2 - 40, y + 2);
+    ctx.fillText('◆'.repeat(pts) + '◇'.repeat(3 - pts), 320, y + 2);
   });
+  drawRewards(ctx, game, 120, 310, t - 60);
 
   // 评价印章：从大到小砸下来
-  const st = t - 70;
+  const st = t - 50;
   if (st > 0) {
-    const s = st < 12 ? 3 - (st / 12) * 2 : 1;
+    const sc = st < 12 ? 3 - (st / 12) * 2 : 1;
     ctx.save();
-    ctx.translate(VIEW_W / 2 + 190, 220);
-    ctx.scale(s, s);
+    ctx.translate(VIEW_W - 260, 250);
+    ctx.scale(sc, sc);
     ctx.rotate(-0.12);
     ctx.globalAlpha = Math.min(1, st / 6);
     ctx.shadowColor = r.letter === 'S' ? COLORS.gold : COLORS.blade;
     ctx.shadowBlur = 30;
-    ctx.font = `600 170px ${FONT_NUM}`;
+    ctx.textAlign = 'center';
+    ctx.font = `600 180px ${FONT_NUM}`;
     ctx.fillStyle = r.letter === 'S' ? COLORS.gold : r.letter === 'A' ? COLORS.blade : COLORS.ink;
     ctx.fillText(r.letter, 0, 10);
     ctx.restore();
   }
-  ctx.textAlign = 'center';
-  if (game.newBest && t > 90) {
+  if (game.newBest && t > 70) {
+    ctx.textAlign = 'center';
     ctx.font = `20px ${FONT_TITLE}`;
     ctx.fillStyle = COLORS.gold;
-    ctx.fillText('新纪录', VIEW_W / 2 + 190, 330);
+    ctx.fillText('新纪录', VIEW_W - 260, 370);
   }
-  if (t > 100) prompt(ctx, game, game.touch ? '点击画面再来一局' : '按 J 再来一局', 440);
+  if (t > 110) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 490);
   ctx.restore();
 }

@@ -1,25 +1,25 @@
 // 敌人：类型表 + 简单 AI + 受击反应（硬直 / 浮空 / 倒地 / 霸体破防）
 import { GRAVITY, DEPTH, ARENA_W, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
-import { drawHumanoid } from './draw.js';
+import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
 
 export const TYPES = {
   grunt: {
-    name: '腐骨兵', lv: 3, hp: 140, w: 36, h: 82, speed: 1.7, weight: 1, armor: 0,
-    look: { h: 82, body: '#4a3b33', limb: '#cfc3ad', head: '#e8dcc4', eye: '#ff5a3c', weapon: { type: 'sword', len: 44, color: '#8d8178' } },
+    name: '腐骨兵', lvOff: 0, hp: 140, w: 36, h: 82, speed: 1.7, weight: 1, armor: 0, xp: 12, drop: 0.22,
+    look: { rig: 'grunt', h: 82, bone: '#e2d7c0', cloth: '#3d2f28', armor: '#5a3d2e', eye: '#ff5a3c', weapon: { type: 'sword', len: 44, color: '#8d8178' } },
     atk: { range: 62, windup: 26, hitAt: 4, recover: 34, cd: [70, 130],
       hit: { box: { x: 46, w: 76, d: 26, z0: 0, z1: 90 }, dmg: 9, kb: 4, stun: 18, stop: 4, shake: 4 } },
   },
   archer: {
-    name: '影弓手', lv: 4, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true,
-    look: { h: 84, body: '#2c2533', limb: '#3e3546', head: '#b9a7c9', hood: '#1e1824', eye: '#c48bff', weapon: { type: 'bow', color: '#8a6a4a' } },
+    name: '影弓手', lvOff: 1, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true, xp: 14, drop: 0.25,
+    look: { rig: 'archer', h: 84, cloak: '#2a2233', cloth: '#3a3044', wrap: '#4a4054', leather: '#5a4232', boots: '#2a2028', eye: '#c48bff', weapon: { type: 'bow', color: '#8a6a4a' } },
     atk: { range: 330, windup: 38, recover: 30, cd: [110, 170],
       hit: { box: { w: 30, d: 18, z0: -20, z1: 20 }, dmg: 8, kb: 3, stun: 16, stop: 3, shake: 3 } },
   },
   brute: {
-    name: '铁甲屠夫', lv: 6, hp: 520, w: 58, h: 112, speed: 1.05, weight: 1.6, armor: 90,
-    look: { h: 112, bulk: 1.5, body: '#5a2e2a', limb: '#3a2a26', head: '#7a6a5e', eye: '#ffb347', weapon: { type: 'axe', len: 58, color: '#a9a29a' } },
+    name: '铁甲屠夫', lvOff: 3, hp: 520, w: 58, h: 112, speed: 1.05, weight: 1.6, armor: 90, xp: 45, drop: 0.7,
+    look: { rig: 'brute', h: 112, bulk: 1.5, twoHand: true, skin: '#8a6f5e', pants: '#3a2a26', metal: '#6f6a66', leather: '#4a2b22', eye: '#ffb347', weapon: { type: 'axe', len: 58, color: '#a9a29a' } },
     atk: { range: 95, windup: 54, recover: 46, cd: [110, 160], slam: true,
       hit: { dmg: 22, kb: 8, launch: 9, stop: 8, shake: 10, heavy: true } },
   },
@@ -28,14 +28,23 @@ export const TYPES = {
 let nextId = 0;
 
 export class Enemy {
-  constructor(type, x, y, game) {
+  // lv：关卡等级，决定血量和伤害；elite：精英怪（更大、更硬、必掉好装备）
+  constructor(type, x, y, game, { lv = 1, elite = false } = {}) {
     const T = TYPES[type];
     this.T = T;
     this.game = game;
     this.id = nextId++;
-    Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, facing: -1, w: T.w, h: T.h, team: 'enemy' });
-    this.maxHp = this.hp = this.hpTrail = T.hp;
-    this.maxArmor = this.armor = T.armor;
+    this.elite = elite;
+    const size = elite ? 1.12 : 1;
+    Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, facing: -1, w: T.w * size, h: T.h * size, team: 'enemy' });
+    this.look = { ...T.look, h: T.look.h * size };
+    this.name = (elite ? '精英·' : '') + T.name;
+    this.lv = lv + T.lvOff + (elite ? 2 : 0);
+    const scale = 1 + (lv - 1) * 0.32;
+    this.maxHp = this.hp = this.hpTrail = Math.round(T.hp * scale * (elite ? 2.6 : 1));
+    this.maxArmor = this.armor = Math.round(T.armor * scale * (elite ? 1.5 : 1));
+    this.dmgMul = (1 + (lv - 1) * 0.2) * (elite ? 1.3 : 1);
+    this.xp = Math.round(T.xp * (1 + (lv - 1) * 0.35) * (elite ? 3 : 1));
     this.brokenT = 0;
     this.state = 'spawn';
     this.st = 0;
@@ -133,7 +142,7 @@ export class Enemy {
     const A = this.T.atk;
     this.setState('attack');
     if (this.T.ranged) {
-      game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit }));
+      game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit, owner: this }));
       sfx('shoot');
     } else if (!A.slam) {
       this.vx = this.facing * 5;
@@ -155,17 +164,18 @@ export class Enemy {
     }
     if (this.st >= A.recover) {
       this.setState('idle');
-      this.attackCd = rand(A.cd[0], A.cd[1]) | 0;
+      this.attackCd = (rand(A.cd[0], A.cd[1]) * (this.elite ? 0.8 : 1)) | 0;
     }
   }
 
   // ---------- 受击 ----------
-  takeHit(h, dir, game) {
-    if (!this.alive || this.state === 'spawn' || this.state === 'down' || this.invuln > 0) return null;
-    let dmg = Math.round(h.dmg * (0.9 + Math.random() * 0.2));
-    const crit = Math.random() < 0.15;
-    if (crit) dmg = Math.round(dmg * 1.6);
-    if (this.brokenT > 0) dmg = Math.round(dmg * 1.3); // 破防状态受到更多伤害
+  canBeHit() {
+    return this.alive && this.state !== 'spawn' && this.state !== 'down' && this.invuln <= 0;
+  }
+
+  // dmg 已在 game.applyHit 里按攻击力、技能等级、暴击算好
+  takeHit(h, dir, dmg) {
+    if (!this.canBeHit()) return null;
     this.hp -= dmg;
     this.flash = 6;
 
@@ -175,7 +185,7 @@ export class Enemy {
       this.vz = Math.max(h.launch ?? 0, 7);
       this.z = Math.max(this.z, 0.01);
       this.vx = dir * ((h.kb ?? 0) + 3);
-      return { dmg, crit, killed: true };
+      return { killed: true };
     }
 
     // 霸体：扣血、扣护甲，但不会被打断
@@ -187,9 +197,9 @@ export class Enemy {
         this.setState('hurt');
         this.hitstun = 50;
         this.vx = dir * 4;
-        return { dmg, crit, broke: true };
+        return { broke: true };
       }
-      return { dmg, crit };
+      return {};
     }
 
     const airborne = this.z > 0 || (h.launch ?? 0) > 0;
@@ -207,7 +217,7 @@ export class Enemy {
       this.vx = (dir * (h.kb ?? 0)) / this.T.weight;
     }
     this.facing = -dir;
-    return { dmg, crit };
+    return {};
   }
 
   physics(game) {
@@ -253,11 +263,11 @@ export class Enemy {
   // ---------- 绘制 ----------
   pose(t) {
     const s = this.state, A = this.T.atk;
-    const p = { lean: 0, walk: this.walk, crouch: 0, angle: 0.8, lie: 0, draw: 0 };
+    const p = { lean: 0, walk: this.walk, crouch: 0, angle: 0.8, lie: 0, draw: 0, lift: 0 };
     switch (s) {
       case 'idle':
         if (!this.vx && !this.vy) { p.walk = 0; p.crouch = 0.06 + Math.sin(t * 0.07 + this.id) * 0.05; }
-        else p.lean = 3;
+        else { p.lean = 3; p.lift = 1; }
         break;
       case 'windup':
         p.crouch = 0.3; p.lean = -5; p.angle = A.slam ? -2.6 : -2.3;
@@ -286,7 +296,8 @@ export class Enemy {
     ctx.save();
     if (this.state === 'windup') { ctx.shadowColor = '#ff2a2a'; ctx.shadowBlur = 12 + 8 * Math.sin(this.st * 0.6); }
     else if (this.armor > 0 && this.alive) { ctx.shadowColor = COLORS.ember; ctx.shadowBlur = 12; }
-    drawHumanoid(ctx, sx, sy, { ...this.T.look, ...this.pose(t), facing: this.facing, flash: this.flash > 2, alpha });
+    else if (this.elite && this.alive) { ctx.shadowColor = COLORS.gold; ctx.shadowBlur = 10 + 4 * Math.sin(t * 0.1); }
+    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
     ctx.restore();
 
     const top = sy - this.h - 14;

@@ -1,0 +1,20 @@
+<meta charset="utf-8"><title>模型展示</title>
+<body style="margin:0;background:#1a1520">
+<canvas id="c" width="1400" height="520"></canvas>
+<script type="module">
+import { drawFighter } from './src/rig.js';
+import { TYPES } from './src/enemy.js';
+import { playerLook, newSave } from './src/progression.js';
+import { makeItem } from './src/items.js';
+const ctx = document.getElementById('c').getContext('2d');
+const s = newSave(); s.equip.weapon = makeItem('weapon', 9, 3, 'katana'); s.equip.weapon.enh = 8; s.equip.armor = makeItem('armor', 9, 2); s.equip.helm = makeItem('helm', 9, 3);
+const hero0 = playerLook(newSave()), hero1 = playerLook(s);
+const items = [
+  [hero0, { crouch: .08, angle: .75 }], [hero1, { crouch: .1, angle: -1.2, lean: 4 }], [{ ...hero0, weapon: { ...hero0.weapon, type: 'great', len: 70 } }, { lean: 5, walk: 1, lift: 1, angle: 1 }],
+  [TYPES.grunt.look, { angle: .8 }], [TYPES.grunt.look, { angle: -2.3, crouch: .3, lean: -5 }],
+  [TYPES.archer.look, { angle: 0, draw: 1, crouch: .3 }], [TYPES.brute.look, { angle: .8 }], [TYPES.brute.look, { angle: -2.6, crouch: .3, lean: -5 }],
+];
+let x = 80;
+ctx.scale(1.6, 1.6);
+for (const [L, P] of items) { drawFighter(ctx, x, 280, L, P, { facing: 1, t: 30 }); x += 105; }
+</script>

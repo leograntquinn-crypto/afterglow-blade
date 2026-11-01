@@ -16,7 +16,6 @@
 //     spike   向下砸（落地反弹）| radial 以自身为中心向外击退
 
 import { Projectile } from './combat.js';
-import { COLORS } from './config.js';
 import { sfx } from './audio.js';
 
 const MELEE = { x: 48, w: 92, d: 30, z0: 0, z1: 100 };
@@ -77,37 +76,65 @@ export const MOVES = {
     events: { 0: charge, 8: charge, 16: charge, 30: quakeBurst },
     hits: [{ at: 30, dur: 4, absZ: true, radial: true, box: { x: 30, w: 340, d: 80, z0: -10, z1: 170 }, dmg: 55, kb: 5, launch: 14, stop: 14, shake: 16, heavy: true }],
   },
+  // 千刃·残光：突进 + 八连斩 + 重斩收尾
+  flurry: {
+    skill: true, total: 80, cancel: 70, armor: true, invuln: [0, 22], lunge: [0, 10, 9], flurry: true, heavy: true,
+    swing: [-2.2, 1.4], swingAt: 56, swingDur: 4,
+    events: { 0: flurryStart, 56: flurryEnd },
+    hits: [
+      ...[8, 13, 18, 23, 28, 33, 38, 43].map((at) => ({
+        at, dur: 3, box: { x: 34, w: 150, d: 40, z0: -10, z1: 140 }, dmg: 9, kb: 0.6, stun: 30, stop: 2, shake: 2,
+      })),
+      { at: 56, dur: 4, box: { x: 50, w: 190, d: 46, z0: -10, z1: 160 }, dmg: 50, kb: 7, launch: 12, stun: 30, stop: 13, shake: 13, heavy: true },
+    ],
+  },
 };
 
 export const SKILLS = {
   skill1: { key: 'U', name: '裂空斩', glyph: '裂', move: 'wave', mp: 15, cd: 150 },
   skill2: { key: 'I', name: '回风斩', glyph: '风', move: 'whirl', mp: 22, cd: 330 },
   skill3: { key: 'O', name: '崩山击', glyph: '崩', move: 'quake', mp: 40, cd: 720 },
+  skill4: { key: 'P', name: '千刃·残光', glyph: '千', move: 'flurry', mp: 50, cd: 900 },
 };
 export const SKILL_KEYS = Object.keys(SKILLS);
+
+// 给技能的判定打上标签，伤害计算时按技能等级加成
+for (const [key, s] of Object.entries(SKILLS)) for (const h of MOVES[s.move].hits) h.skill = key;
 
 // ---------- 招式事件 ----------
 function spawnWave(p, game) {
   game.projectiles.push(new Projectile({
     x: p.x + p.facing * 40, y: p.y, z: 0, vx: p.facing * 10.5, life: 46, team: 'player', kind: 'wave', pierce: true,
-    hit: { box: { w: 56, d: 30, z0: 0, z1: 100 }, dmg: 26, kb: 3, launch: 8, stop: 6, shake: 5, heavy: true },
+    hit: { box: { w: 56, d: 30, z0: 0, z1: 100 }, dmg: 26, kb: 3, launch: 8, stop: 6, shake: 5, heavy: true, skill: 'skill1' },
+    color: p.glow,
   }));
-  game.fx.ring(p.x + p.facing * 40, p.y, 50, COLORS.blade, 10, 6, 12, 4);
+  game.fx.ring(p.x + p.facing * 40, p.y, 50, p.glow, 10, 6, 12, 4);
 }
 
 function charge(p, game) {
-  game.fx.converge(p.x, p.y, p.z + 50, 14, COLORS.blade);
-  game.fx.flash(COLORS.blade, 0.08);
+  game.fx.converge(p.x, p.y, p.z + 50, 14, p.glow);
+  game.fx.flash(p.glow, 0.08);
+}
+
+function flurryStart(p, game) {
+  game.fx.dust(p.x, p.y, 10, 2);
+  game.fx.flash(p.glow, 0.12);
+}
+
+function flurryEnd(p, game) {
+  game.fx.flash('#ffffff', 0.3);
+  game.fx.ring(p.x + p.facing * 60, p.y, 60, p.glow, 20, 10, 16, 6);
+  game.fx.spark(p.x + p.facing * 60, p.y, 60, p.facing, 16, p.glow);
 }
 
 function quakeBurst(p, game) {
   const x = p.x + p.facing * 30;
   game.fx.flash('#ffffff', 0.55);
   game.fx.shake(16, 28);
-  for (let i = 0; i < 3; i++) game.fx.ring(x, p.y, 2, i ? COLORS.blade : '#ffffff', 20 + i * 12, 12 - i * 2, 18 + i * 4, 6);
+  for (let i = 0; i < 3; i++) game.fx.ring(x, p.y, 2, i ? p.glow : '#ffffff', 20 + i * 12, 12 - i * 2, 18 + i * 4, 6);
   game.fx.dust(x, p.y, 26, 3);
-  game.fx.spark(x, p.y, 10, 1, 10, COLORS.blade);
-  game.fx.spark(x, p.y, 10, -1, 10, COLORS.blade);
+  game.fx.spark(x, p.y, 10, 1, 10, p.glow);
+  game.fx.spark(x, p.y, 10, -1, 10, p.glow);
   game.fx.crack(x, p.y);
   sfx('quake');
 }

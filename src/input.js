@@ -12,7 +12,8 @@ const KEYMAP = {
   KeyJ: 'attack',
   KeyK: 'jump', Space: 'jump',
   KeyL: 'dash', ShiftLeft: 'dash',
-  KeyU: 'skill1', KeyI: 'skill2', KeyO: 'skill3',
+  KeyU: 'skill1', KeyI: 'skill2', KeyO: 'skill3', KeyP: 'skill4',
+  Escape: 'pause',
   Enter: 'start',
 };
 

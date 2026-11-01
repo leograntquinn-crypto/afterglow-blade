@@ -35,3 +35,9 @@ export const lerp = (a, b, t) => a + (b - a) * t;
 export function toScreen(x, y, z, camX) {
   return [x - camX, GROUND_TOP + y - z];
 }
+
+// '#rrggbb' → 'rgba(r,g,b,a)'
+export function hexA(hex, a) {
+  const n = parseInt(hex.slice(1), 16);
+  return `rgba(${n >> 16},${(n >> 8) & 255},${n & 255},${a})`;
+}

@@ -8,26 +8,22 @@
 //      └──闪避──> dash ──攻击──> attack(冲刺攻击)
 //   被打 → hurt / knock(击飞) → down(倒地) → idle
 
-import { GRAVITY, DEPTH, ARENA_W, clamp, lerp, toScreen, COLORS } from './config.js';
+import { GRAVITY, DEPTH, ARENA_W, clamp, lerp, toScreen } from './config.js';
 import { MOVES, SKILLS, SKILL_KEYS } from './moves.js';
+import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
-import { drawHumanoid } from './draw.js';
+import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
-
-const LOOK = {
-  h: 86, body: '#2b3f5c', limb: '#18202d', head: '#efd6bd', scarf: COLORS.blade, eye: '#0b0910',
-  weapon: { type: 'sword', len: 64, color: '#e8fdff', glow: COLORS.blade },
-};
-
 const easeOut = (u) => 1 - (1 - u) * (1 - u);
 
 export class Player {
-  constructor(x, y) {
+  constructor(x, y, stats, look) {
     Object.assign(this, { x, y, z: 0, vx: 0, vy: 0, vz: 0, facing: 1, w: 34, h: 86, team: 'player' });
-    this.maxHp = this.hp = this.hpTrail = 300;
-    this.maxMp = this.mp = 120;
+    this.look = look;
+    this.glow = look.weapon.glow; // 刀光颜色跟随武器品质
+    this.applyStats(stats, true);
     this.state = 'idle';
     this.st = 0; // 当前状态已持续的帧数
     this.flash = 0;
@@ -36,12 +32,23 @@ export class Player {
     this.mf = 0; // 当前招式的帧数
     this.hitSets = [];
     this.landed = false; // 当前招式是否已命中
-    this.cd = { skill1: 0, skill2: 0, skill3: 0 };
+    this.cd = { skill1: 0, skill2: 0, skill3: 0, skill4: 0 };
+    this.cdMax = { ...this.cd };
     this.dashCd = 0;
     this.airHangs = 0;
     this.walk = 0;
     this.ghosts = []; // 残影
     this.dmgTaken = 0;
+  }
+
+  applyStats(S, full) {
+    this.S = S;
+    this.maxHp = S.maxHp;
+    this.maxMp = S.maxMp;
+    if (full) {
+      this.hp = this.hpTrail = S.maxHp;
+      this.mp = S.maxMp;
+    }
   }
 
   setState(s) {
@@ -54,8 +61,8 @@ export class Player {
     if (this.invuln > 0) this.invuln--;
     if (this.flash > 0) this.flash--;
     if (this.dashCd > 0) this.dashCd--;
-    this.mp = Math.min(this.maxMp, this.mp + 0.11);
-    this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - 1.2) : this.hp;
+    this.mp = Math.min(this.maxMp, this.mp + this.S.mpRegen);
+    this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.004) : this.hp;
     for (const k in this.cd) if (this.cd[k] > 0) this.cd[k]--;
     for (const g of this.ghosts) g.life--;
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
@@ -91,9 +98,8 @@ export class Player {
       this.z += this.vz;
       if (this.z <= 0) {
         this.z = 0;
-        const v = this.vz;
         this.vz = 0;
-        this.onLand(game, v);
+        this.onLand(game);
       }
     }
     this.x = clamp(this.x, 30, ARENA_W - 30);
@@ -204,7 +210,7 @@ export class Player {
     if (m.moveDuring) { this.vx = inp.dx * m.moveDuring; this.vy = inp.dy * m.moveDuring * 0.7; }
     else if (m.lunge && f >= m.lunge[0] && f < m.lunge[1]) this.vx = this.facing * m.lunge[2];
     else if (!m.air) { this.vx *= 0.7; this.vy = 0; }
-    if ((m.thrust || m.skill) && f % 2 === 0 && f < 16) this.addGhost();
+    if ((m.thrust || m.skill) && f % 2 === 0 && f < (m.flurry ? 50 : 16)) this.addGhost();
     if (m.invuln && f >= m.invuln[0] && f < m.invuln[1]) this.invuln = Math.max(this.invuln, 2);
 
     m.events?.[f]?.(this, game);
@@ -212,14 +218,20 @@ export class Player {
     // 刀光
     const swingAt = m.swingAt ?? m.hits[0]?.at;
     if (f === swingAt && !m.spin) {
-      game.fx.arc(this.x + this.facing * 6, this.y, this.z + 56, this.facing, m.heavy ? 80 : 64, m.swing[0], m.swing[1], COLORS.blade, m.heavy ? 18 : 13);
+      game.fx.arc(this.x + this.facing * 6, this.y, this.z + 56, this.facing, m.heavy ? 80 : 64, m.swing[0], m.swing[1], this.glow, m.heavy ? 18 : 13);
       sfx('swing');
     }
 
     // 判定
     m.hits.forEach((h, i) => {
       if (f === h.at && m.spin) {
-        game.fx.ring(this.x, this.y, this.z + 50, COLORS.blade, 40, 7, 10, 5);
+        game.fx.ring(this.x, this.y, this.z + 50, this.glow, 40, 7, 10, 5);
+        sfx('swing');
+      }
+      if (f === h.at && m.flurry && i < m.hits.length - 1) {
+        // 乱舞：每一刀随机角度的刀光
+        const a0 = -2.4 + Math.random() * 1.2;
+        game.fx.arc(this.x + this.facing * 40, this.y, this.z + 50, this.facing, 60 + Math.random() * 20, a0, a0 + 2.6 + Math.random(), this.glow, 11, 7);
         sfx('swing');
       }
       if (f < h.at || f >= h.at + h.dur) return;
@@ -260,22 +272,23 @@ export class Player {
       if (!inp.buffered(key)) continue;
       inp.consume(key);
       const s = SKILLS[key];
-      if (this.cd[key] > 0) { game.fx.label(this.x, this.y, this.z + 110, '冷却中', '#9fb3c8', 18); sfx('deny'); continue; }
-      if (this.mp < s.mp) { game.fx.label(this.x, this.y, this.z + 110, '魔力不足', COLORS.mp, 18); sfx('deny'); continue; }
+      const say = (text, color) => { game.fx.label(this.x, this.y, this.z + 110, text, color, 18); sfx('deny'); };
+      if (!game.save.skills[key]) { say(`Lv.${SKILL_TREE.find((n) => n.key === key).unlock} 习得`, '#9fb3c8'); continue; }
+      if (this.cd[key] > 0) { say('冷却中', '#9fb3c8'); continue; }
+      if (this.mp < s.mp) { say('魔力不足', '#4fa3ff'); continue; }
       this.mp -= s.mp;
-      this.cd[key] = s.cd;
+      this.cd[key] = this.cdMax[key] = Math.round(s.cd * (1 - this.S.cdr));
       this.startMove(game, s.move);
-      game.fx.label(this.x, this.y, this.z + 118, s.name, COLORS.blade, 28);
+      game.fx.label(this.x, this.y, this.z + 118, s.name, this.glow, 28);
       sfx('skill');
       return true;
     }
     return false;
   }
 
-  // ---------- 受击 ----------
-  takeHit(h, dir) {
+  // ---------- 受击（伤害已经在 game.applyHit 里算好）----------
+  takeHit(h, dir, dmg) {
     if (this.invuln > 0 || this.state === 'dead' || this.state === 'down') return null;
-    const dmg = Math.round(h.dmg * (0.9 + Math.random() * 0.2));
     this.hp = Math.max(0, this.hp - dmg);
     this.dmgTaken += dmg;
     this.flash = 6;
@@ -285,9 +298,9 @@ export class Player {
       this.vz = 8;
       this.z = Math.max(this.z, 0.01);
       this.vx = dir * 4;
-      return { dmg };
+      return {};
     }
-    if (this.state === 'attack' && this.move?.armor) return { dmg }; // 霸体：吃伤害但不中断
+    if (this.state === 'attack' && this.move?.armor) return {}; // 霸体：吃伤害但不中断
     this.move = null;
     if ((h.launch ?? 0) > 0 || this.z > 0) {
       this.setState('knock');
@@ -301,31 +314,33 @@ export class Player {
     }
     this.facing = -dir;
     this.invuln = 8;
-    return { dmg };
+    return {};
   }
 
   // ---------- 绘制 ----------
   pose(t) {
     const s = this.state;
-    const p = { lean: 0, walk: this.walk, crouch: 0, angle: 0.7, lie: 0 };
+    const p = { lean: 0, walk: this.walk, crouch: 0, angle: 0.7, lie: 0, lift: 0 };
     if (s === 'idle') { p.walk = 0; p.crouch = 0.08 + Math.sin(t * 0.08) * 0.06; p.angle = 0.75; }
-    else if (s === 'run') { p.lean = 5; p.angle = 1.0; }
-    else if (s === 'air') { p.walk = 1.2; p.angle = this.vz > 0 ? -0.5 : 0.4; p.crouch = 0.2; }
-    else if (s === 'dash') { p.lean = 12; p.angle = 2.5; p.crouch = 0.35; p.walk = 1.4; }
-    else if (s === 'hurt') { p.lean = -8; p.angle = 1.4; }
+    else if (s === 'run') { p.lean = 5; p.angle = 1.0; p.lift = 1; p.backAngle = 1.35 - Math.sin(this.walk) * 0.8; }
+    else if (s === 'air') { p.walk = 1.2; p.angle = this.vz > 0 ? -0.5 : 0.4; p.crouch = 0.3; p.lift = 1; p.backAngle = 2.4; }
+    else if (s === 'dash') { p.lean = 12; p.angle = 2.5; p.crouch = 0.35; p.walk = 1.4; p.backAngle = 2.8; }
+    else if (s === 'hurt') { p.lean = -8; p.angle = 1.4; p.backAngle = 2.2; }
     else if (s === 'knock') { p.lie = Math.min(1, this.st / 14); p.angle = 2; }
     else if (s === 'down' || s === 'dead') { p.lie = s === 'down' && this.st > 30 ? 1 - (this.st - 30) / 10 : 1; p.angle = 2.2; }
     else if (s === 'attack') {
       const m = this.move, f = this.mf;
       p.walk = 0.6;
-      if (m.spin) { p.angle = f * 0.9; p.crouch = 0.25; p.lean = 4; }
+      p.backAngle = 2.5;
+      if (m.spin) { p.angle = f * 0.9; p.crouch = 0.25; p.lean = 4; p.backAngle = f * 0.9 + Math.PI; }
+      else if (m.flurry && f < 50) { p.angle = Math.sin(f * 1.7) * 2.2; p.lean = 10; p.crouch = 0.3; }
       else {
         const at = m.swingAt ?? m.hits[0]?.at ?? 6, dur = m.swingDur ?? m.hits[0]?.dur ?? 4;
         const u = clamp((f - at) / dur, 0, 1);
         p.angle = lerp(m.swing[0], m.swing[1], easeOut(u));
         p.lean = f < at ? -3 : 7;
         p.crouch = f < at ? (m.skill ? 0.45 : 0.25) : 0.1;
-        if (m.thrust) { p.lean = 12; p.crouch = 0.3; }
+        if (m.thrust) { p.lean = 12; p.crouch = 0.3; p.backAngle = 3; }
       }
     }
     return p;
@@ -338,14 +353,14 @@ export class Player {
   draw(ctx, camX, t) {
     for (const g of this.ghosts) {
       const [gx, gy] = toScreen(g.x, g.y, g.z, camX);
-      drawHumanoid(ctx, gx, gy, { ...LOOK, ...g.pose, facing: g.facing, ghost: COLORS.blade, alpha: (g.life / 12) * 0.35, t });
+      drawFighter(ctx, gx, gy, this.look, g.pose, { facing: g.facing, ghost: this.glow, alpha: (g.life / 12) * 0.35, t });
     }
     const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
     const blink = this.invuln > 0 && (this.state === 'idle' || this.state === 'run') && (t >> 2) % 2;
     const armored = this.state === 'attack' && this.move?.armor;
     ctx.save();
-    if (armored) { ctx.shadowColor = COLORS.blade; ctx.shadowBlur = 16; }
-    drawHumanoid(ctx, sx, sy, { ...LOOK, ...this.pose(t), facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
+    if (armored) { ctx.shadowColor = this.glow; ctx.shadowBlur = 16; }
+    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
     ctx.restore();
   }
 }
