@@ -8,6 +8,7 @@ export class FX {
     this.shakeT = 0;
     this.shakeDur = 1;
     this.shakeMag = 0;
+    this.rot = 0;        // 旋转震屏（弧度）
     this.flashA = 0;
     this.flashColor = '#fff';
   }
@@ -21,6 +22,8 @@ export class FX {
       this.shakeT = dur;
       this.shakeDur = dur;
     }
+    // 重击带一点旋转，比单纯平移更有冲击力
+    if (mag >= 7 && !REDUCED_MOTION) this.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.03, mag * 0.0022);
   }
   flash(color, a) {
     this.flashColor = color;
@@ -83,7 +86,16 @@ export class FX {
   }
 
   // ---------- 文字 ----------
+  // 斩痕：命中点闪过一道沿挥砍方向的锐利白线，先迅速拉长再变细消失
+  cut(x, y, z, angle, len, color) {
+    this.parts.push({ k: 'cut', x, y, z, angle, len, color, life: 9, max: 9 });
+  }
+
   number(x, y, z, value, { crit = false, color = null } = {}) {
+    // 同一位置刚刚冒过数字 → 往上错开，避免叠成一团
+    const near = this.texts.filter((t) => t.k === 'num' && t.max - t.life < 14 && Math.abs(t.x - x) < 60 && Math.abs(t.y - y) < 30).length;
+    z += Math.min(near, 3) * 22;
+    if (near > 3) x += (near % 2 ? 1 : -1) * (18 + (near - 3) * 6);
     this.texts.push({ k: 'num', x: x + rand(-14, 14), y, z, vz: 2.4, life: 48, max: 48, value, crit, color });
   }
   label(x, y, z, text, color, size = 22) {
@@ -92,6 +104,7 @@ export class FX {
 
   update() {
     if (this.shakeT > 0) this.shakeT--;
+    this.rot *= 0.82;
     if (this.flashA > 0) this.flashA = Math.max(0, this.flashA - 0.04);
     for (const p of this.parts) {
       p.life--;
@@ -197,6 +210,24 @@ export class FX {
           ctx.stroke();
         }
         ctx.restore();
+      } else if (p.k === 'cut') {
+        const age = p.max - p.life;
+        const grow = Math.min(1, age / 2.5);
+        const half = (p.len / 2) * grow;
+        const w = Math.max(0.6, 7 * t);
+        const dx = Math.cos(p.angle) * half, dy = Math.sin(p.angle) * half;
+        ctx.globalAlpha = Math.min(1, t * 1.6);
+        // 外层彩色光晕 + 内层白芯，两端尖、中间粗
+        for (const [col, mul] of [[p.color, 2.2], ['#ffffff', 1]]) {
+          ctx.fillStyle = col;
+          ctx.beginPath();
+          ctx.moveTo(sx - dx, sy - dy);
+          ctx.lineTo(sx + Math.sin(p.angle) * w * mul * 0.5, sy - Math.cos(p.angle) * w * mul * 0.5);
+          ctx.lineTo(sx + dx, sy + dy);
+          ctx.lineTo(sx - Math.sin(p.angle) * w * mul * 0.5, sy + Math.cos(p.angle) * w * mul * 0.5);
+          ctx.closePath();
+          ctx.fill();
+        }
       } else if (p.k === 'mote') {
         ctx.fillStyle = p.color;
         ctx.globalAlpha = 1 - t * 0.5;

@@ -387,13 +387,14 @@ export class Boss extends Enemy {
   }
 
   draw(ctx, camX, t) {
-    const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
+    let [sx, sy] = toScreen(this.x, this.y, this.z, camX);
+    if (this.game.ticks < (this.shakeUntil ?? 0)) sx += (Math.random() - 0.5) * 2 * (this.shakeAmp ?? 3);
     let alpha = this.fade;
     if (this.state === 'dying' && this.z <= 0) alpha *= Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha *= Math.min(1, this.st / 24);
     if (this.tele) drawAura(ctx, sx, sy, this.h, '#ff2a2a', (1.3 + 0.5 * Math.sin(t * 0.6)) * alpha);
     else if (this.alive) drawAura(ctx, sx, sy, this.h, this.armor > 0 ? this.B.glow : COLORS.ember, (0.8 + 0.25 * Math.sin(t * 0.1) + this.phase * 0.3) * alpha);
-    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
+    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.game.ticks < (this.flashUntil ?? 0), alpha, t });
     const top = sy - this.h - 18;
     ctx.save();
     ctx.textAlign = 'center';

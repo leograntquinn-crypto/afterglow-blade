@@ -95,6 +95,10 @@ const SOUNDS = {
   ultReady: () => [523, 659, 784, 1046].forEach((f, i) => tone({ f, f2: f, dur: 0.3, type: 'triangle', vol: 0.1, delay: i * 0.05 })),
   ultStart: () => { tone({ f: 60, f2: 40, dur: 1.2, vol: 0.6 }); noise({ dur: 0.9, type: 'highpass', f: 1500, f2: 9000, vol: 0.25 }); [392, 523, 659].forEach((f, i) => tone({ f, f2: f * 1.01, dur: 0.8, type: 'sawtooth', vol: 0.04, delay: 0.2 + i * 0.12 })); },
   parry: () => { [1800, 2700, 3600].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.5 - i * 0.1, type: 'triangle', vol: 0.12 })); noise({ dur: 0.12, f: 5000, q: 3, vol: 0.4 }); tone({ f: 200, f2: 80, dur: 0.15, vol: 0.4 }); },
+  hitBone: () => { noise({ dur: 0.05, f: 3800, q: 2.5, vol: 0.28 }); tone({ f: 950, f2: 500, dur: 0.05, type: 'triangle', vol: 0.12 }); },
+  hitMetal: () => { [1250, 1890].forEach((f) => tone({ f, f2: f * 0.97, dur: 0.22, type: 'triangle', vol: 0.06 })); noise({ dur: 0.05, f: 5000, q: 2, vol: 0.18 }); },
+  hitCloth: () => noise({ dur: 0.09, type: 'lowpass', f: 900, f2: 300, vol: 0.32 }),
+  pot: () => { noise({ dur: 0.18, f: 1400, f2: 600, q: 1.2, vol: 0.4 }); for (let i = 0; i < 4; i++) noise({ dur: 0.04, f: 2500 + i * 600, q: 3, vol: 0.15, delay: 0.03 + i * 0.035 }); },
   lose: () => [392, 330, 262].forEach((f, i) => tone({ f, f2: f * 0.98, dur: 0.4, type: 'triangle', vol: 0.12, delay: i * 0.18 })),
 };
 

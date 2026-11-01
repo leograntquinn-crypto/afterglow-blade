@@ -138,3 +138,53 @@ export class Shrine {
     }
   }
 }
+
+// 陶罐：一刀打碎，掉金币，有时掉回血的光球
+export class Urn {
+  constructor(spot) {
+    Object.assign(this, { x: spot.x, y: spot.y, z: 0, vx: 0, w: 26, h: 40, team: 'prop', facing: 1, spot, t: 0, variant: spot.variant });
+  }
+  get alive() { return false; }
+  canBeHit() { return !this.spot.broken; }
+  takeHit(h, dir, dmg, game) {
+    if (this.spot.broken) return null;
+    this.spot.broken = true;
+    this.remove = true;
+    game.breakUrn(this, dir);
+    return {};
+  }
+  update() { this.t++; }
+  draw(ctx, camX) {
+    const [sx, sy] = toScreen(this.x, this.y, 0, camX);
+    const tall = this.variant ? 1.15 : 1;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, tall);
+    ctx.lineJoin = 'round';
+    ctx.strokeStyle = '#120a16';
+    ctx.lineWidth = 2.5;
+    const g = ctx.createLinearGradient(-14, 0, 14, 0);
+    g.addColorStop(0, '#b07a4e');
+    g.addColorStop(0.4, '#8a5a3a');
+    g.addColorStop(1, '#4a2e1e');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(-6, -38);
+    ctx.lineTo(6, -38);
+    ctx.quadraticCurveTo(4, -32, 10, -28);
+    ctx.quadraticCurveTo(18, -16, 10, 0);
+    ctx.lineTo(-10, 0);
+    ctx.quadraticCurveTo(-18, -16, -10, -28);
+    ctx.quadraticCurveTo(-4, -32, -6, -38);
+    ctx.closePath();
+    ctx.stroke();
+    ctx.fill();
+    ctx.strokeStyle = 'rgba(30,15,10,.6)';
+    ctx.lineWidth = 1.5;
+    ctx.beginPath();
+    ctx.moveTo(-13, -18);
+    ctx.quadraticCurveTo(0, -14, 13, -18);
+    ctx.stroke();
+    ctx.restore();
+  }
+}

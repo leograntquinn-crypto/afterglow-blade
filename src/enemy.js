@@ -358,7 +358,8 @@ export class Enemy {
   }
 
   draw(ctx, camX, t) {
-    const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
+    let [sx, sy] = toScreen(this.x, this.y, this.z, camX);
+    if (this.game.ticks < (this.shakeUntil ?? 0)) sx += (Math.random() - 0.5) * 2 * (this.shakeAmp ?? 3);
     let alpha = 1;
     if (this.state === 'dying' && this.z <= 0) alpha = Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
@@ -371,7 +372,7 @@ export class Enemy {
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(1 + q * 0.14, 1 - q * 0.1);
-    drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
+    drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash: this.game.ticks < (this.flashUntil ?? 0), alpha, t });
     ctx.restore();
 
     const top = sy - this.h - 14;

@@ -42,6 +42,7 @@ export class Player {
     this.dmgTaken = 0;
     this.chain = null; // 延迟连段的窗口
     this.chargeLv = 0;
+    this.trail = [];   // 武器拖尾：最近几帧刀的姿态
   }
 
   applyStats(S, full) {
@@ -127,6 +128,72 @@ export class Player {
         break;
     }
     this.physics(game);
+    this.sampleTrail(game);
+  }
+
+  // ---------- 武器拖尾 ----------
+  // 每帧记录一次「肩膀位置 + 刀的角度」，绘制时在相邻两帧之间插值出平滑的弧
+  sampleTrail(game) {
+    for (const s of this.trail) s.life--;
+    this.trail = this.trail.filter((s) => s.life > 0);
+    if (this.state === 'run' && this.st % 10 === 0) game.fx.dust(this.x - this.facing * 8, this.y, 1, 0.5);
+    let on = false;
+    const m = this.move;
+    if (this.state === 'attack' && m) {
+      const at = m.swingAt ?? m.hits[0]?.at ?? 6, dur = m.swingDur ?? m.hits[0]?.dur ?? 4;
+      on = m.spin || m.flurry || m.id === 'rush' || m.plunge || (this.mf >= at - 1 && this.mf <= at + dur + 2);
+    } else if (this.state === 'ult') on = true;
+    if (!on) { if (this.trail.length) this.trail[this.trail.length - 1].end = true; return; }
+    const p = this.pose(0);
+    this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, a: p.angle, lean: p.lean || 0, crouch: p.crouch || 0, life: 9 });
+  }
+
+  drawTrail(ctx, camX) {
+    const T = this.trail;
+    if (T.length < 2) return;
+    const L = this.look.weapon.len;
+    // 和 rig.js 里的骨骼计算一致：肩膀 → 手（伸出 24）→ 刀身（从手往外 14 到 L）
+    const pts = (s, a) => {
+      const [bx, by] = toScreen(s.x, s.y, s.z, camX);
+      const shx = s.lean + 3, shy = -68 + s.crouch * 18 + 4;
+      const c = Math.cos(a), si = Math.sin(a);
+      const hx = shx + c * 24, hy = shy + si * 24;
+      return [[bx + s.f * (hx + c * 16), by + hy + si * 16], [bx + s.f * (hx + c * L), by + hy + si * L]];
+    };
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (let i = 1; i < T.length; i++) {
+      const s0 = T[i - 1], s1 = T[i];
+      if (s0.end || s0.f !== s1.f || Math.abs(s0.x - s1.x) > 60) continue;
+      // 角度差很大时多插几段，弧线才圆
+      const steps = Math.min(8, 2 + Math.ceil(Math.abs(s1.a - s0.a) / 0.25));
+      let prev = pts(s0, s0.a);
+      for (let k = 1; k <= steps; k++) {
+        const u = k / steps;
+        const mid = { x: s0.x + (s1.x - s0.x) * u, y: s0.y + (s1.y - s0.y) * u, z: s0.z + (s1.z - s0.z) * u, f: s1.f, lean: s0.lean + (s1.lean - s0.lean) * u, crouch: s0.crouch + (s1.crouch - s0.crouch) * u };
+        const cur = pts(mid, s0.a + (s1.a - s0.a) * u);
+        const life = (s0.life + (s1.life - s0.life) * u) / 9;
+        ctx.globalAlpha = 0.55 * life * life;
+        ctx.fillStyle = this.glow;
+        ctx.beginPath();
+        ctx.moveTo(prev[0][0], prev[0][1]);
+        ctx.lineTo(prev[1][0], prev[1][1]);
+        ctx.lineTo(cur[1][0], cur[1][1]);
+        ctx.lineTo(cur[0][0], cur[0][1]);
+        ctx.closePath();
+        ctx.fill();
+        // 刀尖的白色亮边
+        ctx.globalAlpha = 0.9 * life;
+        ctx.strokeStyle = '#ffffff';
+        ctx.lineWidth = 2.2 * life + 0.4;
+        ctx.beginPath();
+        ctx.moveTo(prev[1][0], prev[1][1]);
+        ctx.lineTo(cur[1][0], cur[1][1]);
+        ctx.stroke();
+        prev = cur;
+      }
+    }
+    ctx.restore();
   }
 
   physics(game) {

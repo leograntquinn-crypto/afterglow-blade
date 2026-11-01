@@ -16,7 +16,7 @@ import { STAGES, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
-import { Chest, Shrine } from './props.js';
+import { Chest, Shrine, Urn } from './props.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX } from './progression.js';
 import { RARITY, randomDrop, sellPrice, itemTitle } from './items.js';
@@ -143,6 +143,7 @@ class Game {
     this.witch = 0;        // 极限闪避后的子弹时间（敌人变慢）
     this.counterT = 0;     // 反击加成剩余帧数
     this.camKick = 0;      // 镜头朝命中方向的推动
+    this.impactUntil = 0;  // 冲击帧（反色）持续到哪一帧
     this.maxAttackers = 2;
     this.comboPop = 0;
     this.maxCombo = 0;
@@ -216,6 +217,11 @@ class Game {
     if (room.type === 'rest') {
       this.enemies.push(new Shrine(world.w / 2, DEPTH / 2 - 20, room.shrineUsed, () => (room.shrineUsed = true)));
       if (!room.shrineUsed) this.toast('靠近泉水恢复生命和魔力', '#6fe38a');
+    }
+    // 战斗房间里随机摆几个陶罐（打碎过的不会再出现）
+    if (room.type === 'fight' || room.type === 'elite') {
+      room.urns ??= Array.from({ length: 2 + Math.floor(Math.random() * 3) }, () => ({ x: rand(120, room.w - 120), y: rand(4, 40), broken: false, variant: Math.random() < 0.5 }));
+      for (const spot of room.urns) if (!spot.broken) this.enemies.push(new Urn(spot));
     }
     if (room.cleared) return;
     if (room.type === 'treasure' || room.type === 'rest') { room.cleared = true; return; }
@@ -315,6 +321,16 @@ class Game {
     if (tr.t >= 32) this.transition = null;
   }
 
+  breakUrn(u, dir) {
+    this.fx.chips(u.x, u.y, 20, dir, 16, '#8a5a3a');
+    this.fx.chips(u.x, u.y, 20, -dir, 6, '#b07a4e');
+    this.fx.dust(u.x, u.y, 8, 1.4);
+    sfx('pot');
+    const L = this.stage.lv;
+    for (let i = 0; i < 2; i++) this.loots.push(new Loot({ x: u.x, y: u.y, gold: Math.round(rand(3, 6) * (1 + L * 0.3)), vx: rand(-3, 3) }));
+    if (Math.random() < 0.28) this.loots.push(new Loot({ x: u.x, y: u.y, heal: 0.1, vx: rand(-2, 2) }));
+  }
+
   openChest(chest) {
     this.room.chestOpened = true;
     const L = this.stage.lv;
@@ -402,6 +418,14 @@ class Game {
 
   pickup(loot) {
     const p = this.player;
+    if (loot.heal) {
+      const n = Math.round(p.maxHp * loot.heal);
+      p.hp = Math.min(p.maxHp, p.hp + n);
+      this.fx.label(p.x, p.y, p.z + 100, `+${n}`, '#6fe38a', 20);
+      this.fx.ring(p.x, p.y, 40, '#6fe38a', 12, 6, 14, 3);
+      sfx('heal');
+      return;
+    }
     if (loot.gold) {
       this.gainGold(loot.gold);
       this.fx.label(p.x, p.y, p.z + 100, `+${loot.gold}`, COLORS.gold, 18);
@@ -480,8 +504,17 @@ class Game {
     sfx('witch');
   }
 
+  // 天花板落下碎石（重击、撞墙、砸地时）
+  debris(n) {
+    for (let i = 0; i < n; i++) {
+      const y = rand(0, DEPTH);
+      this.fx.chips(this.camX + rand(20, VIEW_W - 20), y, GROUND_TOP + y + rand(0, 40), Math.random() < 0.5 ? -1 : 1, 1, '#4a4050');
+    }
+  }
+
   parry(e) {
     const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
+    this.impactUntil = this.ticks + 2;
     const mx = (p.x + e.x) / 2, mz = 60;
     p.invuln = Math.max(p.invuln, 12);
     this.counterT = Math.max(this.counterT, 90);
@@ -514,6 +547,7 @@ class Game {
   // ---------------- 撞墙 / 坠星冲击 / 弹球 ----------------
   onWallBounce(e) {
     const wx = e.x < world.w / 2 ? 10 : world.w - 10;
+    this.debris(8);
     this.fx.crack(wx, e.y);
     this.fx.dust(wx, e.y, 14, 2);
     this.fx.ring(wx, e.y, e.z + 40, COLORS.ember, 10, 10, 16, 5);
@@ -543,13 +577,17 @@ class Game {
     for (const a of this.enemies) {
       if (!a.flying || Math.abs(a.vx) < 4 || a.team === 'prop') continue;
       for (const b of this.enemies) {
-        if (b === a || !b.alive || b.team === 'prop' || b.isBoss || a.pinSet.has(b)) continue;
+        if (b === a || !b.alive || b.team === 'prop' || b.isBoss || a.pinSet.has(b) || this.frame < (b.pinCd ?? 0)) continue;
         if (Math.abs(a.x - b.x) < (a.w + b.w) * 0.5 && Math.abs(a.y - b.y) < 24 && Math.abs(a.z - b.z) < 70) {
           a.pinSet.add(b);
+          b.pinCd = this.frame + 40; // 同一个敌人 40 帧内只会被撞一次，避免挤在一起时刷屏
           const h = { dmg: 6 + (a.flyDmg || 10) * 0.35, kb: 7, launch: 4.5, stun: 24, stop: 5, shake: 6, styleTag: 'pinball' };
           if (this.applyHit(this.player, b, h, Math.sign(a.vx))) {
             a.vx *= 0.75;
-            this.fx.label(b.x, b.y, b.z + b.h + 30, '撞 击', COLORS.ember, 20);
+            if (this.frame >= (this.pinLabelAt ?? 0)) {
+              this.pinLabelAt = this.frame + 24;
+              this.fx.label(b.x, b.y, b.z + b.h + 30, '撞 击', COLORS.ember, 20);
+            }
           }
         }
       }
@@ -610,6 +648,8 @@ class Game {
         this.applyHit(p, e, { dmg: 110, kb: 9, launch: 13, stop: 18, shake: 18, heavy: true, radial: true, ult: true, wallBounce: true, styleTag: 'ultEnd' }, Math.sign(e.x - p.x) || 1);
       }
       this.slowmo = 36;
+      this.impactUntil = this.ticks + 3;
+      this.debris(14);
     }
     if (U.t >= 175) {
       this.ultSeq = null;
@@ -674,6 +714,21 @@ class Game {
     const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
     this.fx.chips(hx, target.y, hz, dir, h.heavy ? 9 : 4, chip);
     if (fromPlayer && h.heavy) this.camKick += dir * 9;
+    // 斩痕：沿挥砍方向的一道锐利白线
+    if (fromPlayer && (src.move || h.ult)) {
+      const sw = src.move?.swing;
+      let ang = h.ult ? (Math.random() - 0.5) * 2.4 : !sw || Math.abs(sw[1] - sw[0]) < 0.2 ? (Math.random() - 0.5) * 0.2 : (sw[1] > sw[0] ? 0.62 : -0.62);
+      if (dir < 0) ang = Math.PI - ang;
+      this.fx.cut(target.x, target.y, hz, ang + (Math.random() - 0.5) * 0.3, h.heavy ? 170 : 110, this.player.glow);
+    }
+    // 受击闪白只持续 3 个真实帧（不受顿帧影响），之后露出原样配合抖动
+    target.flashUntil = this.ticks + 3;
+    // 受击抖动：顿帧期间被打中的一方原地颤动
+    target.shakeUntil = this.ticks + (h.stop ?? 4) + 3;
+    target.shakeAmp = h.heavy ? 5 : 3;
+    // 冲击帧 + 天花板落石
+    if (fromPlayer && (h.stop ?? 0) >= 11) this.impactUntil = this.ticks + 2;
+    if ((h.shake ?? 0) >= 9) this.debris(h.shake >= 14 ? 10 : 5);
     // 2. 伤害数字
     this.fx.number(target.x, target.y, target.z + target.h + 6, dmg, { crit, color: fromPlayer ? null : COLORS.blood });
     // 3. 顿帧：整个世界停住几帧，让「砍中」的瞬间被看清
@@ -682,8 +737,10 @@ class Game {
     if (h.shake) this.fx.shake(h.shake, 10 + h.shake);
     this.hitLights.push({ x: hx, y: target.y, z: hz, r: h.heavy ? 280 : 180, life: 8 });
     if (fromPlayer && (h.heavy || crit) && !REDUCED_MOTION) this.zoom = Math.max(this.zoom, h.heavy ? 0.045 : 0.025);
-    // 5. 音效
+    // 5. 音效：通用的「打中」+ 材质层（骨头脆响 / 金属鸣响 / 布料闷响）
     sfx(h.heavy || crit ? 'heavy' : 'hit');
+    const rig = target.look?.rig;
+    sfx(rig === 'grunt' ? 'hitBone' : rig === 'archer' ? 'hitCloth' : 'hitMetal');
 
     if (fromPlayer) {
       // 风格评价：伤害越高、越在空中、越是新的招式，分越高；反复用同一招分数递减
@@ -845,7 +902,8 @@ class Game {
     ox += this.camKick;
     const z = 1 + this.zoom;
     const fx0 = this.player.x - camX, fy0 = GROUND_TOP + this.player.y - 40;
-    const view = (c) => { c.translate(ox, oy); c.translate(fx0, fy0); c.scale(z, z); c.translate(-fx0, -fy0); };
+    const rot = this.fx.rot;
+    const view = (c) => { c.translate(ox, oy); c.translate(fx0, fy0); c.rotate(rot); c.scale(z, z); c.translate(-fx0, -fy0); };
     const toView = (x, y) => [(x - fx0) * z + fx0 + ox, (y - fy0) * z + fy0 + oy];
     const at = (wx, wy, wz = 0) => toView(wx - camX, GROUND_TOP + wy - wz);
 
@@ -890,11 +948,13 @@ class Game {
     // 3. 自发光的特效画在黑暗之上，再加泛光
     if (inWorld) {
       const g = post.beginGlow(view);
+      this.player.drawTrail(g, camX);
       this.fx.draw(g, camX, true);
       for (const pr of this.projectiles) pr.draw(g, camX, t);
       for (const l of this.loots) if (l.item) l.draw(g, camX, t);
       ctx.save();
       view(ctx);
+      this.player.drawTrail(ctx, camX);
       this.fx.draw(ctx, camX);
       ctx.restore();
       if (this.quality > 0) post.applyBloom(ctx);
@@ -948,6 +1008,15 @@ class Game {
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = this.fx.flashA * 0.8;
       ctx.fillStyle = this.fx.flashColor;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      ctx.restore();
+    }
+
+    // 冲击帧：极重的一击让画面反色 2 帧（动画里常用的手法）
+    if (this.ticks < this.impactUntil && !REDUCED_MOTION) {
+      ctx.save();
+      ctx.globalCompositeOperation = 'difference';
+      ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
       ctx.restore();
     }
