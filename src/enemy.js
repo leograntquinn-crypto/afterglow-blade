@@ -11,7 +11,7 @@ export const TYPES = {
     atk: { range: 62, windup: 26, hitAt: 4, recover: 34, cd: [70, 130],
       hit: { box: { x: 46, w: 76, d: 26, z0: 0, z1: 90 }, dmg: 9, kb: 4, stun: 18, stop: 4, shake: 4 } },
     // 第二种攻击：中距离突刺（看到红光后横向或纵向躲开）
-    lunge: { range: 190, minRange: 100, windup: 32, hitAt: 2, dur: 12, recover: 40, speed: 9,
+    lunge: { range: 190, minRange: 100, windup: 32, hitAt: 2, dur: 12, recover: 40, speed: 9, cd: [110, 170],
       hit: { box: { x: 40, w: 70, d: 24, z0: 0, z1: 90 }, dmg: 11, kb: 6, stun: 20, stop: 5, shake: 5 } },
   },
   archer: {
@@ -201,7 +201,8 @@ export class Enemy {
     }
     if (this.st >= A.recover) {
       this.setState('idle');
-      this.attackCd = (rand(A.cd[0], A.cd[1]) * (this.elite ? 0.8 : 1)) | 0;
+      const cd = A.cd ?? this.T.atk.cd ?? [80, 140];
+      this.attackCd = (rand(cd[0], cd[1]) * (this.elite ? 0.8 : 1)) | 0;
     }
   }
 

@@ -977,6 +977,15 @@ class Game {
     });
   }
 
+  // 运行时错误：记录到控制台（每种错误只报一次），然后继续跑，不让整个游戏冻住
+  reportError(err) {
+    this.errors ??= new Set();
+    const key = String(err?.message);
+    if (this.errors.has(key)) return;
+    this.errors.add(key);
+    console.error('[残光之刃] 运行时错误：', err);
+  }
+
   // 画质：2 高（原生分辨率）/ 1 中（最高 1280 宽，关颗粒）/ 0 低（960 宽，关雾和泛光）
   // 帧率持续偏低时自动降一档
   resize() {
@@ -1023,18 +1032,24 @@ document.fonts?.load(`40px ${FONT_NUM}`, '0123456789LEVEUPSABC').catch(() => {})
 const STEP = 1000 / 60;
 let last = performance.now(), acc = 0;
 function frame(now) {
+  // 先预约下一帧：就算这一帧出了错，游戏也不会整个停住
+  requestAnimationFrame(frame);
   const dt = Math.min(100, now - last);
   last = now;
   if (!document.hidden) game.watchPerf(dt);
   acc += dt * (game.slowmo > 0 ? 0.3 : 1);
   let steps = 0;
-  while (acc >= STEP && steps < 5) {
-    game.update();
-    acc -= STEP;
-    steps++;
+  try {
+    while (acc >= STEP && steps < 5) {
+      game.update();
+      acc -= STEP;
+      steps++;
+    }
+    if (steps === 5) acc = 0;
+    game.render();
+  } catch (err) {
+    acc = 0;
+    game.reportError(err);
   }
-  if (steps === 5) acc = 0;
-  game.render();
-  requestAnimationFrame(frame);
 }
 requestAnimationFrame(frame);
