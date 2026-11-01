@@ -1,6 +1,6 @@
 """把素材包处理成游戏用的图集。
 
-python3 -I tools/build_sprites.py <素材包根目录> <角色>      角色：hero（绯隼）/ grunt（腐骨兵）
+python3 -I tools/build_sprites.py <素材包根目录> <角色>      角色：hero（绯隼）/ grunt（腐骨兵）/ brute（铁甲屠夫）/ archer（影弓手）
 
 素材包都是同一种格式（512×512 单帧、锚点 (220,448)、animations.json），已经是原地动画，不再做对齐修正。
 处理内容：
@@ -8,7 +8,9 @@ python3 -I tools/build_sprites.py <素材包根目录> <角色>      角色：he
 2. 打成 8 列的 WebP 图集 + 一个 JSON（每帧的格子、时长、动画的接触帧和预警帧）
 3. 刀身检测（只有主角需要）：在每帧里找出刀（细长的钢灰色连通区域），记下刀柄和刀尖的位置。
    游戏用它画「贴着真实刀身」的刀光拖尾。检测不到的帧（刀被身体挡住、刀身太短）记为 null。
-4. 立绘、头像的缩小版
+4. 走路稳身（敌人）：素材按骨盆对齐，但走路时上身前后晃得厉害（腐骨兵 37px），在游戏里看起来一抽一抽的。
+   量出每帧上身（头肩到腰）的水平重心，用帧偏移 dx 把它往平均位置拉回 STEADY 比例。只改偏移，不动像素
+5. 立绘、头像的缩小版
 """
 import json, os, sys
 from collections import deque
@@ -25,10 +27,9 @@ TARGETS = {
                   "starfall_air", "starfall_land", "thrust", "low_sweep", "cast", "charge"},
         "art": {"hero_fullbody.png": ("fullbody", (512, 768)), "avatar_128.png": ("avatar", None)},
     },
-    "grunt": {
-        "out": "enemies", "name": "grunt", "blade": set(),
-        "art": {"avatar_128.png": ("avatar", None)},
-    },
+    "grunt": {"out": "enemies", "name": "grunt", "blade": set(), "steady": {"walk": 0.75}, "art": {"avatar_128.png": ("avatar", None)}},
+    "brute": {"out": "enemies", "name": "brute", "blade": set(), "steady": {"walk": 0.75}, "art": {"avatar_128.png": ("avatar", None)}},
+    "archer": {"out": "enemies", "name": "archer", "blade": set(), "steady": {"walk": 0.75}, "art": {"avatar_128.png": ("avatar", None)}},
 }
 T = TARGETS[WHO]
 OUT = os.path.join(ROOT, T["out"])
@@ -43,6 +44,15 @@ BLADE_FIX = {
     "launcher_04": [82, 60, 185, 72], "thrust_01": [72, 78, 152, 133], "thrust_03": [152, 95, 193, 97],
     "thrust_04": [122, 118, 186, 119],
 } if WHO == "hero" else {}
+
+
+def torso_x(im):
+    """上身（头顶往下 12%～45% 身高：头肩到腰）不透明像素的水平重心，不含腿和低垂的武器"""
+    a = np.asarray(im)[..., 3] > 128
+    top = int(np.nonzero(a.any(axis=1))[0][0])
+    h = PY - top
+    band = a[int(top + h * 0.12):int(top + h * 0.45)]
+    return float(np.nonzero(band)[1].mean())
 
 
 def components(m):
@@ -107,12 +117,20 @@ atlas = Image.new("RGBA", (cols * CELL, rows * CELL), (0, 0, 0, 0))
 out = {"cell": CELL, "cols": cols, "pivot": [PX * SCALE, PY * SCALE], "anims": {}, "frames": {}}
 found = total = 0
 for aname, anim in meta["animations"].items():
+    steady = T.get("steady", {}).get(aname, 0)
+    shifts = {}
+    if steady:
+        tx = {fn: torso_x(Image.open(f"{SRC}/{meta['frames'][fn]['file']}").convert("RGBA")) for fn in anim["frame_names"]}
+        mean = sum(tx.values()) / len(tx)
+        shifts = {fn: (mean - x) * steady for fn, x in tx.items()}
+        after = [x + shifts[fn] for fn, x in tx.items()]
+        print(f"{aname} 上身晃动 {max(tx.values()) - min(tx.values()):.0f}px → {max(after) - min(after):.0f}px（512 尺度）")
     for fn in anim["frame_names"]:
         im = Image.open(f"{SRC}/{meta['frames'][fn]['file']}").convert("RGBA")
         small = im.resize((CELL, CELL), Image.LANCZOS)
         i = names.index(fn)
         atlas.paste(small, ((i % cols) * CELL, (i // cols) * CELL))
-        fr = {"i": i, "dx": 0, "dy": 0, "ms": meta["frames"][fn].get("duration_ms", 1000 / anim["fps"])}
+        fr = {"i": i, "dx": round(shifts.get(fn, 0) * SCALE, 1), "dy": 0, "ms": meta["frames"][fn].get("duration_ms", 1000 / anim["fps"])}
         if aname in BLADE_ANIMS:
             bl = BLADE_FIX.get(fn) or blade(small)
             total += 1

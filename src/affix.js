@@ -155,7 +155,7 @@ export function drawAffixes(ctx, e, sx, sy, top) {
   const names = [...e.aff].map((k) => AFFIXES[k]);
   const w = 34;
   names.forEach((A, i) => {
-    const x = sx + (i - (names.length - 1) / 2) * (w + 4), y = top - 34;
+    const x = sx + (i - (names.length - 1) / 2) * (w + 4), y = top - 50; // 留出预警感叹号的位置
     ctx.fillStyle = 'rgba(10,6,14,.72)';
     ctx.fillRect(x - w / 2, y - 8, w, 16);
     ctx.strokeStyle = A.color;
