@@ -55,8 +55,9 @@ export class Projectile {
         ctx.globalAlpha = a * (0.9 - i * 0.25);
         ctx.strokeStyle = i === 0 ? '#ffffff' : this.color || COLORS.blade;
         ctx.lineWidth = 10 - i * 2.5;
+        const sc = this.scale || 1;
         ctx.beginPath();
-        ctx.ellipse(-i * 14, -50, 18, 52, 0, -Math.PI / 2, Math.PI / 2);
+        ctx.ellipse(-i * 14 * sc, -50 * sc, 18 * sc, 52 * sc, 0, -Math.PI / 2, Math.PI / 2);
         ctx.stroke();
       }
     } else if (this.kind === 'arrow') {

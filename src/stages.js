@@ -49,19 +49,21 @@ export function fmtTime(sec) {
 }
 
 // 评价 = 速度 + 无伤 + 连击，每项 0~3 分
-export function grade({ time, hpLostPct, maxCombo, rooms }) {
+export function grade({ time, hpLostPct, maxCombo, rooms, style = 0 }) {
   const par = rooms * 28; // 每个房间大约 28 秒算快
   const tS = time < par ? 3 : time < par * 1.5 ? 2 : time < par * 2.2 ? 1 : 0;
   const hS = hpLostPct < 0.3 ? 3 : hpLostPct < 0.8 ? 2 : hpLostPct < 1.5 ? 1 : 0;
   const cS = maxCombo >= 45 ? 3 : maxCombo >= 25 ? 2 : maxCombo >= 12 ? 1 : 0;
-  const total = tS + hS + cS;
-  const letter = total >= 8 ? 'S' : total >= 6 ? 'A' : total >= 4 ? 'B' : 'C';
+  const sS = style >= 5 ? 3 : style >= 4 ? 2 : style >= 2 ? 1 : 0; // 最高风格评级 SS / S / B
+  const total = tS + hS + cS + sS;
+  const letter = total >= 10 ? 'S' : total >= 8 ? 'A' : total >= 5 ? 'B' : 'C';
   return {
     letter, total,
     rows: [
       ['通关用时', fmtTime(time), tS],
       ['受到伤害', `${Math.round(hpLostPct * 100)}%`, hS],
       ['最高连击', `${maxCombo}`, cS],
+      ['最高风格', ['D', 'C', 'B', 'A', 'S', 'SS', 'SSS'][style], sS],
     ],
   };
 }

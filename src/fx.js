@@ -48,6 +48,13 @@ export class FX {
       this.parts.push({ k: 'dust', x: x + rand(-10, 10), y, z: rand(0, 6), vx: rand(-2.5, 2.5) * spread, vz: rand(0.5, 2.5), r: rand(5, 11), life: rand(18, 30) | 0, max: 30 });
     }
   }
+  // 材质碎片：受重力影响、会在地上弹跳翻滚的小块（骨渣、布屑、金属屑）
+  chips(x, y, z, dir, n, color) {
+    for (let i = 0; i < n; i++) {
+      this.parts.push({ k: 'chip', x, y: y + rand(-6, 6), z, vx: dir * rand(1.5, 6) + rand(-1, 1), vz: rand(2, 7), rot: rand(0, 6), vr: rand(-0.5, 0.5), s: rand(2, 4.5), life: rand(40, 70) | 0, max: 70, color });
+    }
+  }
+
   // 刀光：一段圆弧，a0 -> a1（弧度，0 = 正前方，负数 = 向上）
   arc(x, y, z, facing, r, a0, a1, color, w = 14, life = 9) {
     this.parts.push({ k: 'arc', x, y, z, facing, r, a0, a1, color, w, life, max: life });
@@ -93,6 +100,13 @@ export class FX {
         case 'ring': p.r += p.grow; p.grow *= 0.85; break;
         case 'dust': p.x += p.vx; p.z += p.vz; p.vx *= 0.9; p.vz *= 0.92; p.r += 0.35; break;
         case 'mote': p.x += p.vx; p.z += p.vz; break;
+        case 'chip':
+          p.vz -= 0.45;
+          p.x += p.vx;
+          p.z += p.vz;
+          p.rot += p.vr;
+          if (p.z < 0) { p.z = 0; p.vz = -p.vz * 0.35; p.vx *= 0.6; p.vr *= 0.6; }
+          break;
       }
     }
     this.parts = this.parts.filter((p) => p.life > 0);
@@ -130,6 +144,20 @@ export class FX {
       ctx.beginPath();
       ctx.arc(sx, sy, p.r, 0, Math.PI * 2);
       ctx.fill();
+    }
+    // 碎片：普通混合，带一点描边
+    for (const p of this.parts) {
+      if (p.k !== 'chip' || glowPass) continue;
+      const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
+      ctx.globalAlpha = Math.min(1, p.life / 15);
+      ctx.save();
+      ctx.translate(sx, sy);
+      ctx.rotate(p.rot);
+      ctx.fillStyle = '#120a16';
+      ctx.fillRect(-p.s / 2 - 1, -p.s / 4 - 1, p.s + 2, p.s / 2 + 2);
+      ctx.fillStyle = p.color;
+      ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
+      ctx.restore();
     }
     ctx.globalAlpha = 1;
 

@@ -60,7 +60,7 @@
     position: absolute;
     right: calc(16px + env(safe-area-inset-right, 0px));
     bottom: calc(16px + env(safe-area-inset-bottom, 0px));
-    width: 236px; height: 210px;
+    width: 236px; height: 280px;
   }
   .tbtn {
     position: absolute; width: 60px; height: 60px; border-radius: 50%; padding: 0;
@@ -82,6 +82,7 @@
   .tbtn.s2 { right: 140px; bottom: 82px; }
   .tbtn.s3 { right: 96px; bottom: 134px; }
   .tbtn.s4 { right: 40px; bottom: 158px; }
+  .tbtn.ult { right: 4px; bottom: 222px; width: 52px; height: 52px; color: var(--gold); border-color: rgba(233, 207, 142, .5); font-size: 22px; }
 
   #pause-btn {
     position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -95,7 +96,15 @@
     position: fixed; inset: 0; display: grid; place-items: center; background: rgba(8, 6, 12, .7);
     padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
-  #pause .box { display: grid; gap: 12px; text-align: center; min-width: min(280px, 100%); }
+  #pause { overflow-y: auto; }
+  #pause .pause-wrap { display: flex; flex-wrap: wrap; gap: 28px; align-items: center; justify-content: center; max-width: 900px; padding-block: 24px; }
+  #pause .box { display: grid; gap: 12px; text-align: center; min-width: min(260px, 100%); }
+  #pause .moves { flex: 1 1 380px; min-width: 0; background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 18px; }
+  #pause .moves h3 { font: 24px var(--font-title); margin: 0 0 8px; font-weight: 400; }
+  #pause .moves dl { display: grid; grid-template-columns: auto 1fr; gap: 6px 14px; margin: 0; font-size: 13px; }
+  #pause .moves dt { font: 500 16px var(--font-num); color: var(--gold-hi); white-space: nowrap; }
+  #pause .moves dd { margin: 0; color: var(--ink); }
+  #pause .moves .tip { margin: 10px 0 0; font-size: 12px; color: var(--mute); text-align: left; }
   #pause h2 { font: 56px var(--font-title); margin: 0 0 8px; font-weight: 400; }
   #pause p { margin: 0 0 6px; color: var(--mute); font-size: 13px; }
 
@@ -298,16 +307,39 @@
     <button class="tbtn sk s2" data-action="skill2" aria-label="回风斩">风</button>
     <button class="tbtn sk s3" data-action="skill3" aria-label="崩山击">崩</button>
     <button class="tbtn sk s4" data-action="skill4" aria-label="千刃残光">千</button>
+    <button class="tbtn ult" data-action="ult" aria-label="残光终焉">觉</button>
   </div>
 </div>
 <button id="pause-btn" aria-label="暂停">❚❚</button>
 
 <div id="pause" hidden>
-  <div class="box">
-    <h2>暂停</h2>
-    <p>撤退会保留已获得的经验、金币和装备</p>
-    <button class="btn primary" data-act="resume">继续战斗</button>
-    <button class="btn" data-act="retreat">撤退回营地</button>
+  <div class="pause-wrap">
+    <div class="box">
+      <h2>暂停</h2>
+      <p>撤退会保留已获得的经验、金币和装备</p>
+      <button class="btn primary" data-act="resume">继续战斗</button>
+      <button class="btn" data-act="retreat">撤退回营地</button>
+    </div>
+    <section class="moves" aria-label="出招表">
+      <h3>出招表</h3>
+      <dl>
+        <dt>J J J</dt><dd>三连斩</dd>
+        <dt>J J ·停顿· J</dt><dd>延迟连段：五连刺 + 推飞（可撞墙）</dd>
+        <dt>按住 J</dt><dd>蓄力斩，蓄满两段松开为「破军」</dd>
+        <dt>W + J</dt><dd>上挑浮空</dd>
+        <dt>S + J</dt><dd>扫腿：绊倒敌人，可追打倒地</dd>
+        <dt>命中后 K</dt><dd>跳跃取消，追到空中继续连</dd>
+        <dt>空中 J J J</dt><dd>空中三连，最后一击砸地反弹</dd>
+        <dt>空中 S + J</dt><dd>坠星斩：砸地冲击波，可追打倒地</dd>
+        <dt>空中 L</dt><dd>空中冲刺（空中命中后也能取消）</dd>
+        <dt>L 闪避</dt><dd>敌人攻击即将命中时闪避 = 极限闪避：子弹时间 + 反击必暴击</dd>
+        <dt>对刀</dt><dd>敌人近战命中的瞬间面朝它出刀 = 弹刀：敌人长硬直，霸体被打破</dd>
+        <dt>被打飞时 K</dt><dd>受身</dd>
+        <dt>倒地时任意键</dt><dd>快速翻滚起身</dd>
+        <dt>H</dt><dd>残光槽满：必杀「残光·终焉」</dd>
+      </dl>
+      <p class="tip">把敌人打飞撞向同伴或墙壁会造成额外伤害。招式越多变，风格评级越高；受伤会掉两级。</p>
+    </section>
   </div>
 </div>
 

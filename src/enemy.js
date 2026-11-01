@@ -10,6 +10,9 @@ export const TYPES = {
     look: { rig: 'grunt', h: 82, bone: '#e2d7c0', cloth: '#3d2f28', armor: '#5a3d2e', eye: '#ff5a3c', weapon: { type: 'sword', len: 44, color: '#8d8178' } },
     atk: { range: 62, windup: 26, hitAt: 4, recover: 34, cd: [70, 130],
       hit: { box: { x: 46, w: 76, d: 26, z0: 0, z1: 90 }, dmg: 9, kb: 4, stun: 18, stop: 4, shake: 4 } },
+    // 第二种攻击：中距离突刺（看到红光后横向或纵向躲开）
+    lunge: { range: 190, minRange: 100, windup: 32, hitAt: 2, dur: 12, recover: 40, speed: 9,
+      hit: { box: { x: 40, w: 70, d: 24, z0: 0, z1: 90 }, dmg: 11, kb: 6, stun: 20, stop: 5, shake: 5 } },
   },
   archer: {
     name: '影弓手', lvOff: 1, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true, xp: 14, drop: 0.25,
@@ -59,6 +62,12 @@ export class Enemy {
     this.slot = this.id % 3;
     this.remove = false;
     this.deadT = 0;
+    this.atk = T.atk;    // 当前这次出招用的是哪一种攻击
+    this.evadeCd = 0;
+    this.flying = 0;     // 被打飞后的若干帧内，撞到同伴会把同伴也撞倒
+    this.pinSet = new Set();
+    this.wallReady = false;
+    this.squash = 0;
   }
 
   get alive() {
@@ -77,6 +86,9 @@ export class Enemy {
     if (this.flash > 0) this.flash--;
     if (this.invuln > 0) this.invuln--;
     if (this.attackCd > 0) this.attackCd--;
+    if (this.evadeCd > 0) this.evadeCd--;
+    if (this.flying > 0) this.flying--;
+    if (this.squash > 0) this.squash--;
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
     if (this.brokenT > 0 && --this.brokenT === 0) this.armor = this.maxArmor;
 
@@ -85,17 +97,21 @@ export class Enemy {
       case 'idle': this.think(game); break;
       case 'windup':
         this.vx *= 0.7; this.vy = 0;
-        if (this.st >= this.T.atk.windup) this.doAttack(game);
+        if (this.st >= this.atk.windup) this.doAttack(game);
+        break;
+      case 'hop':
+        if (this.z <= 0 && this.st > 4) this.setState('idle');
         break;
       case 'attack': this.updateAttack(game); break;
       case 'hurt':
-        this.vx *= 0.85; this.vy = 0;
+        this.vx *= Math.abs(this.vx) > 6 ? 0.93 : 0.85; this.vy = 0;
+        if (Math.abs(this.vx) > 5 && this.st % 3 === 0) game.fx.dust(this.x, this.y, 1, 0.4); // 被击退时脚下拖出尘土
         if (this.st >= this.hitstun) this.setState('idle');
         break;
       case 'air': this.vy = 0; break;
       case 'down':
         this.vx *= 0.8;
-        if (this.st >= 46) { this.setState('idle'); this.invuln = 24; this.juggle = 0; }
+        if (this.st >= 46) { this.setState('idle'); this.invuln = 24; this.juggle = 0; this.otgUsed = false; }
         break;
       case 'dying':
         this.vy = 0;
@@ -124,24 +140,40 @@ export class Enemy {
     this.vy = Math.abs(my) > 4 ? Math.sign(my) * Math.min(T.speed * 0.7, Math.abs(my)) : 0;
     if (this.vx || this.vy) this.walk += 0.2 * T.speed;
 
+    // 弓手被贴身时后跳拉开距离
+    if (T.ranged && adx < 130 && this.evadeCd <= 0) {
+      this.setState('hop');
+      this.vz = 7;
+      this.z = 0.01;
+      this.vx = -this.facing * 6;
+      this.evadeCd = 200;
+      return;
+    }
+    const cap = game.maxAttackers ?? 2;
     const inRange = T.ranged ? adx > 120 && adx < 520 : adx <= A.range + 8;
-    if (this.attackCd <= 0 && inRange && Math.abs(dyp) < 18 && game.attackers.size < 2) this.startWindup(game);
+    if (this.attackCd <= 0 && Math.abs(dyp) < 18 && game.attackers.size < cap) {
+      const L = T.lunge;
+      if (L && adx > L.minRange && adx < L.range && Math.random() < 0.03) return this.startWindup(game, L);
+      if (inRange) this.startWindup(game);
+    }
   }
 
-  startWindup(game) {
+  startWindup(game, atk = this.T.atk) {
+    this.atk = atk;
     this.setState('windup');
     game.attackers.add(this);
     this.vx = this.vy = 0;
     this.hitSet.clear();
-    if (this.T.atk.slam) {
-      game.hazards.push(new Hazard({ x: this.x + this.facing * 95, y: this.y, rx: 115, ry: 44, delay: this.T.atk.windup, hit: this.T.atk.hit, owner: this }));
+    if (atk.slam) {
+      game.hazards.push(new Hazard({ x: this.x + this.facing * 95, y: this.y, rx: 115, ry: 44, delay: atk.windup, hit: atk.hit, owner: this }));
       sfx('warn');
     }
   }
 
   doAttack(game) {
-    const A = this.T.atk;
+    const A = this.atk;
     this.setState('attack');
+    if (A.speed) { this.vx = this.facing * A.speed; sfx('dash'); return; }
     if (this.T.ranged) {
       game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit, owner: this }));
       sfx('shoot');
@@ -151,14 +183,18 @@ export class Enemy {
   }
 
   updateAttack(game) {
-    const A = this.T.atk;
-    this.vx *= 0.8;
+    const A = this.atk;
+    if (A.speed) {
+      // 突刺：高速前冲，前冲期间都有判定
+      if (this.st < A.hitAt + A.dur) { this.vx = this.facing * A.speed; if (this.st % 2 === 0) game.fx.dust(this.x, this.y, 1, 0.6); }
+      else this.vx *= 0.8;
+    } else this.vx *= 0.8;
     if (!this.T.ranged && !A.slam) {
       if (this.st === A.hitAt) {
-        game.fx.arc(this.x + this.facing * 6, this.y, 50, this.facing, 56, -2.0, 0.9, '#ff6a5a', 10);
+        game.fx.arc(this.x + this.facing * 6, this.y, 50, this.facing, 56, A.speed ? -0.1 : -2.0, A.speed ? 0.1 : 0.9, '#ff6a5a', 10);
         sfx('swing');
       }
-      if (this.st >= A.hitAt && this.st < A.hitAt + 5) {
+      if (this.st >= A.hitAt && this.st < A.hitAt + (A.dur ?? 5)) {
         const p = game.player;
         if (!this.hitSet.has(p) && overlaps(hitBox(this, A.hit), p) && game.applyHit(this, p, A.hit, this.facing)) this.hitSet.add(p);
       }
@@ -170,15 +206,22 @@ export class Enemy {
   }
 
   // ---------- 受击 ----------
-  canBeHit() {
-    return this.alive && this.state !== 'spawn' && this.state !== 'down' && this.invuln <= 0;
+  // h.otg：能打到倒地的敌人（追打）
+  canBeHit(h) {
+    if (!this.alive || this.state === 'spawn' || this.invuln > 0) return false;
+    if (this.state === 'down') return !!h?.otg && this.st < 40 && !this.otgUsed;
+    return true;
   }
 
   // dmg 已在 game.applyHit 里按攻击力、技能等级、暴击算好
   takeHit(h, dir, dmg) {
-    if (!this.canBeHit()) return null;
+    if (!this.canBeHit(h)) return null;
     this.hp -= dmg;
     this.flash = 6;
+    this.squash = 8;
+    if (h.wallBounce || (h.kb ?? 0) >= 10) this.wallReady = true;
+    // 被重击打飞：一段时间内会撞倒路上的同伴
+    if ((h.kb ?? 0) >= 6 || h.wallBounce) { this.flying = 26; this.flyDmg = h.dmg; this.pinSet.clear(); }
 
     if (this.hp <= 0) {
       this.hp = 0;
@@ -189,12 +232,25 @@ export class Enemy {
       return { killed: true };
     }
 
+    // 追打倒地的敌人：伤害打折，带浮空的招式能把它重新捞起来（每次倒地只能捞一次）
+    if (this.state === 'down') {
+      this.otgUsed = true;
+      if ((h.launch ?? 0) > 0) {
+        this.vz = h.launch * 0.75;
+        this.z = 0.01;
+        this.juggle++;
+        this.setState('air');
+      } else this.st = Math.max(0, this.st - 8);
+      return { otg: true };
+    }
+
     // 霸体：扣血、扣护甲，但不会被打断
     if (this.armor > 0) {
-      this.armor -= dmg;
+      this.armor -= dmg * (h.armorDmg ?? 1);
       if (this.armor <= 0) {
         this.armor = 0;
         this.brokenT = 240;
+        this.flying = 0;
         this.setState('hurt');
         this.hitstun = 50;
         this.vx = dir * 4;
@@ -234,6 +290,15 @@ export class Enemy {
         this.onLand(game, v);
       }
     }
+    // 撞墙反弹：被重击打飞撞到房间边缘 → 弹回来并浮空，可以接着连
+    if (this.wallReady && (this.x <= 24 || this.x >= world.w - 24) && Math.abs(this.vx) > 4 && (this.state === 'air' || this.state === 'hurt')) {
+      this.wallReady = false;
+      this.vx = -this.vx * 0.45;
+      this.vz = Math.max(this.vz, 6);
+      this.z = Math.max(this.z, 0.01);
+      this.setState('air');
+      game.onWallBounce(this);
+    }
     this.x = clamp(this.x, 20, world.w - 20);
     this.y = clamp(this.y, 0, DEPTH);
   }
@@ -257,13 +322,15 @@ export class Enemy {
       return;
     }
     this.bounced = false;
+    this.wallReady = false;
+    this.otgUsed = false;
     this.setState('down');
     game.fx.dust(this.x, this.y, 8);
   }
 
   // ---------- 绘制 ----------
   pose(t) {
-    const s = this.state, A = this.T.atk;
+    const s = this.state, A = this.atk;
     const p = { lean: 0, walk: this.walk, crouch: 0, angle: 0.8, lie: 0, draw: 0, lift: 0 };
     switch (s) {
       case 'idle':
@@ -271,13 +338,14 @@ export class Enemy {
         else { p.lean = 3; p.lift = 1; }
         break;
       case 'windup':
-        p.crouch = 0.3; p.lean = -5; p.angle = A.slam ? -2.6 : -2.3;
+        p.crouch = 0.3; p.lean = -5; p.angle = A.slam ? -2.6 : A.speed ? 2.8 : -2.3;
         p.draw = Math.min(1, this.st / (A.windup * 0.6));
         break;
       case 'attack':
-        p.lean = 8;
-        p.angle = lerp(A.slam ? -2.6 : -2.3, 1.1, clamp((this.st - (A.hitAt ?? 0) + 2) / 5, 0, 1));
+        p.lean = A.speed ? 14 : 8;
+        p.angle = A.speed ? 0.05 : lerp(A.slam ? -2.6 : -2.3, 1.1, clamp((this.st - (A.hitAt ?? 0) + 2) / 5, 0, 1));
         break;
+      case 'hop': p.crouch = 0.3; p.walk = 1.2; p.angle = 0; break;
       case 'hurt': p.lean = -9; p.angle = 1.5; p.crouch = 0.15; break;
       case 'air':
       case 'dying': p.lie = this.z > 0 ? clamp(0.3 + this.st / 18, 0, 1) : 1; p.angle = 2.2; break;
@@ -297,7 +365,13 @@ export class Enemy {
     if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
     else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
     else if (this.elite && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.gold, 0.8 + 0.2 * Math.sin(t * 0.1));
-    drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
+    // 受击时挤压一下（横向撑开、纵向压扁），让打击有「肉感」
+    const q = this.squash / 8;
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1 + q * 0.14, 1 - q * 0.1);
+    drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 2, alpha, t });
+    ctx.restore();
 
     const top = sy - this.h - 14;
     ctx.save();

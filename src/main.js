@@ -13,6 +13,7 @@ import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { Loot } from './loot.js';
 import { STAGES, grade } from './stages.js';
+import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
 import { Chest, Shrine } from './props.js';
@@ -135,6 +136,14 @@ class Game {
     this.combo = 0;
     this.comboDmg = 0;
     this.comboT = 0;
+    this.style = { pts: 0, rank: 0, peak: 0, recent: [], pop: 0, idle: 0 };
+    this.ult = 0;          // 残光槽 0~100
+    this.ultReadyShown = false;
+    this.ultSeq = null;    // 必杀演出进行中
+    this.witch = 0;        // 极限闪避后的子弹时间（敌人变慢）
+    this.counterT = 0;     // 反击加成剩余帧数
+    this.camKick = 0;      // 镜头朝命中方向的推动
+    this.maxAttackers = 2;
     this.comboPop = 0;
     this.maxCombo = 0;
     this.kills = 0;
@@ -326,7 +335,7 @@ class Game {
 
   finish() {
     const p = this.player, st = this.stage, s = this.save;
-    this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, rooms: this.dungeon.mainLength });
+    this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, rooms: this.dungeon.mainLength, style: this.style.peak });
     // 通关奖励
     const first = !s.cleared[st.id];
     const mul = first ? 3 : 1;
@@ -413,6 +422,203 @@ class Game {
     sfx(it.rar >= 2 ? 'rare' : 'pickup');
   }
 
+  // ---------------- 风格评价（D → SSS）----------------
+  addStyle(pts, tag) {
+    const S = this.style;
+    const rep = S.recent.filter((x) => x === tag).length;
+    const mul = rep === 0 ? 1.25 : rep === 1 ? 0.9 : rep === 2 ? 0.55 : 0.25;
+    S.recent.push(tag);
+    if (S.recent.length > 8) S.recent.shift();
+    S.pts = Math.min(STYLE_MAX, S.pts + pts * mul);
+    S.idle = 0;
+    this.updateRank();
+  }
+
+  styleHit() {
+    const S = this.style;
+    if (S.rank <= 0 && S.pts <= 0) return;
+    S.pts = STYLE_RANKS[Math.max(0, S.rank - 2)].at;
+    this.updateRank();
+    sfx('rankDown');
+  }
+
+  updateRank() {
+    const S = this.style;
+    let r = 0;
+    for (let i = 0; i < STYLE_RANKS.length; i++) if (S.pts >= STYLE_RANKS[i].at) r = i;
+    if (r > S.rank) { S.pop = 22; sfx('rank'); }
+    S.rank = r;
+    S.peak = Math.max(S.peak, r);
+    this.maxAttackers = 2 + (r >= 4 ? 1 : 0); // 打得越好，敌人越凶
+  }
+
+  addUlt(n) {
+    if (this.ultSeq) return;
+    this.ult = Math.min(100, this.ult + n);
+    if (this.ult >= 100 && !this.ultReadyShown) {
+      this.ultReadyShown = true;
+      this.toast(this.touch ? '残光已满 · 点「觉」释放' : '残光已满 · 按 H 释放', '#ffd65a');
+      sfx('ultReady');
+    }
+  }
+
+  // ---------------- 极限闪避 → 子弹时间 + 反击 ----------------
+  perfectDodge() {
+    const p = this.player;
+    p.invuln = Math.max(p.invuln, 24);
+    if (this.witch > 0) return;
+    this.witch = 150;
+    this.counterT = 170;
+    this.hitstop = Math.max(this.hitstop, 6);
+    this.fx.ring(p.x, p.y, p.z + 45, '#ffffff', 20, 14, 22, 5);
+    this.fx.ring(p.x, p.y, p.z + 45, p.glow, 30, 18, 28, 3);
+    this.fx.flash(p.glow, 0.25);
+    this.fx.label(p.x, p.y, p.z + 130, '极 限 闪 避', '#ffffff', 30);
+    if (!REDUCED_MOTION) this.zoom = Math.max(this.zoom, 0.06);
+    this.addStyle(220, 'perfect');
+    this.addUlt(12);
+    sfx('witch');
+  }
+
+  parry(e) {
+    const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
+    const mx = (p.x + e.x) / 2, mz = 60;
+    p.invuln = Math.max(p.invuln, 12);
+    this.counterT = Math.max(this.counterT, 90);
+    this.hitstop = Math.max(this.hitstop, 10);
+    this.fx.spark(mx, p.y, mz, 1, 14, '#ffffff');
+    this.fx.spark(mx, p.y, mz, -1, 14, '#fff1c2');
+    this.fx.ring(mx, p.y, mz, '#ffffff', 8, 10, 14, 5);
+    this.fx.flash('#ffffff', 0.2);
+    this.fx.shake(8, 14);
+    this.hitLights.push({ x: mx, y: p.y, z: mz, r: 300, life: 8 });
+    this.fx.label(mx, p.y, mz + 70, '弹 刀', '#ffffff', 30);
+    if (!REDUCED_MOTION) this.zoom = Math.max(this.zoom, 0.05);
+    sfx('parry');
+    this.addStyle(170, 'parry');
+    this.addUlt(8);
+    if (e.isBoss) {
+      // 首领：削掉三分之一霸体，削空就破防
+      e.armor -= e.maxArmor * 0.35;
+      if (e.armor <= 0) { e.armor = 0; e.brokenT = 240; e.setState('hurt'); e.hitstun = 60; this.fx.label(e.x, e.y, e.h + 40, '破 防 !', COLORS.ember, 32); }
+      else e.vx = dir * 3;
+    } else {
+      if (e.armor > 0) { e.armor = 0; e.brokenT = 220; this.fx.label(e.x, e.y, e.h + 40, '破 防 !', COLORS.ember, 30); }
+      e.setState('hurt');
+      e.hitstun = 55;
+      e.vx = dir * 4;
+      e.flash = 6;
+    }
+  }
+
+  // ---------------- 撞墙 / 坠星冲击 / 弹球 ----------------
+  onWallBounce(e) {
+    const wx = e.x < world.w / 2 ? 10 : world.w - 10;
+    this.fx.crack(wx, e.y);
+    this.fx.dust(wx, e.y, 14, 2);
+    this.fx.ring(wx, e.y, e.z + 40, COLORS.ember, 10, 10, 16, 5);
+    this.fx.chips(wx, e.y, e.z + 50, -Math.sign(e.vx) || 1, 10, '#9a8a7a');
+    this.fx.shake(10, 18);
+    this.hitstop = Math.max(this.hitstop, 6);
+    this.fx.label(e.x, e.y, e.z + e.h + 30, '撞 墙', COLORS.ember, 24);
+    this.addStyle(90, 'wall');
+    sfx('heavy');
+  }
+
+  plungeImpact(p) {
+    this.fx.ring(p.x, p.y, 4, p.glow, 20, 12, 18, 6);
+    this.fx.ring(p.x, p.y, 4, '#ffffff', 10, 9, 12, 3);
+    this.fx.dust(p.x, p.y, 20, 2.6);
+    this.fx.crack(p.x, p.y);
+    this.fx.shake(10, 18);
+    this.hitLights.push({ x: p.x, y: p.y, z: 20, r: 300, life: 8 });
+    sfx('heavy');
+    const h = { dmg: 18, kb: 4, launch: 7.5, otg: true, stop: 7, shake: 8, heavy: true, styleTag: 'plungeWave' };
+    for (const e of this.enemies) {
+      if (Math.abs(e.x - p.x) < 135 && Math.abs(e.y - p.y) < 46 && e.z < 70) this.applyHit(p, e, h, Math.sign(e.x - p.x) || p.facing);
+    }
+  }
+
+  pinball() {
+    for (const a of this.enemies) {
+      if (!a.flying || Math.abs(a.vx) < 4 || a.team === 'prop') continue;
+      for (const b of this.enemies) {
+        if (b === a || !b.alive || b.team === 'prop' || b.isBoss || a.pinSet.has(b)) continue;
+        if (Math.abs(a.x - b.x) < (a.w + b.w) * 0.5 && Math.abs(a.y - b.y) < 24 && Math.abs(a.z - b.z) < 70) {
+          a.pinSet.add(b);
+          const h = { dmg: 6 + (a.flyDmg || 10) * 0.35, kb: 7, launch: 4.5, stun: 24, stop: 5, shake: 6, styleTag: 'pinball' };
+          if (this.applyHit(this.player, b, h, Math.sign(a.vx))) {
+            a.vx *= 0.75;
+            this.fx.label(b.x, b.y, b.z + b.h + 30, '撞 击', COLORS.ember, 20);
+          }
+        }
+      }
+    }
+  }
+
+  // ---------------- 残光·终焉（必杀）----------------
+  startUltimate() {
+    const p = this.player;
+    this.ult = 0;
+    this.ultReadyShown = false;
+    p.move = null;
+    p.setState('ult');
+    p.invuln = 999;
+    this.ultSeq = { t: 0, i: 0, home: { x: p.x, y: p.y } };
+    this.fx.flash('#ffffff', 0.35);
+    sfx('ultStart');
+  }
+
+  updateUltimate() {
+    const U = this.ultSeq, p = this.player;
+    U.t++;
+    const onScreen = () => this.enemies.filter((e) => e.alive && e.team !== 'prop' && e.x > this.camX - 40 && e.x < this.camX + VIEW_W + 40);
+    if (U.t >= 52 && U.t < 128 && U.t % 6 === 0) {
+      // 瞬身连斩：在画面内的敌人之间来回穿梭
+      const list = onScreen();
+      const e = list.length ? list[U.i++ % list.length] : null;
+      for (let g = 0; g < 2; g++) p.addGhost();
+      if (e) {
+        const side = U.i % 2 ? 1 : -1;
+        p.x = clamp(e.x - side * 70, 40, world.w - 40);
+        p.y = e.y;
+        p.facing = side;
+        p.ultPose = U.i % 2 ? -2.2 : 1.2;
+        const a0 = -2.6 + Math.random() * 1.4;
+        this.fx.arc(e.x, e.y, e.z + e.h * 0.55, side, 70 + Math.random() * 30, a0, a0 + 2.8, p.glow, 16, 10);
+        this.applyHit(p, e, { dmg: 20, kb: 0.3, stun: 80, stop: 2, shake: 4, ult: true, styleTag: 'ult' }, side);
+      } else {
+        p.x = clamp(p.x + (Math.random() - 0.5) * 300, 60, world.w - 60);
+        this.fx.arc(p.x, p.y, 60, 1, 80, -2.4, 0.6, p.glow, 16, 10);
+      }
+      sfx('swing');
+    }
+    if (U.t === 136) {
+      p.x = clamp(this.camX + VIEW_W / 2, 60, world.w - 60);
+      p.ultPose = -2.9;
+    }
+    if (U.t === 150) {
+      // 终结：全屏斩
+      p.ultPose = 1.4;
+      this.fx.flash('#ffffff', 0.8);
+      for (let i = 0; i < 3; i++) this.fx.ring(p.x, p.y, 50, i ? p.glow : '#ffffff', 30 + i * 20, 22 - i * 4, 26 + i * 6, 7);
+      this.fx.shake(20, 40);
+      if (!REDUCED_MOTION) this.zoom = 0.08;
+      sfx('quake');
+      for (const e of onScreen()) {
+        e.invuln = 0;
+        this.applyHit(p, e, { dmg: 110, kb: 9, launch: 13, stop: 18, shake: 18, heavy: true, radial: true, ult: true, wallBounce: true, styleTag: 'ultEnd' }, Math.sign(e.x - p.x) || 1);
+      }
+      this.slowmo = 36;
+    }
+    if (U.t >= 175) {
+      this.ultSeq = null;
+      p.ultPose = null;
+      p.setState('idle');
+      p.invuln = 40;
+    }
+  }
+
   // ---------------- 伤害计算 ----------------
   calcDamage(src, target, h) {
     let dmg = h.dmg * (0.92 + Math.random() * 0.16);
@@ -420,10 +626,12 @@ class Game {
     if (src.team === 'player') {
       const S = this.stats;
       dmg *= S.atk / 20; // 20 = 1 级的攻击力，招式表里的伤害以它为基准
-      dmg *= h.skill ? skillMul(S, h.skill) : S.normalMul;
-      crit = Math.random() < S.crit;
+      dmg *= h.skill ? skillMul(S, h.skill) : h.ult ? 1.4 + this.save.lv * 0.05 : S.normalMul;
+      crit = Math.random() < S.crit || this.counterT > 0; // 极限闪避后的反击必定暴击
       if (crit) dmg *= S.critDmg;
+      if (this.counterT > 0) dmg *= 1.35;
       if (target.brokenT > 0) dmg *= 1.3;
+      if (target.state === 'down') dmg *= 0.6; // 追打倒地伤害打折
     } else {
       dmg *= (src.owner || src).dmgMul ?? 1;
       dmg *= 100 / (100 + this.stats.def); // 防御减伤：100 防御 = 伤害减半
@@ -433,7 +641,18 @@ class Game {
 
   // ---------------- 命中处理：打击感集中在这里 ----------------
   applyHit(src, target, h, dir) {
-    if (target.canBeHit && !target.canBeHit()) return false;
+    // 极限闪避：闪避刚开始的几帧里「本该被打中」→ 不受伤，触发子弹时间
+    if (target === this.player && src.team !== 'player' && target.inPerfectWindow()) {
+      this.perfectDodge();
+      return false;
+    }
+    // 弹刀：敌人的近战攻击打到你时，你正好在出刀的前 8 帧、而且面朝对方 → 把这一刀弹开
+    if (target === this.player && src instanceof Enemy && target.state === 'attack' && target.move && !target.move.air
+      && target.mf <= 8 && Math.sign(src.x - target.x) === target.facing) {
+      this.parry(src);
+      return false;
+    }
+    if (target.canBeHit && !target.canBeHit(h)) return false;
     const { dmg, crit } = this.calcDamage(src, target, h);
     const r = target.takeHit(h, dir, dmg, this);
     if (!r) return false;
@@ -451,6 +670,10 @@ class Game {
     // 1. 火花 + 冲击环
     this.fx.spark(hx, target.y, hz, dir, h.heavy ? 14 : 8, fromPlayer ? '#fff1c2' : '#ff8a7a');
     this.fx.ring(hx, target.y, hz, fromPlayer ? this.player.glow : COLORS.blood, 6, h.heavy ? 7 : 4, 10, h.heavy ? 5 : 3);
+    // 材质碎片：骷髅掉骨渣、屠夫冒金属火星、弓手掉布屑
+    const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
+    this.fx.chips(hx, target.y, hz, dir, h.heavy ? 9 : 4, chip);
+    if (fromPlayer && h.heavy) this.camKick += dir * 9;
     // 2. 伤害数字
     this.fx.number(target.x, target.y, target.z + target.h + 6, dmg, { crit, color: fromPlayer ? null : COLORS.blood });
     // 3. 顿帧：整个世界停住几帧，让「砍中」的瞬间被看清
@@ -463,6 +686,14 @@ class Game {
     sfx(h.heavy || crit ? 'heavy' : 'hit');
 
     if (fromPlayer) {
+      // 风格评价：伤害越高、越在空中、越是新的招式，分越高；反复用同一招分数递减
+      const tag = h.styleTag || src.styleTag || src.move?.id || 'misc';
+      let pts = 10 + h.dmg * 0.9;
+      if (target.z > 20) pts *= 1.35;
+      if (r.otg) pts += 12;
+      if (this.counterT > 0) pts *= 1.6;
+      this.addStyle(pts, tag);
+      this.addUlt(h.skill ? 0.45 : h.ult ? 0 : 0.8);
       this.combo++;
       this.comboDmg += dmg;
       this.comboT = 110;
@@ -479,6 +710,8 @@ class Game {
     } else {
       this.fx.flash(COLORS.blood, 0.22);
       sfx('hurt');
+      this.styleHit();
+      this.addUlt(4);
     }
     return true;
   }
@@ -486,6 +719,9 @@ class Game {
   onKill(e) {
     this.kills++;
     sfx('kill');
+    this.addUlt(2.5);
+    this.addStyle(40, 'kill');
+    this.fx.chips(e.x, e.y, e.z + e.h * 0.5, Math.sign(e.vx) || 1, 18, e.look?.bone || e.look?.cloak || e.look?.metal || '#cfc3ad');
     this.gainXp(e.xp);
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${e.xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
@@ -536,11 +772,29 @@ class Game {
     if (this.comboPop > 0) this.comboPop--;
     if (this.comboT > 0 && --this.comboT === 0) { this.combo = 0; this.comboDmg = 0; }
 
+    // 风格分随时间衰减，越高的评级掉得越快；一段时间没命中衰减加倍
+    const S = this.style;
+    S.idle++;
+    if (S.pop > 0) S.pop--;
+    if (S.pts > 0) {
+      S.pts = Math.max(0, S.pts - (0.5 + S.rank * 0.32) * (S.idle > 90 ? 2.2 : 1));
+      this.updateRank();
+    }
+    if (this.counterT > 0) this.counterT--;
+    this.camKick *= 0.8;
+
+    // 必杀演出期间：敌人全部定格
+    if (this.ultSeq) this.updateUltimate();
+    // 子弹时间：敌人和敌方弹道只在每 4 帧里动 1 帧
+    const enemyTick = !this.ultSeq && (this.witch <= 0 || this.frame % 4 === 0);
+    if (this.witch > 0) this.witch--;
+
     this.player.update(this);
-    for (const e of this.enemies) e.update(this);
+    for (const e of this.enemies) if (enemyTick || e.team === 'prop') e.update(this);
     this.separate();
-    for (const p of this.projectiles) p.update(this);
-    for (const h of this.hazards) h.update(this);
+    this.pinball();
+    for (const p of this.projectiles) if (enemyTick || p.team === 'player') p.update(this);
+    if (enemyTick) for (const h of this.hazards) h.update(this);
     for (const l of this.loots) l.update(this);
     this.projectiles = this.projectiles.filter((p) => !p.dead);
     this.hazards = this.hazards.filter((h) => !h.dead);
@@ -587,7 +841,8 @@ class Game {
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
 
     // 世界层的变换：震屏 + 以主角为中心的镜头推近
-    const [ox, oy] = this.fx.shakeOffset();
+    let [ox, oy] = this.fx.shakeOffset();
+    ox += this.camKick;
     const z = 1 + this.zoom;
     const fx0 = this.player.x - camX, fy0 = GROUND_TOP + this.player.y - 40;
     const view = (c) => { c.translate(ox, oy); c.translate(fx0, fy0); c.scale(z, z); c.translate(-fx0, -fy0); };
@@ -656,6 +911,32 @@ class Game {
     ctx.restore();
     drawVignette(ctx);
     post.applyGrade(ctx, th.grade, t, this.quality > 1);
+    // 子弹时间：画面去色 + 冷色调，边缘有缓慢脉动的光圈
+    if (this.witch > 0 && this.scene === 'play') {
+      const a = Math.min(1, this.witch / 20, (150 - this.witch) / 8 + 0.2);
+      ctx.save();
+      ctx.globalCompositeOperation = 'saturation';
+      ctx.globalAlpha = 0.65 * a;
+      ctx.fillStyle = 'hsl(0,0%,50%)';
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      ctx.globalCompositeOperation = 'soft-light';
+      ctx.globalAlpha = 0.5 * a;
+      ctx.fillStyle = '#3a7aff';
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      ctx.globalCompositeOperation = 'source-over';
+      const edge = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.45, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.9);
+      edge.addColorStop(0, 'rgba(127,243,255,0)');
+      edge.addColorStop(1, `rgba(127,243,255,${0.22 * a * (0.7 + 0.3 * Math.sin(t * 0.15))})`);
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = edge;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      ctx.restore();
+    }
+    // 必杀演出时世界压暗，只有剑光亮着
+    if (this.ultSeq && this.ultSeq.t < 150) {
+      ctx.fillStyle = `rgba(4,2,8,${Math.min(0.55, this.ultSeq.t / 20)})`;
+      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    }
 
     if (this.transition) {
       const tt = this.transition.t;

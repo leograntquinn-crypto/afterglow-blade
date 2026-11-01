@@ -23,15 +23,15 @@ const MELEE = { x: 48, w: 92, d: 30, z0: 0, z1: 100 };
 export const MOVES = {
   // ---------- 普攻三连 ----------
   slash1: {
-    total: 22, cancel: 10, next: 'slash2', lunge: [2, 7, 2.2], swing: [-2.0, 0.9],
+    jcOnHit: true, total: 22, cancel: 10, next: 'slash2', lunge: [2, 7, 2.2], swing: [-2.0, 0.9],
     hits: [{ at: 5, dur: 4, box: MELEE, dmg: 10, kb: 2.5, stun: 20, stop: 4, shake: 2 }],
   },
   slash2: {
-    total: 22, cancel: 10, next: 'slash3', lunge: [2, 7, 2.6], swing: [1.0, -1.6],
+    jcOnHit: true, total: 22, cancel: 10, next: 'slash3', lunge: [2, 7, 2.6], swing: [1.0, -1.6],
     hits: [{ at: 5, dur: 4, box: MELEE, dmg: 12, kb: 2.8, stun: 20, stop: 4, shake: 2 }],
   },
   slash3: {
-    total: 34, cancel: 20, lunge: [3, 10, 4.5], swing: [-2.4, 1.2], heavy: true,
+    jcOnHit: true, total: 34, cancel: 20, lunge: [3, 10, 4.5], swing: [-2.4, 1.2], heavy: true,
     hits: [{ at: 8, dur: 5, box: { x: 55, w: 112, d: 34, z0: 0, z1: 110 }, dmg: 22, kb: 8, stun: 26, stop: 8, shake: 7, heavy: true }],
   },
   // ---------- 上挑（↑ + 攻击）：把敌人打上天，可以跳跃取消去追击 ----------
@@ -41,16 +41,49 @@ export const MOVES = {
   },
   // ---------- 空中攻击 ----------
   airSlash: {
-    air: true, total: 20, cancel: 9, next: 'airSlash2', swing: [-1.8, 0.8], hang: 2.5,
-    hits: [{ at: 4, dur: 5, box: { x: 44, w: 94, d: 32, z0: -50, z1: 80 }, dmg: 11, kb: 1.5, launch: 5, stop: 5, shake: 2 }],
+    air: true, total: 18, cancel: 8, next: 'airSlash2', swing: [-1.8, 0.8], hang: 2.5,
+    hits: [{ at: 4, dur: 5, box: { x: 44, w: 94, d: 32, z0: -50, z1: 80 }, dmg: 10, kb: 1.5, launch: 5, stop: 5, shake: 2 }],
   },
   airSlash2: {
+    air: true, total: 18, cancel: 8, next: 'airSlash3', swing: [1.0, -1.4], hang: 2.2,
+    hits: [{ at: 4, dur: 5, box: { x: 44, w: 94, d: 32, z0: -50, z1: 80 }, dmg: 11, kb: 1.5, launch: 5.5, stop: 5, shake: 2 }],
+  },
+  airSlash3: {
     air: true, total: 24, cancel: 14, swing: [-2.4, 1.6], hang: 1, heavy: true,
     hits: [{ at: 5, dur: 5, box: { x: 40, w: 98, d: 34, z0: -70, z1: 70 }, dmg: 16, kb: 2, spike: true, stop: 8, shake: 6, heavy: true }],
   },
+  // 空中 ↓ + 攻击：坠星斩。笔直砸向地面，落地产生冲击波（可以追打倒地的敌人）
+  plunge: {
+    air: true, plunge: true, total: 90, cancel: 90, swing: [-2.6, 1.5], swingAt: 2, swingDur: 6, heavy: true,
+    hits: [{ at: 3, dur: 80, box: { x: 18, w: 84, d: 30, z0: -100, z1: 30 }, dmg: 12, kb: 1, spike: true, stop: 5, shake: 4 }],
+  },
+  plungeLand: { total: 16, cancel: 8, swing: [1.5, 1.5], hits: [] },
+  // ---------- 延迟连段：二段斩之后停顿一拍再按攻击 → 五连刺 + 推飞 ----------
+  rush: {
+    total: 40, cancel: 30, lunge: [0, 24, 2.2], thrust: true, swing: [0.05, 0.05], swingAt: 28, swingDur: 3, jcOnHit: true,
+    hits: [
+      ...[5, 9, 13, 17, 21].map((at) => ({ at, dur: 2, box: { x: 52, w: 100, d: 30, z0: 0, z1: 100 }, dmg: 5, kb: 0.6, stun: 26, stop: 2, shake: 1.5, stab: true })),
+      { at: 28, dur: 4, box: { x: 56, w: 116, d: 34, z0: 0, z1: 110 }, dmg: 20, kb: 11, stun: 30, stop: 9, shake: 8, heavy: true, wallBounce: true },
+    ],
+  },
+  // ---------- ↓ + 攻击：扫腿。低位判定，绊倒敌人，也能打倒地的敌人 ----------
+  sweep: {
+    total: 26, cancel: 13, lunge: [1, 6, 3.2], swing: [1.7, 0.25], low: true, jcOnHit: true,
+    hits: [{ at: 5, dur: 5, box: { x: 46, w: 112, d: 34, z0: -10, z1: 45 }, dmg: 11, kb: 2.2, launch: 3.6, otg: true, stop: 5, shake: 3 }],
+  },
+  // ---------- 蓄力斩：按住攻击键蓄力，松开释放（两段）----------
+  chargeSlash1: {
+    total: 34, cancel: 22, lunge: [2, 10, 6.5], swing: [-2.6, 1.3], heavy: true, jcOnHit: true,
+    hits: [{ at: 7, dur: 5, box: { x: 62, w: 150, d: 40, z0: 0, z1: 120 }, dmg: 36, kb: 13, stun: 34, stop: 11, shake: 10, heavy: true, wallBounce: true, armorDmg: 2.5 }],
+  },
+  chargeSlash2: {
+    total: 46, cancel: 32, lunge: [0, 12, 12], swing: [-2.9, 1.4], heavy: true, armor: true,
+    events: { 9: chargeWave },
+    hits: [{ at: 8, dur: 6, box: { x: 72, w: 200, d: 52, z0: -10, z1: 160 }, dmg: 68, kb: 16, launch: 9, stop: 15, shake: 15, heavy: true, wallBounce: true, armorDmg: 4 }],
+  },
   // ---------- 冲刺攻击（闪避中按攻击）----------
   dashAtk: {
-    total: 28, cancel: 18, lunge: [0, 10, 9], swing: [0.05, 0.05], thrust: true,
+    jcOnHit: true, total: 28, cancel: 18, lunge: [0, 10, 9], swing: [0.05, 0.05], thrust: true,
     hits: [{ at: 3, dur: 8, box: { x: 50, w: 100, d: 30, z0: 0, z1: 100 }, dmg: 16, kb: 7, stun: 24, stop: 6, shake: 4 }],
   },
 
@@ -100,13 +133,14 @@ export const SKILL_KEYS = Object.keys(SKILLS);
 
 // 给技能的判定打上标签，伤害计算时按技能等级加成
 for (const [key, s] of Object.entries(SKILLS)) for (const h of MOVES[s.move].hits) h.skill = key;
+for (const [id, m] of Object.entries(MOVES)) m.id = id; // 风格评价用：记录是哪一招打中的
 
 // ---------- 招式事件 ----------
 function spawnWave(p, game) {
   game.projectiles.push(new Projectile({
     x: p.x + p.facing * 40, y: p.y, z: 0, vx: p.facing * 10.5, life: 46, team: 'player', kind: 'wave', pierce: true,
     hit: { box: { w: 56, d: 30, z0: 0, z1: 100 }, dmg: 26, kb: 3, launch: 8, stop: 6, shake: 5, heavy: true, skill: 'skill1' },
-    color: p.glow,
+    color: p.glow, styleTag: 'wave',
   }));
   game.fx.ring(p.x + p.facing * 40, p.y, 50, p.glow, 10, 6, 12, 4);
 }
@@ -114,6 +148,16 @@ function spawnWave(p, game) {
 function charge(p, game) {
   game.fx.converge(p.x, p.y, p.z + 50, 14, p.glow);
   game.fx.flash(p.glow, 0.08);
+}
+
+// 满蓄力：斩出一道巨大的剑气
+function chargeWave(p, game) {
+  game.projectiles.push(new Projectile({
+    x: p.x + p.facing * 50, y: p.y, z: 0, vx: p.facing * 13, life: 40, team: 'player', kind: 'wave', pierce: true, scale: 1.6,
+    hit: { box: { w: 80, d: 44, z0: 0, z1: 150 }, dmg: 30, kb: 6, launch: 8, stop: 6, shake: 6, heavy: true, wallBounce: true },
+    color: p.glow, styleTag: 'chargeWave',
+  }));
+  game.fx.flash(p.glow, 0.2);
 }
 
 function flurryStart(p, game) {

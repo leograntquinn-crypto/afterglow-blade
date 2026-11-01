@@ -4,6 +4,7 @@ import { SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE, xpToNext, MAX_LV, power } from './progression.js';
 import { RARITY, itemTitle } from './items.js';
 import { ROOM_INFO } from './dungeon.js';
+import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { drawFighter } from './rig.js';
 
 const GOLD_HI = '#e9cf8e', GOLD_LO = '#7a5c30';
@@ -130,6 +131,14 @@ function drawPlayerFrame(ctx, game) {
   fancyBar(ctx, 102, 42, 240, 16, p.hp, p.maxHp, p.hpTrail, '#ff6a78', '#9a1028', { ticks: 10 });
   fancyBar(ctx, 102, 62, 200, 9, p.mp, p.maxMp, null, '#7ac0ff', '#1d4fa8');
   fancyBar(ctx, 102, 75, 200, 4, s.lv >= MAX_LV ? 1 : s.xp, s.lv >= MAX_LV ? 1 : xpToNext(s.lv), null, '#d8c8ff', '#7a5ad8', { border: false });
+  // 残光槽：满了可以放必杀
+  const full = game.ult >= 100;
+  fancyBar(ctx, 102, 84, 170, 7, game.ult, 100, null, full ? '#fff6c8' : '#ffd65a', full ? '#ffb347' : '#a8741a');
+  ctx.font = `13px ${FONT_TITLE}`;
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.fillStyle = full ? `rgba(255,214,90,${0.6 + 0.4 * Math.sin(t * 0.2)})` : 'rgba(233,207,142,.6)';
+  ctx.fillText(full ? (game.touch ? '残光 · 点觉' : '残光 · H') : '残光', 278, 88);
   ctx.font = `500 16px ${FONT_NUM}`;
   ctx.textAlign = 'right';
   ctx.fillStyle = '#fff';
@@ -292,6 +301,100 @@ function drawCombo(ctx, game) {
   ctx.restore();
 }
 
+// ---------------- 右侧：风格评价 ----------------
+function drawStyle(ctx, game) {
+  const S = game.style;
+  if (S.pts <= 0 && S.rank === 0) return;
+  const R = STYLE_RANKS[S.rank], next = STYLE_RANKS[S.rank + 1];
+  const x = VIEW_W - 30, y = 262;
+  const pop = 1 + (S.pop / 22) * 0.5;
+  const frac = next ? (S.pts - R.at) / (next.at - R.at) : S.pts / STYLE_MAX;
+  ctx.save();
+  // 评级字母
+  ctx.translate(x - 64, y);
+  ctx.transform(1, 0, -0.2, 1, 0, 0);
+  ctx.scale(pop, pop);
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `600 ${R.letter.length > 1 ? 50 : 60}px ${FONT_NUM}`;
+  ctx.lineWidth = 6;
+  ctx.lineJoin = 'round';
+  ctx.strokeStyle = 'rgba(8,3,8,.92)';
+  ctx.strokeText(R.letter, 0, 0);
+  const g = ctx.createLinearGradient(0, -48, 0, 0);
+  g.addColorStop(0, '#ffffff');
+  g.addColorStop(1, R.color);
+  ctx.fillStyle = g;
+  ctx.fillText(R.letter, 0, 0);
+  ctx.restore();
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'alphabetic';
+  ctx.font = `28px ${FONT_TITLE}`;
+  ctx.fillStyle = R.color;
+  ctx.fillText(R.word, x, y - 4);
+  // 进度条（往下一级）
+  fancyBar(ctx, x - 150, y + 8, 150, 4, frac, 1, null, '#ffffff', R.color, { border: false });
+  ctx.restore();
+}
+
+// ---------------- 必杀演出：电影黑边 + 斜切立绘 + 书法大字 ----------------
+function drawUltCutin(ctx, game) {
+  const U = game.ultSeq;
+  if (!U) return;
+  const t = U.t, p = game.player;
+  const bars = Math.min(1, t / 10) * (t > 165 ? Math.max(0, (175 - t) / 10) : 1);
+  ctx.save();
+  ctx.fillStyle = '#000';
+  ctx.fillRect(0, 0, VIEW_W, 46 * bars);
+  ctx.fillRect(0, VIEW_H - 46 * bars, VIEW_W, 46 * bars);
+  if (t < 56) {
+    const slide = t < 12 ? 1 - Math.pow(1 - t / 12, 3) : 1;
+    const out = t > 46 ? (t - 46) / 10 : 0;
+    ctx.globalAlpha = 1 - out;
+    // 斜切的光带
+    ctx.save();
+    ctx.translate(VIEW_W / 2, VIEW_H / 2);
+    ctx.rotate(-0.18);
+    const bw = VIEW_W * 1.4 * slide;
+    const bg = ctx.createLinearGradient(-bw / 2, 0, bw / 2, 0);
+    bg.addColorStop(0, 'rgba(6,4,10,0)');
+    bg.addColorStop(0.2, 'rgba(6,4,10,.92)');
+    bg.addColorStop(0.8, 'rgba(6,4,10,.92)');
+    bg.addColorStop(1, 'rgba(6,4,10,0)');
+    ctx.fillStyle = bg;
+    ctx.fillRect(-bw / 2, -110, bw, 220);
+    ctx.fillStyle = p.glow;
+    ctx.fillRect(-bw / 2, -112, bw, 3);
+    ctx.fillRect(-bw / 2, 109, bw, 3);
+    ctx.restore();
+    // 立绘：放大的主角模型从左侧滑入
+    ctx.save();
+    ctx.beginPath();
+    ctx.translate(VIEW_W / 2, VIEW_H / 2);
+    ctx.rotate(-0.18);
+    ctx.rect(-VIEW_W, -108, VIEW_W * 2, 216);
+    ctx.rotate(0.18);
+    ctx.translate(-VIEW_W / 2, -VIEW_H / 2);
+    ctx.clip();
+    ctx.translate(lerpX(-200, 300, slide) + t * 0.8, 560);
+    ctx.scale(4.4, 4.4);
+    drawFighter(ctx, 0, 0, p.look, { crouch: 0.3, angle: -2.6, lean: 8, walk: 0.8, backAngle: 3 }, { facing: 1, t: t * 3 });
+    ctx.restore();
+    // 大字
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `86px ${FONT_TITLE}`;
+    if ('letterSpacing' in ctx) ctx.letterSpacing = `${6 + t * 0.3}px`;
+    ctx.fillStyle = '#ffffff';
+    ctx.globalAlpha *= Math.min(1, t / 8);
+    ctx.fillText('残光·终焉', VIEW_W * 0.62 + (1 - slide) * 300, VIEW_H / 2 - 4);
+    if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
+  }
+  ctx.restore();
+}
+const lerpX = (a, b, u) => a + (b - a) * u;
+
 // ---------------- 左侧：拾取 / 系统提示 ----------------
 function drawToasts(ctx, game) {
   game.toasts.forEach((t, i) => {
@@ -349,6 +452,8 @@ export function drawHUD(ctx, game) {
   }
   drawMinimap(ctx, game);
   drawCombo(ctx, game);
+  drawStyle(ctx, game);
+  drawUltCutin(ctx, game);
   if (!game.touch) drawSkillBar(ctx, game);
 
   // 操作提示：只在前几次出征的开头出现，然后淡出
@@ -573,7 +678,7 @@ export function drawClear(ctx, game) {
 
   r.rows.forEach(([name, val, pts], i) => {
     if (t < 20 + i * 14) return;
-    const y = 160 + i * 44;
+    const y = 150 + i * 38;
     ctx.textAlign = 'left';
     ctx.font = `18px ${FONT_UI}`;
     ctx.fillStyle = '#b9aec4';
@@ -584,7 +689,7 @@ export function drawClear(ctx, game) {
     ctx.fillStyle = COLORS.gold;
     ctx.fillText('◆'.repeat(pts) + '◇'.repeat(3 - pts), 320, y + 2);
   });
-  drawRewards(ctx, game, 120, 310, t - 60);
+  drawRewards(ctx, game, 120, 320, t - 60);
 
   // 评价印章：从大到小砸下来
   const st = t - 50;
