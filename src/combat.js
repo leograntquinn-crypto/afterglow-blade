@@ -97,6 +97,15 @@ export class Hazard {
       const p = game.player;
       const dx = (p.x - this.x) / this.rx, dy = (p.y - this.y) / this.ry;
       if (dx * dx + dy * dy <= 1 && p.z < 50) game.applyHit(this, p, this.hit, Math.sign(p.x - this.x) || 1);
+      // 爆裂词缀的爆炸：敌人也会被炸到，算玩家的伤害（把它打进敌群里是一种打法）
+      if (this.hitsEnemies) {
+        const src = { team: 'player', x: this.x, y: this.y, styleTag: 'blast' };
+        for (const e of game.enemies) {
+          if (!e.alive || e.team === 'prop' || e.isBoss) continue;
+          const ex = (e.x - this.x) / this.rx, ey = (e.y - this.y) / this.ry;
+          if (ex * ex + ey * ey <= 1 && e.z < 50) game.applyHit(src, e, { ...this.hit, dmg: this.hit.dmg * 2.5 }, Math.sign(e.x - this.x) || 1);
+        }
+      }
       game.fx.shake(this.hit.shake ?? 8, 18);
       game.fx.dust(this.x, this.y, 16, 2.5);
       game.fx.ring(this.x, this.y, 2, this.color || '#ff6a3d', 20, 10, 16, 6);

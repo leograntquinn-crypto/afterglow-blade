@@ -176,6 +176,8 @@
     background: linear-gradient(90deg, transparent, rgba(233, 207, 142, .6), transparent);
   }
   .stage.locked { opacity: .5; }
+  .stage.training { border-style: dashed; background: linear-gradient(160deg, rgba(120, 170, 220, .08), transparent 60%), var(--panel); }
+  .stage.training h3 { color: var(--blade); }
   .stage-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
   .stage h3 { font: 30px var(--font-title); }
   .rec { font-size: 12px; color: var(--mute); white-space: nowrap; }
@@ -316,8 +318,10 @@
   <div class="pause-wrap">
     <div class="box">
       <h2>暂停</h2>
-      <p>撤退会保留已获得的经验、金币和装备</p>
+      <p class="run-only">撤退会保留已获得的经验、金币和装备</p>
       <button class="btn primary" data-act="resume">继续战斗</button>
+      <button class="btn train-only" data-act="train-counter">木人反击：开 / 关（T）</button>
+      <button class="btn train-only" data-act="train-reset">重置木人（R）</button>
       <button class="btn" data-act="retreat">撤退回营地</button>
     </div>
     <section class="moves" aria-label="出招表">

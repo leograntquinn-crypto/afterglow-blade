@@ -7,6 +7,7 @@ import { ROOM_INFO } from './dungeon.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
 import { drawFighter } from './rig.js';
 import { heroSprite } from './sprite.js';
+import { drawTraining } from './training.js';
 
 const GOLD_HI = '#e9cf8e', GOLD_LO = '#7a5c30';
 
@@ -460,7 +461,8 @@ export function drawHUD(ctx, game) {
       ctx.fillText(broken ? '破防中 · 伤害 +30%' : '霸体', x + w, y);
     }
   }
-  drawMinimap(ctx, game);
+  if (game.training) drawTraining(ctx, game);
+  else drawMinimap(ctx, game);
   drawCombo(ctx, game);
   drawStyle(ctx, game);
   drawUltCutin(ctx, game);

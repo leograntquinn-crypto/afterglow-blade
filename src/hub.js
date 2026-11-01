@@ -8,6 +8,7 @@ import {
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, isUnlocked } from './stages.js';
+import { CHALLENGES } from './training.js';
 import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
 import { BOSSES } from './boss.js';
@@ -77,7 +78,14 @@ export class Hub {
 
   render_stages() {
     const s = this.save;
-    return `<div class="stages">${STAGES.map((st, i) => {
+    const tDone = (s.training || []).length;
+    const train = `<article class="stage training">
+        <div class="stage-head"><h3>训练场</h3><span class="rec">${tDone} / ${CHALLENGES.length}</span></div>
+        <p>两个打不死的木人和 ${CHALLENGES.length} 条挑战：延迟连段、极限闪避、弹刀、受身、撞墙……每个机制做到一次就打勾。</p>
+        <p class="meta">第一次完成每条挑战 +40 金币，全部完成再 +400</p>
+        <div class="stage-foot"><span class="first">${tDone >= CHALLENGES.length ? '已出师' : '推荐新手先来'}</span><button class="btn" data-act="train">进入训练</button></div>
+      </article>`;
+    return `<div class="stages">${train}${STAGES.map((st, i) => {
       const open = isUnlocked(s, i);
       const best = s.best[st.id];
       const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
@@ -242,6 +250,10 @@ export class Hub {
       case 'go':
         sfx('click');
         this.g.startStage(+el.dataset.i);
+        return;
+      case 'train':
+        sfx('click');
+        this.g.startTraining();
         return;
       case 'sel':
         this.sel = el.dataset.id;

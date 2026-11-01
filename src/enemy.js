@@ -3,6 +3,7 @@ import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, F
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
+import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
 
 export const TYPES = {
   grunt: {
@@ -33,7 +34,7 @@ let nextId = 0;
 export class Enemy {
   // lv：关卡等级，决定血量和伤害；elite：精英怪（更大、更硬、必掉好装备）
   // type 可以是 TYPES 里的名字，也可以直接传一个类型配置（Boss 用）
-  constructor(type, x, y, game, { lv = 1, elite = false } = {}) {
+  constructor(type, x, y, game, { lv = 1, elite = false, affixes = [] } = {}) {
     const T = typeof type === 'string' ? TYPES[type] : type;
     this.T = T;
     this.game = game;
@@ -68,7 +69,18 @@ export class Enemy {
     this.pinSet = new Set();
     this.wallReady = false;
     this.squash = 0;
+    // 精英词缀
+    this.aff = affixes.length ? new Set(affixes) : null;
+    this.guard = GUARD_MAX;
+    this.guardBrokenT = 0;
+    this.hitsTaken = 0;
+    this.blinkCd = 0;
+    if (this.aff) this.name += ' · ' + affixes.map((k) => AFFIXES[k].name).join(' ');
   }
+
+  // 狂暴后移动、出招、冷却都变快
+  get spdMul() { return this.enraged ? 1.45 : 1; }
+  get windup() { return Math.round(this.atk.windup * (this.enraged ? 0.72 : 1)); }
 
   get alive() {
     return this.state !== 'dying';
@@ -91,13 +103,15 @@ export class Enemy {
     if (this.squash > 0) this.squash--;
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
     if (this.brokenT > 0 && --this.brokenT === 0) this.armor = this.maxArmor;
+    if (this.blinkFlash > 0) this.blinkFlash--;
+    updateAffixes(this, game);
 
     switch (this.state) {
       case 'spawn': if (this.st >= 36) this.setState('idle'); break;
       case 'idle': this.think(game); break;
       case 'windup':
         this.vx *= 0.7; this.vy = 0;
-        if (this.st >= this.atk.windup) this.doAttack(game);
+        if (this.st >= this.windup) this.doAttack(game);
         break;
       case 'hop':
         if (this.z <= 0 && this.st > 4) this.setState('idle');
@@ -128,7 +142,20 @@ export class Enemy {
     const p = game.player, T = this.T, A = T.atk;
     const dxp = p.x - this.x, adx = Math.abs(dxp), dyp = p.y - this.y;
     if (p.state === 'dead') { this.vx *= 0.8; this.vy = 0; return; }
+    // 坚盾转身慢：玩家绕到背后要过一会儿它才转过来，冲刺穿过去打背后是一种解法
+    if (this.aff?.has('shield') && this.guardBrokenT <= 0 && Math.sign(dxp) !== this.facing) {
+      if (++this.turnT < 28) { this.vx *= 0.5; this.vy *= 0.5; return; }
+    }
+    this.turnT = 0;
     this.facing = Math.sign(dxp) || this.facing;
+    // 训练木人（不反击时）：站在原位，被打走了就慢慢走回去
+    if (this.hold) {
+      const hx = this.home - this.x;
+      this.vx = Math.abs(hx) > 8 ? Math.sign(hx) * 1.4 : 0;
+      this.vy = 0;
+      if (this.vx) this.walk += 0.25;
+      return;
+    }
 
     let tx, ty = p.y;
     if (T.ranged) tx = adx < 200 ? this.x - this.facing * 80 : p.x - this.facing * 300;
@@ -136,9 +163,10 @@ export class Enemy {
     else tx = p.x - this.facing * A.range * 0.7;
 
     const mx = tx - this.x, my = ty - this.y;
-    this.vx = Math.abs(mx) > 6 ? Math.sign(mx) * Math.min(T.speed, Math.abs(mx)) : 0;
-    this.vy = Math.abs(my) > 4 ? Math.sign(my) * Math.min(T.speed * 0.7, Math.abs(my)) : 0;
-    if (this.vx || this.vy) this.walk += 0.2 * T.speed;
+    const spd = T.speed * this.spdMul;
+    this.vx = Math.abs(mx) > 6 ? Math.sign(mx) * Math.min(spd, Math.abs(mx)) : 0;
+    this.vy = Math.abs(my) > 4 ? Math.sign(my) * Math.min(spd * 0.7, Math.abs(my)) : 0;
+    if (this.vx || this.vy) this.walk += 0.2 * spd;
 
     // 弓手被贴身时后跳拉开距离
     if (T.ranged && adx < 130 && this.evadeCd <= 0) {
@@ -165,7 +193,7 @@ export class Enemy {
     this.vx = this.vy = 0;
     this.hitSet.clear();
     if (atk.slam) {
-      game.hazards.push(new Hazard({ x: this.x + this.facing * 95, y: this.y, rx: 115, ry: 44, delay: atk.windup, hit: atk.hit, owner: this }));
+      game.hazards.push(new Hazard({ x: this.x + this.facing * 95, y: this.y, rx: 115, ry: 44, delay: this.windup, hit: atk.hit, owner: this }));
       sfx('warn');
     }
   }
@@ -202,7 +230,7 @@ export class Enemy {
     if (this.st >= A.recover) {
       this.setState('idle');
       const cd = A.cd ?? this.T.atk.cd ?? [80, 140];
-      this.attackCd = (rand(cd[0], cd[1]) * (this.elite ? 0.8 : 1)) | 0;
+      this.attackCd = (rand(cd[0], cd[1]) * (this.elite ? 0.8 : 1) * (this.enraged ? 0.6 : 1)) | 0;
     }
   }
 
@@ -218,6 +246,8 @@ export class Enemy {
   takeHit(h, dir, dmg) {
     if (!this.canBeHit(h)) return null;
     this.hp -= dmg;
+    if (this.dummy && this.hp <= 0) this.hp = this.maxHp; // 训练木人打不死
+    onAffixHit(this, this.game);
     this.flash = 6;
     this.squash = 8;
     if (h.wallBounce || (h.kb ?? 0) >= 10) this.wallReady = true;
@@ -366,6 +396,8 @@ export class Enemy {
 
     if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
     else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
+    else if (this.blinkFlash > 0) drawAura(ctx, sx, sy, this.h, AFFIXES.blink.color, 1.4);
+    else if (this.enraged && this.alive) drawAura(ctx, sx, sy, this.h, AFFIXES.frenzy.color, 0.9 + 0.3 * Math.sin(t * 0.3));
     else if (this.elite && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.gold, 0.8 + 0.2 * Math.sin(t * 0.1));
     // 受击时挤压一下（横向撑开、纵向压扁），让打击有「肉感」
     const q = this.squash / 8;
@@ -376,6 +408,7 @@ export class Enemy {
     ctx.restore();
 
     const top = sy - this.h - 14;
+    drawAffixes(ctx, this, sx, sy, top);
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';

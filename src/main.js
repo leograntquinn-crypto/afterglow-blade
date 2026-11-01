@@ -11,6 +11,8 @@ import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
+import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
+import { Training } from './training.js';
 import { Loot } from './loot.js';
 import { STAGES, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
@@ -65,6 +67,8 @@ class Game {
       if (a === 'mute') { this.toggleMusic(); return; }
       if (this.scene === 'play') {
         if (a === 'pause') this.setPaused(!this.paused);
+        if (this.training && a === 'trainToggle') this.training.toggleCounter();
+        if (this.training && a === 'trainReset') this.training.spawn();
         return;
       }
       if (a === 'attack' || a === 'start' || a === 'jump') this.advance();
@@ -79,6 +83,8 @@ class Game {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'resume') this.setPaused(false);
       if (act === 'retreat') { this.setPaused(false); this.endRun(); this.openHub(); }
+      if (act === 'train-counter' && this.training) { this.training.toggleCounter(); this.setPaused(false); }
+      if (act === 'train-reset' && this.training) { this.training.spawn(); this.setPaused(false); }
     });
     document.getElementById('pause-btn').addEventListener('click', () => this.scene === 'play' && this.setPaused(!this.paused));
   }
@@ -107,6 +113,8 @@ class Game {
     this.paused = v;
     music.setDuck(v);
     this.pauseEl.hidden = !v;
+    for (const el of this.pauseEl.querySelectorAll('.train-only')) el.hidden = !this.training;
+    for (const el of this.pauseEl.querySelectorAll('.run-only')) el.hidden = !!this.training;
   }
 
   // 标题 / 结算画面上按键或点击 → 回营地
@@ -126,6 +134,7 @@ class Game {
     this.enemies = [];
     this.projectiles = [];
     this.hazards = [];
+    this.seenAffix ??= new Set(); // 本次游戏里已经提示过的词缀
     this.loots = [];
     this.toasts = [];
     this.attackers = new Set();
@@ -166,6 +175,7 @@ class Game {
   }
 
   startStage(i) {
+    this.training = null;
     this.stage = STAGES[i];
     this.refreshStats();
     this.resetWorld();
@@ -178,6 +188,25 @@ class Game {
     this.enterRoom(this.dungeon.start, null);
     const B = BOSSES[this.stage.boss];
     this.banner = { title: this.stage.name, sub: `${this.dungeon.mainLength} 个房间 · 首领「${B.name}」在地图上的「王」处`, t: 0 };
+    sfx('wave');
+  }
+
+  // 训练场：一个没有门的长房间 + 两个打不死的木人（右边那个靠墙，练撞墙反弹）
+  startTraining() {
+    this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
+    this.refreshStats();
+    this.resetWorld();
+    const room = { x: 0, y: 0, type: 'training', doors: {}, w: 1300, waves: [], cleared: true, visited: true };
+    this.dungeon = { rooms: new Map([['0,0', room]]), start: room, mainLength: 1, get: (x, y) => (x === 0 && y === 0 ? room : undefined) };
+    this.run = { xp: 0, gold: 0, items: [], ups: [], firstClear: false, ended: false, training: true };
+    this.training = new Training(this);
+    this.hub.hide();
+    this.setScene('play');
+    this.input.clearBuffer();
+    this.canvas.focus();
+    this.enterRoom(room, null);
+    this.training.spawn();
+    this.banner = { title: '训 练 场', sub: '完成右边的挑战 · 第一次完成有金币奖励 · Esc 返回营地', t: 0 };
     sfx('wave');
   }
 
@@ -257,7 +286,11 @@ class Game {
     this.spawnSide = -this.spawnSide;
     const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
     const y = rand(20, DEPTH - 20);
-    const e = new Enemy(spec.replace('*', ''), x, y, this, { lv: this.stage.lv, elite });
+    const type = spec.replace('*', '');
+    const affixes = rollAffixes(type, elite, STAGES.indexOf(this.stage));
+    const e = new Enemy(type, x, y, this, { lv: this.stage.lv, elite, affixes });
+    // 第一次遇到某个词缀时提示打法
+    for (const k of affixes) if (!this.seenAffix.has(k)) { this.seenAffix.add(k); this.toast(`${AFFIXES[k].name}：${AFFIXES[k].tip}`, AFFIXES[k].color); }
     e.facing = -this.spawnSide;
     this.enemies.push(e);
     this.fx.dust(x, y, 10, 1.5);
@@ -344,6 +377,7 @@ class Game {
   // 结束一次出征（通关、死亡或撤退都会走这里）：存档
   endRun() {
     if (this.run.ended) return;
+    if (this.run.training) { this.run.ended = true; this.training = null; this.store.save(); return; }
     this.run.ended = true;
     this.save.runs++;
     this.store.save();
@@ -456,6 +490,7 @@ class Game {
     S.pts = Math.min(STYLE_MAX, S.pts + pts * mul);
     S.idle = 0;
     this.updateRank();
+    if (tag === 'tech') this.tr('tech');
   }
 
   styleHit() {
@@ -473,6 +508,7 @@ class Game {
     if (r > S.rank) { S.pop = 22; sfx('rank'); }
     S.rank = r;
     S.peak = Math.max(S.peak, r);
+    if (r >= 4) this.tr('styleS');
     this.maxAttackers = 2 + (r >= 4 ? 1 : 0); // 打得越好，敌人越凶
   }
 
@@ -487,7 +523,13 @@ class Game {
   }
 
   // ---------------- 极限闪避 → 子弹时间 + 反击 ----------------
+  // 训练场挑战：机制触发时打勾（不在训练场时什么也不做）
+  tr(id) {
+    this.training?.event(id);
+  }
+
   perfectDodge() {
+    this.tr('perfect');
     const p = this.player;
     p.invuln = Math.max(p.invuln, 24);
     if (this.witch > 0) return;
@@ -513,6 +555,7 @@ class Game {
   }
 
   parry(e) {
+    this.tr('parry');
     const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
     this.impactUntil = this.ticks + 2;
     const mx = (p.x + e.x) / 2, mz = 60;
@@ -537,6 +580,7 @@ class Game {
       else e.vx = dir * 3;
     } else {
       if (e.armor > 0) { e.armor = 0; e.brokenT = 220; this.fx.label(e.x, e.y, e.h + 40, '破 防 !', COLORS.ember, 30); }
+      breakGuard(e);
       e.setState('hurt');
       e.hitstun = 55;
       e.vx = dir * 4;
@@ -546,6 +590,7 @@ class Game {
 
   // ---------------- 撞墙 / 坠星冲击 / 弹球 ----------------
   onWallBounce(e) {
+    this.tr('wall');
     const wx = e.x < world.w / 2 ? 10 : world.w - 10;
     this.debris(8);
     this.fx.crack(wx, e.y);
@@ -560,6 +605,7 @@ class Game {
   }
 
   plungeImpact(p) {
+    this.tr('plunge');
     this.fx.ring(p.x, p.y, 4, p.glow, 20, 12, 18, 6);
     this.fx.ring(p.x, p.y, 4, '#ffffff', 10, 9, 12, 3);
     this.fx.dust(p.x, p.y, 20, 2.6);
@@ -596,6 +642,7 @@ class Game {
 
   // ---------------- 残光·终焉（必杀）----------------
   startUltimate() {
+    this.tr('ult');
     const p = this.player;
     this.ult = 0;
     this.ultReadyShown = false;
@@ -693,6 +740,22 @@ class Game {
       return false;
     }
     if (target.canBeHit && !target.canBeHit(h)) return false;
+    // 坚盾：正面挡住普通攻击（不扣血），火花 + 金属声，把玩家轻轻弹开
+    if (src.team === 'player' && blocks(target, src, h)) {
+      const hz = target.z + target.h * 0.55, hx = target.x + target.facing * target.w * 0.5;
+      this.fx.spark(hx, target.y, hz, -target.facing, 10, '#cfe6ff');
+      this.fx.ring(hx, target.y, hz, AFFIXES.shield.color, 6, 5, 10, 3);
+      target.shakeUntil = this.ticks + 4;
+      target.shakeAmp = 2;
+      this.hitstop = Math.max(this.hitstop, 3);
+      if (src === this.player) this.player.vx = target.facing * 2.5; // 玩家在盾的正前方，往外推
+      if (this.frame - (this.blockLabelAt ?? -99) > 40) {
+        this.blockLabelAt = this.frame;
+        this.fx.label(target.x, target.y, target.z + target.h + 30, '格挡', AFFIXES.shield.color, 20);
+      }
+      sfx('hitMetal');
+      return true;
+    }
     const { dmg, crit } = this.calcDamage(src, target, h);
     const r = target.takeHit(h, dir, dmg, this);
     if (!r) return false;
@@ -764,6 +827,17 @@ class Game {
         sfx('break');
       }
       if (r.killed) this.onKill(target);
+      if (this.training) {
+        const id = src.move?.id;
+        this.training.onDamage(dmg);
+        if (id === 'slash3') this.tr('combo3');
+        if (id === 'rush' && h.wallBounce) this.tr('rush');
+        if (id?.startsWith('airSlash') && target.juggle >= 2) this.tr('upper');
+        if (id === 'airSlash3') this.tr('air3');
+        if (id === 'plunge' || id === 'plungeLand') this.tr('plunge');
+        if (r.otg) this.tr('otg');
+        if (id === 'chargeSlash2') this.tr('charge2');
+      }
     } else {
       this.fx.flash(COLORS.blood, 0.22);
       sfx('hurt');
@@ -782,6 +856,7 @@ class Game {
     this.gainXp(e.xp);
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${e.xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
+    onAffixDeath(e, this);
     if (e.isBoss) {
       // 首领倒下：长慢动作、所有小怪一起倒下、准备结算
       this.slowmo = 60;
@@ -848,6 +923,7 @@ class Game {
 
     this.player.update(this);
     for (const e of this.enemies) if (enemyTick || e.team === 'prop') e.update(this);
+    this.training?.update();
     this.separate();
     this.pinball();
     for (const p of this.projectiles) if (enemyTick || p.team === 'player') p.update(this);

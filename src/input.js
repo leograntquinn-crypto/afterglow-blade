@@ -16,6 +16,7 @@ const KEYMAP = {
   KeyH: 'ult',
   Escape: 'pause',
   KeyM: 'mute',
+  KeyT: 'trainToggle', KeyR: 'trainReset', // 只在训练场里有用
   Enter: 'start',
 };
 
