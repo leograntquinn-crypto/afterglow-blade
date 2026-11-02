@@ -43,6 +43,9 @@ export class FX {
     this.rot = 0;        // 旋转震屏（弧度）
     this.flashA = 0;
     this.flashColor = '#fff';
+    this.shocks = [];  // 冲击波：给 WebGL 后处理做屏幕扭曲（Canvas 后处理时忽略）
+    this.chromaA = 0;  // 色差强度（同上）
+    this.chromaAt = null;
   }
   get parts() { return this.live; }
   get count() { return this.live.length; }
@@ -60,6 +63,17 @@ export class FX {
     }
     // 重击带一点旋转，比单纯平移更有冲击力
     if (mag >= 7 && !REDUCED_MOTION && settings.shake >= 1) this.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.03, mag * 0.0022);
+  }
+  // 冲击波扭曲：(x, y, z) 世界坐标，r 最大半径（像素），s 强度，life 帧数
+  shock(x, y, z, r, s = 0.02, life = 22) {
+    if (REDUCED_MOTION || this.shocks.length >= 6) return;
+    this.shocks.push({ x, y, z, r, s: s * settings.shake, life, max: life });
+  }
+  // 色差：重击、爆发的一瞬间红蓝通道错开，(x, y, z) 是中心
+  aberrate(a, x, y, z) {
+    if (REDUCED_MOTION || !settings.flash) return;
+    if (a >= this.chromaA) this.chromaAt = x == null ? null : { x, y, z };
+    this.chromaA = Math.max(this.chromaA, a);
   }
   flash(color, a) {
     this.flashColor = color;
@@ -230,6 +244,9 @@ export class FX {
     if (this.shakeT > 0) this.shakeT--;
     this.rot *= 0.82;
     if (this.flashA > 0) this.flashA = Math.max(0, this.flashA - 0.04);
+    this.chromaA *= 0.8;
+    if (this.chromaA < 0.0005) this.chromaA = 0;
+    for (let i = this.shocks.length - 1; i >= 0; i--) if (--this.shocks[i].life <= 0) this.shocks.splice(i, 1);
     const L = this.live;
     for (let i = L.length - 1; i >= 0; i--) {
       const p = L[i];

@@ -10,6 +10,7 @@ import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
 import { Cine } from './cine.js';
+import { GLPost } from './glpost.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
@@ -190,6 +191,9 @@ class Game {
     this.attackers = new Set();
     this.fx = new FX();
     this.cine = new Cine(); // 技能演出：压暗聚光、集中线
+    this.glpost = new GLPost(); // WebGL 后处理（泛光、扭曲、色差、调色）；不可用时自动退回 Canvas 后处理
+    this.blank = document.createElement('canvas'); // 不在战斗里时给 WebGL 的空发光层
+    this.blank.width = this.blank.height = 2;
     this.hitstop = 0;
     this.slowmo = 0;
     this.camX = 0;
@@ -830,6 +834,8 @@ class Game {
     this.hitstop = Math.max(this.hitstop, 6);
     this.fx.ring(p.x, p.y, p.z + 45, '#ffffff', 20, 14, 22, 5);
     this.fx.ring(p.x, p.y, p.z + 45, p.glow, 30, 18, 28, 3);
+    this.fx.shock(p.x, p.y, p.z + 45, 260, 0.02, 24);
+    this.fx.aberrate(0.01, p.x, p.y, p.z + 45);
     this.fx.flash(p.glow, 0.25);
     this.fx.label(p.x, p.y, p.z + 130, '极 限 闪 避', '#ffffff', 30);
     if (!REDUCED_MOTION) this.zoom = Math.max(this.zoom, 0.06);
@@ -860,6 +866,8 @@ class Game {
     this.fx.spark(mx, p.y, mz, 1, 14, '#ffffff');
     this.fx.spark(mx, p.y, mz, -1, 14, '#fff1c2');
     this.fx.ring(mx, p.y, mz, '#ffffff', 8, 10, 14, 5);
+    this.fx.shock(mx, p.y, mz, 160, 0.02, 16);
+    this.fx.aberrate(0.008, mx, p.y, mz);
     this.fx.flash('#ffffff', 0.2);
     this.fx.shake(8, 14);
     this.hitLights.push({ x: mx, y: p.y, z: mz, r: 300, life: 8 });
@@ -993,6 +1001,8 @@ class Game {
       this.cine.speed('out', 22, '#ffffff');
       this.cine.hold(0.3, 12, p);
       this.fx.gring(p.x, p.y, '#ffffff', 40, 520, 34, 12);
+      this.fx.shock(p.x, p.y, 70, 520, 0.06, 34);
+      this.fx.aberrate(0.016, p.x, p.y, 70);
       this.fx.gring(p.x, p.y, p.glow, 30, 420, 44, 8);
       this.fx.pillar(p.x, p.y, p.glow, 120, 560, 34);
       this.fx.flare(p.x, p.y, 70, 2.4, p.glow);
@@ -1115,6 +1125,8 @@ class Game {
     if (fromPlayer) {
       if (HT.flare && extra) this.fx.flare(hx, target.y, hz, HT.flare, HT.accent ?? this.player.glow);
       if (HT.lines && extra) this.fx.lines(hx, target.y, hz, HT.lines, HT.accent ?? '#ffffff', dir);
+      if (HT.shock && extra) this.fx.shock(hx, target.y, hz, 110 + HT.shock * 2500, HT.shock, 16);
+      if (HT.chroma && extra) this.fx.aberrate(HT.chroma, hx, target.y, hz);
       if (HT.soul) this.fx.soul(target.x, target.y, target.z + target.h * 0.5, this.player.glow);
       if (HT.kick) this.camKick += dir * HT.kick;
     }
@@ -1219,6 +1231,8 @@ class Game {
       this.cine.hold(0.4, 40, e);
       this.fx.flare(e.x, e.y, e.z + e.h * 0.5, 2.2, e.B.glow);
       this.fx.gring(e.x, e.y, '#ffffff', 30, 380, 30, 10);
+      this.fx.shock(e.x, e.y, e.z + e.h * 0.5, 400, 0.055, 30);
+      this.fx.aberrate(0.012, e.x, e.y, e.z + e.h * 0.5);
       this.fx.gring(e.x, e.y, e.B.glow, 20, 300, 40, 7);
       this.fx.pillar(e.x, e.y, e.B.glow, 90, 520, 40);
       this.fx.lines(e.x, e.y, e.z + e.h * 0.5, 20, '#ffffff', 1);
@@ -1334,6 +1348,8 @@ class Game {
     const themeName = this.stage && (this.scene === 'play' || this.scene === 'clear' || this.scene === 'dead') ? this.stage.theme : 'crypt';
     const th = THEMES[themeName];
     const inWorld = this.scene !== 'hub';
+    // WebGL 后处理：画质 1、2 时用（泛光、扭曲、色差、调色、暗角、颗粒都在着色器里做），否则走 Canvas 后处理
+    const useGL = this.glpost.ok && this.quality > 0;
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
 
     // 世界层的变换：震屏 + 以主角为中心的镜头推近
@@ -1400,7 +1416,7 @@ class Game {
       this.player.drawTrail(ctx, camX);
       this.fx.draw(ctx, camX);
       ctx.restore();
-      if (this.quality > 0) post.applyBloom(ctx);
+      if (this.quality > 0 && !useGL) post.applyBloom(ctx);
       this.cine.drawLines(ctx, cfx, cfy);
       ctx.save();
       view(ctx);
@@ -1413,8 +1429,10 @@ class Game {
     view(ctx);
     drawForeground(ctx, camX, t, themeName, inWorld ? this.room : null);
     ctx.restore();
-    drawVignette(ctx);
-    post.applyGrade(ctx, th.grade, t, this.quality > 1);
+    if (!useGL) {
+      drawVignette(ctx);
+      post.applyGrade(ctx, th.grade, t, this.quality > 1);
+    }
     // 子弹时间：画面去色 + 冷色调，边缘有缓慢脉动的光圈
     if (this.witch > 0 && this.scene === 'play') {
       const a = Math.min(1, this.witch / 20, (150 - this.witch) / 8 + 0.2);
@@ -1463,6 +1481,23 @@ class Game {
       ctx.fillStyle = '#ffffff';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
       ctx.restore();
+    }
+
+    if (useGL) {
+      // 冲击波、色差的中心：世界坐标 → 屏幕上的 0～1
+      const shocks = this.fx.shocks.map((s) => {
+        const [x, y] = at(s.x, s.y, s.z), u = 1 - s.life / s.max;
+        return { x: x / VIEW_W, y: y / VIEW_H, r: (s.r * (1 - (1 - u) ** 3)) / VIEW_H, s: s.s * (1 - u) ** 1.5, w: (14 + s.r * 0.12) / VIEW_H };
+      });
+      const ca = this.fx.chromaAt, cc = ca ? at(ca.x, ca.y, ca.z) : [VIEW_W / 2, VIEW_H / 2];
+      if (!this.glpost.apply(ctx, this.canvas, inWorld ? post.glow : this.blank, {
+        quality: this.quality, grade: th.grade, shocks, chroma: this.fx.chromaA, chromaC: [cc[0] / VIEW_W, cc[1] / VIEW_H], time: t,
+      })) {
+        // 这一帧 WebGL 出错（比如上下文丢失）：补上 Canvas 的暗角和调色，下一帧起整个退回 Canvas 后处理
+        drawVignette(ctx);
+        post.applyGrade(ctx, th.grade, t, this.quality > 1);
+      }
+      ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     }
 
     if (this.scene === 'play') {
