@@ -1207,6 +1207,7 @@ class Game {
       : this.scene === 'title' || this.scene === 'hub' ? this.scene : 'calm');
     if (this.paused || this.trialChoice) return; // 暂停、试炼层间选择时世界静止
     this.sceneT++;
+    this.fx.lod = [0.45, 0.75, 1][this.quality] ?? 1; // 画质越低，特效粒子越少
     this.fx.update();
     this.zoom *= 0.86;
     for (const hl of this.hitLights) hl.life--;

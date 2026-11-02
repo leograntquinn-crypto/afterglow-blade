@@ -1,10 +1,40 @@
-// 特效系统：火花、刀光、冲击环、尘土、伤害数字、震屏、闪屏
-import { toScreen, FONT_NUM, FONT_TITLE, rand, REDUCED_MOTION } from './config.js';
+// 特效系统：粒子（火花、余烬、烟尘、碎片、光团、冲击环、刀光、斩痕、汇聚光点、地裂）、伤害数字、震屏、闪屏
+//
+// 粒子池：所有粒子对象预先分配、用完回收，战斗中不产生垃圾（避免手机上垃圾回收造成的卡顿）。
+// 数据驱动：每种喷发的参数写在 fx_data.js 的 EMIT 表里，这里只按表执行。
+// 贴图：fx_tex.js 启动时用代码画好的柔光贴图；画的时候只做 drawImage，不再每帧建渐变和路径。
+// 画质：lod（0.35～1）按比例减少粒子数量；上限 MAX 个，超出就不再喷新的。
+import { GROUND_TOP, toScreen, FONT_NUM, FONT_TITLE, rand, REDUCED_MOTION } from './config.js';
 import { settings } from './settings.js';
+import { MOBILE } from './sprite.js';
+import { EMIT, CURVES, curve } from './fx_data.js';
+import { tex, tinted, ramp, tintRamp, RING_BANDS } from './fx_tex.js';
+
+const MAX = MOBILE ? 900 : 2400;
+const pick = (arr) => arr[(Math.random() * arr.length) | 0];
+const easeOut = (t) => 1 - (1 - t) ** 3;
+
+// 一个粒子：所有字段在构造时就建好（对象形状固定，JS 引擎才能优化）
+class P {
+  constructor() {
+    this.kind = '';
+    this.x = this.y = this.z = this.vx = this.vy = this.vz = 0;
+    this.life = this.max = 1;
+    this.size = 1; this.rot = 0; this.vr = 0;
+    this.drag = 1; this.grav = 0; this.bounce = 0; this.stretch = 0; this.sway = 0; this.seed = 0; this.alpha = 1;
+    this.sizeC = CURVES.one; this.alphaC = CURVES.one; this.ramp = null; this.add = true; this.img = null;
+    this.tx = null; this.tx2 = null; // 出生时取好的染色贴图（按年龄取下标）
+    this.color = '#fff'; this.bounced = false;
+    // 冲击环 / 刀光 / 斩痕 / 汇聚 / 地裂 用到的额外参数
+    this.r0 = 0; this.r1 = 0; this.w = 0; this.facing = 1; this.a0 = 0; this.a1 = 0; this.angle = 0; this.len = 0; this.ox = 0; this.oz = 0;
+  }
+}
 
 export class FX {
   constructor() {
-    this.parts = [];
+    this.live = [];
+    this.pool = [];
+    this.lod = 1; // 画质：主循环每帧按当前画质设置
     this.texts = [];
     this.shakeT = 0;
     this.shakeDur = 1;
@@ -13,6 +43,8 @@ export class FX {
     this.flashA = 0;
     this.flashColor = '#fff';
   }
+  get parts() { return this.live; }
+  get count() { return this.live.length; }
 
   // ---------- 屏幕级效果 ----------
   shake(mag, dur = 12) {
@@ -39,62 +71,106 @@ export class FX {
     return [rand(-m, m), rand(-m, m) * 0.7];
   }
 
-  // ---------- 粒子 ----------
-  spark(x, y, z, dir, n = 8, color = '#fff3c4') {
+  // ---------- 粒子池 ----------
+  spawn(kind, x, y, z, life) {
+    if (this.live.length >= MAX) return null;
+    const p = this.pool.pop() || new P();
+    p.kind = kind;
+    p.x = x; p.y = y; p.z = z;
+    p.vx = p.vy = p.vz = 0;
+    p.life = p.max = Math.max(1, life | 0);
+    p.size = 1; p.rot = 0; p.vr = 0;
+    p.drag = 1; p.grav = 0; p.bounce = 0; p.stretch = 0; p.sway = 0; p.seed = Math.random() * 100; p.alpha = 1;
+    p.sizeC = CURVES.one; p.alphaC = CURVES.fade; p.ramp = null; p.add = true; p.img = null; p.bounced = false; p.tx = p.tx2 = null;
+    this.live.push(p);
+    return p;
+  }
+
+  // 按 EMIT 表喷一组粒子。o：dir（朝向 ±1）、n（个数）、color、scale（大小倍数）、speed（速度倍数）
+  emit(name, x, y, z, o = {}) {
+    const d = EMIT[name], T = tex();
+    let n = o.n ?? rand(d.n[0], d.n[1] + 0.999) | 0;
+    n = n > 0 ? Math.max(1, Math.round(n * this.lod)) : 0;
+    const dir = o.dir ?? 1, color = o.color ?? d.color ?? '#ffffff', sc = o.scale ?? 1, spd = o.speed ?? 1;
+    const rp = ramp(color, d.ramp), add = d.blend !== 'normal';
     for (let i = 0; i < n; i++) {
-      const a = (dir > 0 ? 0 : Math.PI) + rand(-1.1, 1.1);
-      const sp = rand(5, 13);
-      this.parts.push({ k: 'spark', x, y, z, vx: Math.cos(a) * sp, vz: Math.sin(a) * sp, life: rand(8, 15) | 0, max: 15, w: rand(1.5, 3.2), color });
+      const p = this.spawn(d.type, x, y, z, rand(d.life[0], d.life[1]));
+      if (!p) return;
+      if (d.speed) {
+        const a = (d.angle ?? 0) + rand(-(d.spread ?? 0), d.spread ?? 0), s = rand(d.speed[0], d.speed[1]) * spd;
+        p.vx = Math.cos(a) * s * dir;
+        p.vz = -Math.sin(a) * s;
+        p.vy = rand(-0.25, 0.25) * s; // 纵深方向也散开一点，2.5D 里才有体积感
+      }
+      p.size = rand(d.size[0], d.size[1]) * sc;
+      p.drag = d.drag ?? 1; p.grav = d.grav ?? 0; p.bounce = d.bounce ?? 0; p.stretch = d.stretch ?? 0; p.sway = d.sway ?? 0;
+      p.alpha = d.alpha ?? 1;
+      p.sizeC = CURVES[d.sizeC ?? 'one']; p.alphaC = CURVES[d.alphaC ?? 'fade'];
+      p.ramp = rp; p.add = add; p.color = color;
+      if (d.spin) { p.rot = rand(0, 6.28); p.vr = rand(-d.spin, d.spin); }
+      if (d.type === 'smoke') p.img = tinted(pick(T.smoke), color, 'mul');
+      else if (d.type === 'chip') p.img = tinted(pick(T.chip), color, 'mul');
+      else if (d.type === 'spark') p.tx = tintRamp(T.streak, rp);
+      else if (d.type === 'ember') p.tx = tintRamp(T.core, rp);
+      else if (d.type === 'glow') p.tx = tintRamp(T.glow, rp);
     }
   }
+
+  // ---------- 对外接口（和旧版一样，调用方不用改）----------
+  spark(x, y, z, dir, n = 8, color = '#fff3c4') {
+    this.emit('spark', x, y, z, { dir, n, color });
+    this.emit('ember', x, y, z, { dir, n: Math.max(1, Math.round(n * 0.4)), color });
+    this.emit('hitGlow', x, y, z, { color, scale: 0.7 + Math.min(n, 20) * 0.03 });
+  }
+  // 冲击环：半径从 r 迅速撑开（先快后慢），越撑越淡
   ring(x, y, z, color = '#fff', r = 8, grow = 5, life = 10, w = 3) {
-    this.parts.push({ k: 'ring', x, y, z, r, grow, life, max: life, w, color });
+    const p = this.spawn('ring', x, y, z, life);
+    if (!p) return;
+    p.r0 = r; p.r1 = r + grow / (1 - 0.85); p.w = w; p.color = color; p.ramp = ramp(color, 'cool');
+    const T = tex();
+    p.tx = T.ring.map((img) => tintRamp(img, p.ramp)); p.tx2 = tintRamp(T.glow, p.ramp);
+    p.alphaC = CURVES.fadeLate;
   }
   dust(x, y, n = 6, spread = 1) {
-    for (let i = 0; i < n; i++) {
-      this.parts.push({ k: 'dust', x: x + rand(-10, 10), y, z: rand(0, 6), vx: rand(-2.5, 2.5) * spread, vz: rand(0.5, 2.5), r: rand(5, 11), life: rand(18, 30) | 0, max: 30 });
-    }
+    this.emit('dust', x + rand(-6, 6), y, rand(0, 6), { n, speed: spread, scale: 0.8 + spread * 0.2 });
   }
   // 材质碎片：受重力影响、会在地上弹跳翻滚的小块（骨渣、布屑、金属屑）
   chips(x, y, z, dir, n, color) {
-    for (let i = 0; i < n; i++) {
-      this.parts.push({ k: 'chip', x, y: y + rand(-6, 6), z, vx: dir * rand(1.5, 6) + rand(-1, 1), vz: rand(2, 7), rot: rand(0, 6), vr: rand(-0.5, 0.5), s: rand(2, 4.5), life: rand(40, 70) | 0, max: 70, color });
-    }
+    this.emit('chip', x, y + rand(-6, 6), z, { dir, n, color });
   }
-
-  // 刀光：一段圆弧，a0 -> a1（弧度，0 = 正前方，负数 = 向上）
+  // 刀光：一段新月形的弧，a0 -> a1（弧度，0 = 正前方，负数 = 向上）。刀头先扫过去，刀尾随后追上收窄
   arc(x, y, z, facing, r, a0, a1, color, w = 14, life = 9) {
-    this.parts.push({ k: 'arc', x, y, z, facing, r, a0, a1, color, w, life, max: life });
+    const p = this.spawn('arc', x, y, z, life + 3);
+    if (!p) return;
+    Object.assign(p, { facing, r0: r, a0, a1, color, w });
   }
-  // 蓄力：粒子从四周向中心汇聚
+  // 蓄力：光点从四周加速吸向中心，带拖尾
   converge(x, y, z, n, color) {
+    n = Math.max(1, Math.round(n * this.lod));
     for (let i = 0; i < n; i++) {
-      const a = rand(0, Math.PI * 2), d = rand(70, 120), life = 18;
-      this.parts.push({ k: 'mote', x: x + Math.cos(a) * d, y, z: z + Math.sin(a) * d, vx: -Math.cos(a) * d / life, vz: -Math.sin(a) * d / life, life, max: life, color });
+      const a = rand(0, Math.PI * 2), d = rand(70, 120);
+      const p = this.spawn('mote', x, y, z, rand(16, 22));
+      if (!p) return;
+      p.ox = Math.cos(a) * d; p.oz = Math.sin(a) * d; p.size = rand(2.2, 3.6); p.color = color; p.ramp = ramp(color, 'cool');
+      p.tx = tintRamp(tex().streak, p.ramp); p.tx2 = tintRamp(tex().glow, p.ramp);
+      p.alphaC = CURVES.pop; p.sizeC = CURVES.grow;
     }
   }
+  // 地裂：暗色裂缝 + 炽热的缝（叠加发光，慢慢冷却），地面透视
   crack(x, y) {
-    const rays = [];
-    for (let i = 0; i < 9; i++) {
-      const a = (i / 9) * Math.PI * 2 + rand(-0.2, 0.2);
-      const pts = [[0, 0]];
-      let px = 0, py = 0;
-      for (let j = 0; j < 4; j++) {
-        px += Math.cos(a + rand(-0.4, 0.4)) * rand(18, 34);
-        py += Math.sin(a + rand(-0.4, 0.4)) * rand(6, 12);
-        pts.push([px, py]);
-      }
-      rays.push(pts);
-    }
-    this.parts.push({ k: 'crack', x, y, z: 0, rays, life: 150, max: 150 });
+    const p = this.spawn('crack', x, y, 0, 150);
+    if (!p) return;
+    p.img = pick(tex().crack); p.facing = Math.random() < 0.5 ? -1 : 1; p.color = '#ff9a4a';
+  }
+  // 斩痕：命中点闪过一道沿挥砍方向的锐利光，先迅速拉长再变细消失
+  cut(x, y, z, angle, len, color) {
+    const p = this.spawn('cut', x, y, z, 10);
+    if (!p) return;
+    p.angle = angle; p.len = len; p.color = color; p.ramp = ramp(color, 'hot');
+    p.img = tinted(tex().glow, color);
   }
 
   // ---------- 文字 ----------
-  // 斩痕：命中点闪过一道沿挥砍方向的锐利白线，先迅速拉长再变细消失
-  cut(x, y, z, angle, len, color) {
-    this.parts.push({ k: 'cut', x, y, z, angle, len, color, life: 9, max: 9 });
-  }
-
   number(x, y, z, value, { crit = false, color = null } = {}) {
     // 设置：伤害数字。「只看暴击」时仍然显示自己受到的伤害（有颜色的那种）
     if (settings.numbers === 'off' || (settings.numbers === 'crit' && !crit && !color)) return;
@@ -112,137 +188,213 @@ export class FX {
     if (this.shakeT > 0) this.shakeT--;
     this.rot *= 0.82;
     if (this.flashA > 0) this.flashA = Math.max(0, this.flashA - 0.04);
-    for (const p of this.parts) {
-      p.life--;
-      switch (p.k) {
-        case 'spark': p.x += p.vx; p.z += p.vz; p.vx *= 0.82; p.vz = p.vz * 0.82 - 0.3; break;
-        case 'ring': p.r += p.grow; p.grow *= 0.85; break;
-        case 'dust': p.x += p.vx; p.z += p.vz; p.vx *= 0.9; p.vz *= 0.92; p.r += 0.35; break;
-        case 'mote': p.x += p.vx; p.z += p.vz; break;
-        case 'chip':
-          p.vz -= 0.45;
-          p.x += p.vx;
-          p.z += p.vz;
-          p.rot += p.vr;
-          if (p.z < 0) { p.z = 0; p.vz = -p.vz * 0.35; p.vx *= 0.6; p.vr *= 0.6; }
-          break;
+    const L = this.live;
+    for (let i = L.length - 1; i >= 0; i--) {
+      const p = L[i];
+      if (--p.life <= 0) {
+        // 和最后一个交换后弹出：删除是 O(1)，对象回到池里复用
+        L[i] = L[L.length - 1];
+        L.pop();
+        this.pool.push(p);
+        continue;
+      }
+      if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack') continue;
+      p.vx *= p.drag; p.vy *= p.drag; p.vz = p.vz * p.drag - p.grav;
+      if (p.sway) p.vx += Math.sin(p.life * 0.21 + p.seed) * p.sway * 0.1;
+      p.x += p.vx; p.y += p.vy; p.z += p.vz; p.rot += p.vr;
+      if (p.bounce && p.z < 0) {
+        p.z = 0; p.vz = -p.vz * p.bounce; p.vx *= 0.6; p.vy *= 0.6; p.vr *= 0.6;
+        if (!p.bounced && this.lod > 0.6) this.emit('puff', p.x, p.y, 0, { n: 1, scale: 0.7 });
+        p.bounced = true;
       }
     }
-    this.parts = this.parts.filter((p) => p.life > 0);
     for (const t of this.texts) { t.life--; t.z += t.vz; t.vz *= 0.92; }
     this.texts = this.texts.filter((t) => t.life > 0);
   }
 
-  // 地面上的效果（裂痕），在角色之前画
+  // ---------- 绘制 ----------
+  // 每个粒子都要在「世界变换」（震屏、镜头推近）之上再旋转缩放：先记下世界变换，每个粒子直接算出合成矩阵，
+  // 用 setTransform 一次设好，比 save / translate / rotate / restore 快得多
+  base(ctx) {
+    const m = ctx.getTransform();
+    this.M = [m.a, m.b, m.c, m.d, m.e, m.f];
+  }
+  // 以 (x, y) 为中心画贴图 img，旋转 rot，横向缩放 kx、纵向 ky；(ax, ay) 是贴图里对准 (x, y) 的点（默认中心）
+  put(ctx, img, x, y, rot, kx, ky, ax = img.width / 2, ay = img.height / 2) {
+    const [a, b, c, d, e, f] = this.M;
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    const la = cs * kx, lb = sn * kx, lc = -sn * ky, ld = cs * ky;
+    ctx.setTransform(a * la + c * lb, b * la + d * lb, a * lc + c * ld, b * lc + d * ld, a * x + c * y + e, b * x + d * y + f);
+    ctx.drawImage(img, -ax, -ay);
+  }
+  restore(ctx) {
+    const [a, b, c, d, e, f] = this.M;
+    ctx.setTransform(a, b, c, d, e, f);
+  }
+
+  // 地面上的效果（地裂），在角色之前画
   drawFloor(ctx, camX) {
-    for (const p of this.parts) {
-      if (p.k !== 'crack') continue;
-      const [sx, sy] = toScreen(p.x, p.y, 0, camX);
-      ctx.save();
-      ctx.globalAlpha = Math.min(1, p.life / 40) * 0.8;
-      ctx.strokeStyle = '#0a0709';
-      ctx.lineWidth = 3;
-      ctx.lineJoin = 'round';
-      for (const ray of p.rays) {
-        ctx.beginPath();
-        ray.forEach(([rx, ry], i) => (i ? ctx.lineTo(sx + rx, sy + ry) : ctx.moveTo(sx + rx, sy + ry)));
-        ctx.stroke();
+    let any = false;
+    for (const p of this.live) if (p.kind === 'crack') { any = true; break; }
+    if (!any) return;
+    this.base(ctx);
+    const op = ctx.globalCompositeOperation;
+    for (const p of this.live) {
+      if (p.kind !== 'crack') continue;
+      const sx = p.x - camX, sy = GROUND_TOP + p.y;
+      const age = p.max - p.life;
+      ctx.globalAlpha = Math.min(1, p.life / 40) * 0.85;
+      this.put(ctx, p.img.dark, sx, sy, 0, p.facing, 1);
+      // 炽热的缝：一开始很亮，约 1 秒冷却
+      const heat = Math.max(0, 1 - age / 70);
+      if (heat > 0) {
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = heat * heat;
+        this.put(ctx, tinted(p.img.hot, p.color), sx, sy, 0, p.facing, 1);
+        ctx.globalCompositeOperation = op;
       }
-      ctx.restore();
     }
+    ctx.globalAlpha = 1;
+    this.restore(ctx);
   }
 
   // glowPass = true 时只画发光的部分（给泛光层用）
   draw(ctx, camX, glowPass = false) {
-    // 尘土：普通混合
-    ctx.fillStyle = '#b8aa9a';
-    for (const p of this.parts) {
-      if (p.k !== 'dust' || glowPass) continue;
-      const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
-      ctx.globalAlpha = (p.life / p.max) * 0.35;
-      ctx.beginPath();
-      ctx.arc(sx, sy, p.r, 0, Math.PI * 2);
-      ctx.fill();
-    }
-    // 碎片：普通混合，带一点描边
-    for (const p of this.parts) {
-      if (p.k !== 'chip' || glowPass) continue;
-      const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
-      ctx.globalAlpha = Math.min(1, p.life / 15);
-      ctx.save();
-      ctx.translate(sx, sy);
-      ctx.rotate(p.rot);
-      ctx.fillStyle = '#120a16';
-      ctx.fillRect(-p.s / 2 - 1, -p.s / 4 - 1, p.s + 2, p.s / 2 + 2);
-      ctx.fillStyle = p.color;
-      ctx.fillRect(-p.s / 2, -p.s / 4, p.s, p.s / 2);
-      ctx.restore();
-    }
-    ctx.globalAlpha = 1;
-
-    // 发光类：叠加混合（lighter），越叠越亮
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    for (const p of this.parts) {
-      const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
-      const t = p.life / p.max;
-      if (p.k === 'spark') {
-        ctx.strokeStyle = p.color;
-        ctx.globalAlpha = Math.min(1, t * 1.5);
-        ctx.lineWidth = p.w;
-        ctx.beginPath();
-        ctx.moveTo(sx, sy);
-        ctx.lineTo(sx - p.vx * 1.8, sy + p.vz * 1.8);
-        ctx.stroke();
-      } else if (p.k === 'ring') {
-        ctx.strokeStyle = p.color;
-        ctx.globalAlpha = t;
-        ctx.lineWidth = p.w * t + 0.5;
-        ctx.beginPath();
-        ctx.ellipse(sx, sy, p.r, p.r * 0.75, 0, 0, Math.PI * 2);
-        ctx.stroke();
-      } else if (p.k === 'arc') {
-        ctx.save();
-        ctx.translate(sx, sy);
-        ctx.scale(p.facing, 1);
-        const ccw = p.a1 < p.a0;
-        for (let i = 0; i < 3; i++) {
-          ctx.globalAlpha = t * (1 - i * 0.3);
-          ctx.strokeStyle = i === 0 ? '#ffffff' : p.color;
-          ctx.lineWidth = Math.max(0.5, p.w * t * (1 - i * 0.25));
-          ctx.beginPath();
-          ctx.arc(0, 0, Math.max(4, p.r - i * 7), p.a0, p.a1, ccw);
-          ctx.stroke();
+    if (!this.live.length) return;
+    const T = tex();
+    this.base(ctx);
+    const op = ctx.globalCompositeOperation;
+    // 1. 普通混合：烟尘、碎片
+    if (!glowPass) {
+      for (const p of this.live) {
+        if (p.add) continue;
+        const sx = p.x - camX, sy = GROUND_TOP + p.y - p.z;
+        const t = 1 - p.life / p.max;
+        ctx.globalAlpha = p.alpha * curve(p.alphaC, t);
+        if (p.kind === 'smoke') {
+          // 烟不旋转（旋转的半透明大贴图很费），靠 4 种形状 + 左右翻转 + 大小变化避免重复感
+          const k = (p.size * 2 * curve(p.sizeC, t)) / p.img.width;
+          this.put(ctx, p.img, sx, sy, 0, p.vr < 0 ? -k : k, k);
+        } else {
+          const k = p.size / 10;
+          this.put(ctx, p.img, sx, sy, p.rot, k, k * (0.6 + 0.4 * Math.abs(Math.cos(p.rot * 0.7)))); // 翻滚：厚度随转动变化
         }
-        ctx.restore();
-      } else if (p.k === 'cut') {
-        const age = p.max - p.life;
-        const grow = Math.min(1, age / 2.5);
-        const half = (p.len / 2) * grow;
-        const w = Math.max(0.6, 7 * t);
-        const dx = Math.cos(p.angle) * half, dy = Math.sin(p.angle) * half;
-        ctx.globalAlpha = Math.min(1, t * 1.6);
-        // 外层彩色光晕 + 内层白芯，两端尖、中间粗
-        for (const [col, mul] of [[p.color, 2.2], ['#ffffff', 1]]) {
-          ctx.fillStyle = col;
-          ctx.beginPath();
-          ctx.moveTo(sx - dx, sy - dy);
-          ctx.lineTo(sx + Math.sin(p.angle) * w * mul * 0.5, sy - Math.cos(p.angle) * w * mul * 0.5);
-          ctx.lineTo(sx + dx, sy + dy);
-          ctx.lineTo(sx - Math.sin(p.angle) * w * mul * 0.5, sy + Math.cos(p.angle) * w * mul * 0.5);
-          ctx.closePath();
-          ctx.fill();
-        }
-      } else if (p.k === 'mote') {
-        ctx.fillStyle = p.color;
-        ctx.globalAlpha = 1 - t * 0.5;
-        ctx.beginPath();
-        ctx.arc(sx, sy, 2.5, 0, Math.PI * 2);
-        ctx.fill();
       }
     }
-    ctx.restore();
+    // 2. 叠加发光
+    ctx.globalCompositeOperation = 'lighter';
+    for (const p of this.live) {
+      if (!p.add) continue;
+      const sx = p.x - camX, sy = GROUND_TOP + p.y - p.z;
+      const t = 1 - p.life / p.max;
+      const a = p.alpha * curve(p.alphaC, t);
+      const ci = p.ramp ? Math.min(p.ramp.length - 1, (t * p.ramp.length) | 0) : 0;
+      switch (p.kind) {
+        case 'spark': {
+          // 沿速度方向拉长：越快越长；前端白热
+          const sp = Math.hypot(p.vx, p.vz - p.vy);
+          const len = Math.max(p.size * 2.5, sp * p.stretch * 1.6), wid = p.size * curve(p.sizeC, t);
+          const rot = Math.atan2(-p.vz + p.vy * 0.5, p.vx);
+          ctx.globalAlpha = a;
+          this.put(ctx, p.tx[ci], sx, sy, rot, len / 58, (wid * 2.6) / 16, 58, 8);
+          if (t < 0.45 && !glowPass) {
+            ctx.globalAlpha = a * (1 - t / 0.45);
+            this.put(ctx, T.needle, sx, sy, rot, (len * 0.8) / 128, (wid * 0.5) / 6, 118, 6);
+          }
+          break;
+        }
+        case 'ember': {
+          const s = p.size * curve(p.sizeC, t);
+          ctx.globalAlpha = a * (0.75 + 0.25 * Math.sin(p.life * 0.9 + p.seed)); // 闪烁
+          this.put(ctx, p.tx[ci], sx, sy, 0, (s * 2.6) / 32, (s * 2.6) / 32);
+          break;
+        }
+        case 'glow': {
+          const s = p.size * curve(p.sizeC, t);
+          ctx.globalAlpha = glowPass ? a * 0.4 : a;
+          this.put(ctx, p.tx[ci], sx, sy, 0, (s * 2) / 64, (s * 2) / 64);
+          if (!glowPass && t < 0.4) this.put(ctx, T.core, sx, sy, 0, (s * 0.7) / 32, (s * 0.7) / 32);
+          break;
+        }
+        case 'ring': {
+          const r = p.r0 + (p.r1 - p.r0) * easeOut(t);
+          // 环宽：从 w 的 2.5 倍收到 1 倍左右，按「环宽 / 半径」挑最接近的一档贴图
+          const want = (p.w * (2.5 - 1.5 * t)) / r;
+          let bi = 0;
+          while (bi < RING_BANDS.length - 1 && RING_BANDS[bi + 1] <= want * 1.2) bi++;
+          ctx.globalAlpha = glowPass ? a * 0.45 : a;
+          this.put(ctx, p.tx[bi][ci], sx, sy, 0, (r * 2) / 256, (r * 1.5) / 256);
+          // 刚炸开时环里有一层淡淡的气浪
+          if (t < 0.4 && !glowPass) {
+            ctx.globalAlpha = a * 0.1 * (1 - t / 0.4);
+            this.put(ctx, p.tx2[ci], sx, sy, 0, (r * 1.6) / 64, (r * 1.2) / 64);
+          }
+          break;
+        }
+        case 'mote': {
+          // 位置：从外圈加速吸向中心（ease-in）
+          const k = 1 - t * t, x = sx + p.ox * k, y = sy - p.oz * k;
+          const s = p.size * curve(p.sizeC, t);
+          const rot = Math.atan2(p.oz, -p.ox); // 指向中心
+          ctx.globalAlpha = a;
+          this.put(ctx, p.tx[ci], x, y, rot, (8 + 30 * t) / 58, (s * 2.4) / 16, 58, 8);
+          this.put(ctx, p.tx2[ci], x, y, 0, (s * 4) / 64, (s * 4) / 64);
+          break;
+        }
+        case 'cut': {
+          const age = p.max - p.life, grow = Math.min(1, age / 2.5);
+          const len = p.len * grow * 1.1, w = Math.max(0.8, 6 * (1 - t));
+          ctx.globalAlpha = Math.min(1, (1 - t) * 1.6) * (glowPass ? 0.5 : 0.8);
+          this.put(ctx, p.img, sx, sy, p.angle, len / 64, (w * 2.2) / 64);
+          if (!glowPass) {
+            ctx.globalAlpha = Math.min(1, (1 - t) * 1.8);
+            this.put(ctx, T.needle, sx, sy, p.angle, len / 128, (w * 0.55) / 6);
+            if (age < 3) {
+              ctx.globalAlpha = (1 - age / 3) * 0.8;
+              this.put(ctx, T.flare, sx, sy, p.angle * 0.5, 0.4, 0.4);
+            }
+          }
+          break;
+        }
+        case 'arc':
+          this.restore(ctx);
+          this.drawArc(ctx, p, sx, sy, glowPass);
+          break;
+      }
+    }
+    ctx.globalCompositeOperation = op;
+    ctx.globalAlpha = 1;
+    this.restore(ctx);
+  }
+
+  // 新月形刀光：刀头在前一段时间里扫过 a0→a1（先快后慢），刀尾随后追上；中间最厚、两头尖。
+  // 三层：外层彩色光晕、主体、贴着外沿的白芯
+  drawArc(ctx, p, sx, sy, glowPass) {
+    const age = p.max - p.life, T0 = p.max - 3;
+    const head = easeOut(Math.min(1, age / Math.max(1, T0 * 0.4)));
+    const tail = Math.max(0, (age - T0 * 0.25) / (T0 * 0.75 + 3)) ** 1.6;
+    if (head - tail < 0.02) return;
+    const fade = Math.min(1, (p.life / p.max) * 1.8);
+    const SEG = 16, da = p.a1 - p.a0;
+    const band = (outer, wMul, alpha, color) => {
+      ctx.globalAlpha = alpha * fade;
+      ctx.fillStyle = color;
+      ctx.beginPath();
+      for (let i = 0; i <= SEG; i++) {
+        const u = i / SEG, a = p.a0 + da * (tail + (head - tail) * u);
+        ctx.lineTo(sx + Math.cos(a) * (p.r0 + outer) * p.facing, sy + Math.sin(a) * (p.r0 + outer));
+      }
+      for (let i = SEG; i >= 0; i--) {
+        const u = i / SEG, a = p.a0 + da * (tail + (head - tail) * u);
+        const w = p.w * wMul * ((u ** 0.7 * (1 - u) ** 0.3) / 0.543);
+        ctx.lineTo(sx + Math.cos(a) * (p.r0 + outer - w) * p.facing, sy + Math.sin(a) * (p.r0 + outer - w));
+      }
+      ctx.closePath();
+      ctx.fill();
+    };
+    band(p.w * 0.25, 1.7, 0.35, p.color);
+    band(0, 1, 0.85, p.color);
+    if (!glowPass) band(-p.w * 0.05, 0.38, 0.95, '#ffffff');
   }
 
   drawTexts(ctx, camX) {
