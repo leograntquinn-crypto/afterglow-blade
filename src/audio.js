@@ -1,7 +1,11 @@
 // 音效：全部用 Web Audio 实时合成，不需要任何音频文件。
 // 打击感 = 画面（顿帧、震屏、火花）+ 声音（短促的噪声 + 低频「咚」）。
 
+import { settings, onSettings } from './settings.js';
+
 let ac = null, master = null, noiseBuf = null;
+// 设置：音效音量
+onSettings((S) => { if (master) master.gain.value = 0.45 * S.sfx; });
 const lastPlayed = {};
 
 export function initAudio() {
@@ -10,7 +14,7 @@ export function initAudio() {
     if (!AC) return;
     try { ac = new AC(); } catch { return; }
     master = ac.createGain();
-    master.gain.value = 0.45;
+    master.gain.value = 0.45 * settings.sfx;
     master.connect(ac.destination);
     noiseBuf = ac.createBuffer(1, ac.sampleRate, ac.sampleRate);
     const d = noiseBuf.getChannelData(0);

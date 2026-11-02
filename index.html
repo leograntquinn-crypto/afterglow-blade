@@ -97,6 +97,18 @@
     padding-left: max(16px, env(safe-area-inset-left, 0px)); padding-right: max(16px, env(safe-area-inset-right, 0px));
   }
   #pause { overflow-y: auto; }
+  #settings { position: fixed; inset: 0; z-index: 8; display: grid; place-items: center; background: rgba(5, 4, 8, .6); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+  #settings .card-head { justify-content: space-between; }
+  .set-body { display: grid; gap: 10px; margin-top: 12px; }
+  .set-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; flex-wrap: wrap; padding: 8px 0; border-bottom: 1px solid var(--line); }
+  .set-row b { font-weight: 600; font-size: 14px; }
+  .set-row small { display: block; color: var(--mute); font-size: 12px; margin-top: 2px; }
+  .seg { display: flex; gap: 4px; }
+  .seg .btn { padding: 5px 12px; font-size: 13px; }
+  .seg .btn.on { background: rgba(127, 243, 255, .16); border-color: var(--blade); color: var(--blade); }
+  /* 设置：触屏按钮大小 */
+  .pad { transform: scale(var(--tscale, 1)); transform-origin: bottom right; }
+  #stick { transform: scale(var(--tscale, 1)); transform-origin: bottom left; }
   #trial-choice { position: fixed; inset: 0; z-index: 5; display: grid; place-items: center; background: rgba(8, 6, 12, .62); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
   #trial-choice .box { display: grid; gap: 10px; text-align: center; width: min(420px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 12px; padding: 22px 20px; }
   #trial-choice h2 { font: 40px var(--font-title); margin: 0; font-weight: 400; color: var(--gold-hi); }
@@ -359,6 +371,13 @@
 </div>
 <button id="pause-btn" aria-label="暂停">❚❚</button>
 
+<div id="settings" hidden>
+  <div class="sheet wide" role="dialog" aria-label="设置">
+    <div class="card-head"><div><h3>设置</h3><p class="isub">保存在这台设备上，不随云存档同步</p></div><button class="close" data-set-close aria-label="关闭">×</button></div>
+    <div class="set-body"></div>
+  </div>
+</div>
+
 <div id="trial-choice" hidden>
   <div class="box">
     <h2>第 1 层 已肃清</h2>
@@ -375,6 +394,7 @@
       <h2>暂停</h2>
       <p class="run-only">撤退会保留已获得的经验、金币和装备</p>
       <button class="btn primary" data-act="resume">继续战斗</button>
+      <button class="btn" data-act="settings">设置</button>
       <button class="btn train-only" data-act="train-counter">木人反击：开 / 关（T）</button>
       <button class="btn train-only" data-act="train-reset">重置木人（R）</button>
       <button class="btn" data-act="retreat">撤退回营地</button>
@@ -417,6 +437,7 @@
       <span class="stat-chip stone" title="完成委托获得，用来给稀有、传说装备铭刻指定的刻印">刻印石<b id="h-stones">0</b></span>
       <span class="sync" id="h-sync"></span>
       <button class="btn ghost mini-text" id="h-music" data-act="music" aria-label="开关背景音乐">音乐：开</button>
+      <button class="btn ghost mini-text" data-act="settings">设置</button>
     </header>
     <nav class="tabs" aria-label="营地">
       <button data-tab="stages">出征</button>

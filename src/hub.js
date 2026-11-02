@@ -309,6 +309,10 @@ export class Hub {
     const commit = () => { this.g.refreshStats(); this.g.store.save(); this.render(); };
 
     switch (act) {
+      case 'settings':
+        sfx('click');
+        this.g.openSettings();
+        return;
       case 'claim': {
         const r = claimContract(s, el.dataset.id);
         if (!r) return;

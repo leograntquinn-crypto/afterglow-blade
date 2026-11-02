@@ -1,5 +1,6 @@
 // 特效系统：火花、刀光、冲击环、尘土、伤害数字、震屏、闪屏
 import { toScreen, FONT_NUM, FONT_TITLE, rand, REDUCED_MOTION } from './config.js';
+import { settings } from './settings.js';
 
 export class FX {
   constructor() {
@@ -16,6 +17,8 @@ export class FX {
   // ---------- 屏幕级效果 ----------
   shake(mag, dur = 12) {
     if (REDUCED_MOTION) mag *= 0.35;
+    mag *= settings.shake; // 设置：震屏强度
+    if (mag <= 0) return;
     const cur = this.shakeT > 0 ? this.shakeMag * (this.shakeT / this.shakeDur) : 0;
     if (mag >= cur) {
       this.shakeMag = mag;
@@ -23,10 +26,11 @@ export class FX {
       this.shakeDur = dur;
     }
     // 重击带一点旋转，比单纯平移更有冲击力
-    if (mag >= 7 && !REDUCED_MOTION) this.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.03, mag * 0.0022);
+    if (mag >= 7 && !REDUCED_MOTION && settings.shake >= 1) this.rot = (Math.random() < 0.5 ? -1 : 1) * Math.min(0.03, mag * 0.0022);
   }
   flash(color, a) {
     this.flashColor = color;
+    if (!settings.flash) a *= 0.2; // 设置：关闭闪屏后只留一点点提示
     this.flashA = Math.max(this.flashA, REDUCED_MOTION ? a * 0.4 : a);
   }
   shakeOffset() {
@@ -92,6 +96,8 @@ export class FX {
   }
 
   number(x, y, z, value, { crit = false, color = null } = {}) {
+    // 设置：伤害数字。「只看暴击」时仍然显示自己受到的伤害（有颜色的那种）
+    if (settings.numbers === 'off' || (settings.numbers === 'crit' && !crit && !color)) return;
     // 同一位置刚刚冒过数字 → 往上错开，避免叠成一团
     const near = this.texts.filter((t) => t.k === 'num' && t.max - t.life < 14 && Math.abs(t.x - x) < 60 && Math.abs(t.y - y) < 30).length;
     z += Math.min(near, 3) * 22;

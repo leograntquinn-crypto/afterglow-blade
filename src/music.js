@@ -12,6 +12,9 @@
 // 把接下来 0.15 秒内要响的音符提前「预约」到精确时间点上（look-ahead scheduling）。
 
 import { getAudio } from './audio.js';
+import { settings, onSettings } from './settings.js';
+
+const LEVEL = () => 0.28 * settings.music; // 设置：音乐音量
 
 const BPM = 84;
 const STEP = 60 / BPM / 2; // 八分音符
@@ -47,7 +50,7 @@ class Music {
     this.out = ac.createGain();
     this.out.gain.value = this.muted ? 0 : 0.0001;
     this.out.connect(ac.destination);
-    if (!this.muted) this.out.gain.setTargetAtTime(0.28, ac.currentTime, 1.5);
+    if (!this.muted) this.out.gain.setTargetAtTime(LEVEL(), ac.currentTime, 1.5);
 
     // 混响：用衰减的噪声当「房间的回声」
     const len = ac.sampleRate * 3;
@@ -95,13 +98,13 @@ class Music {
 
   setDuck(on) {
     if (!this.started || this.muted) return;
-    this.out.gain.setTargetAtTime(on ? 0.08 : 0.28, this.ac.currentTime, 0.3);
+    this.out.gain.setTargetAtTime(on ? LEVEL() * 0.3 : LEVEL(), this.ac.currentTime, 0.3);
   }
 
   toggleMute() {
     this.muted = !this.muted;
     try { localStorage.setItem('afterglow-music', this.muted ? 'off' : 'on'); } catch { /* 忽略 */ }
-    if (this.started) this.out.gain.setTargetAtTime(this.muted ? 0 : 0.28, this.ac.currentTime, 0.2);
+    if (this.started) this.out.gain.setTargetAtTime(this.muted ? 0 : LEVEL(), this.ac.currentTime, 0.2);
     return this.muted;
   }
 
@@ -240,3 +243,5 @@ class Music {
 }
 
 export const music = new Music();
+// 设置：音乐音量随时生效
+onSettings((S) => { if (music.started && !music.muted) music.out.gain.setTargetAtTime(0.28 * S.music, music.ac.currentTime, 0.2); });

@@ -13,6 +13,7 @@ import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
 import { Training } from './training.js';
+import { settings, setSetting, onSettings, renderSettings } from './settings.js';
 import { ensureContracts, progressContracts, contractText } from './contracts.js';
 import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } from './trial.js';
 import { Loot } from './loot.js';
@@ -42,6 +43,19 @@ class Game {
     this.stats = computeStats(this.save);
     this.hub = new Hub(this, document.getElementById('hub'));
     this.pauseEl = document.getElementById('pause');
+    // 设置面板：营地顶部和暂停菜单都能打开
+    this.setEl = document.getElementById('settings');
+    this.setEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-set]');
+      if (b) {
+        setSetting(b.dataset.set, JSON.parse(b.dataset.v));
+        sfx('click');
+        this.setEl.querySelector('.set-body').innerHTML = renderSettings();
+        return;
+      }
+      if (e.target.closest('[data-set-close]') || e.target === this.setEl) this.setEl.hidden = true;
+    });
+    onSettings((S) => document.documentElement.style.setProperty('--tscale', S.touch));
     // 试炼层间选择（继续 / 离开）
     this.trialEl = document.getElementById('trial-choice');
     this.trialEl.addEventListener('click', (e) => {
@@ -100,6 +114,7 @@ class Game {
     this.pauseEl.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'resume') this.setPaused(false);
+      if (act === 'settings') this.openSettings();
       if (act === 'retreat') {
         this.setPaused(false);
         if (this.trial) return this.endTrial(false); // 试炼里撤退 = 带着已经过了的层的奖励离开
@@ -110,6 +125,11 @@ class Game {
       if (act === 'train-reset' && this.training) { this.training.spawn(); this.setPaused(false); }
     });
     document.getElementById('pause-btn').addEventListener('click', () => this.scene === 'play' && this.setPaused(!this.paused));
+  }
+
+  openSettings() {
+    this.setEl.querySelector('.set-body').innerHTML = renderSettings();
+    this.setEl.hidden = false;
   }
 
   get save() { return this.store.data; }
@@ -134,6 +154,7 @@ class Game {
 
   setPaused(v) {
     this.paused = v;
+    if (!v) this.setEl.hidden = true;
     music.setDuck(v);
     this.pauseEl.hidden = !v;
     for (const el of this.pauseEl.querySelectorAll('.train-only')) el.hidden = !this.training;
@@ -1273,7 +1294,7 @@ class Game {
     // 世界层的变换：震屏 + 以主角为中心的镜头推近
     let [ox, oy] = this.fx.shakeOffset();
     ox += this.camKick;
-    const z = 1 + this.zoom;
+    const z = 1 + (settings.zoom ? this.zoom : 0); // 设置：重击镜头推近
     const fx0 = this.player.x - camX, fy0 = GROUND_TOP + this.player.y - 40;
     const rot = this.fx.rot;
     const view = (c) => { c.translate(ox, oy); c.translate(fx0, fy0); c.rotate(rot); c.scale(z, z); c.translate(-fx0, -fy0); };
@@ -1386,7 +1407,7 @@ class Game {
     }
 
     // 冲击帧：极重的一击让画面反色 2 帧（动画里常用的手法）
-    if (this.ticks < this.impactUntil && !REDUCED_MOTION) {
+    if (this.ticks < this.impactUntil && !REDUCED_MOTION && settings.flash) { // 设置：冲击帧（整屏反色）
       ctx.save();
       ctx.globalCompositeOperation = 'difference';
       ctx.fillStyle = '#ffffff';
