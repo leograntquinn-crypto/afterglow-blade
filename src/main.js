@@ -14,6 +14,7 @@ import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
 import { Training } from './training.js';
 import { ensureContracts, progressContracts, contractText } from './contracts.js';
+import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } from './trial.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
@@ -41,6 +42,13 @@ class Game {
     this.stats = computeStats(this.save);
     this.hub = new Hub(this, document.getElementById('hub'));
     this.pauseEl = document.getElementById('pause');
+    // 试炼层间选择（继续 / 离开）
+    this.trialEl = document.getElementById('trial-choice');
+    this.trialEl.addEventListener('click', (e) => {
+      const act = e.target.closest('[data-act]')?.dataset.act;
+      if (act === 'trial-go') this.trialContinue();
+      if (act === 'trial-leave') this.endTrial(false);
+    });
     this.post = new Post();
     this.quality = 2;
     this.zoom = 0; // 镜头推近量，重击时短暂变大
@@ -70,6 +78,12 @@ class Game {
       music.start();
       if (a === 'mute') { this.toggleMusic(); return; }
       if (this.scene === 'play') {
+        // 试炼层间选择：J 继续，L 离开（暂停键在选择时不起作用）
+        if (this.trialChoice) {
+          if (a === 'attack') this.trialContinue();
+          if (a === 'dash') this.endTrial(false);
+          return;
+        }
         if (a === 'pause') this.setPaused(!this.paused);
         if (this.training && a === 'trainToggle') this.training.toggleCounter();
         if (this.training && a === 'trainReset') this.training.spawn();
@@ -86,7 +100,12 @@ class Game {
     this.pauseEl.addEventListener('click', (e) => {
       const act = e.target.closest('[data-act]')?.dataset.act;
       if (act === 'resume') this.setPaused(false);
-      if (act === 'retreat') { this.setPaused(false); this.endRun(); this.openHub(); }
+      if (act === 'retreat') {
+        this.setPaused(false);
+        if (this.trial) return this.endTrial(false); // 试炼里撤退 = 带着已经过了的层的奖励离开
+        this.endRun();
+        this.openHub();
+      }
       if (act === 'train-counter' && this.training) { this.training.toggleCounter(); this.setPaused(false); }
       if (act === 'train-reset' && this.training) { this.training.spawn(); this.setPaused(false); }
     });
@@ -182,6 +201,7 @@ class Game {
 
   startStage(i, d = 0) {
     this.training = null;
+    this.trial = null;
     this.stageIdx = i;
     this.diff = d;
     this.D = DIFFS[d];
@@ -205,8 +225,90 @@ class Game {
     sfx('wave');
   }
 
+  // ---------------- 残光试炼 ----------------
+  startTrial() {
+    this.training = null;
+    this.trial = { floor: 0, cleared: 0, pool: { gold: 0, stones: 0 } };
+    this.stage = trialStage(1);
+    this.refreshStats();
+    this.resetWorld();
+    this.run = { xp: 0, gold: 0, items: [], ups: [], firstClear: false, ended: false, trial: true };
+    this.hub.hide();
+    this.setScene('play');
+    this.input.clearBuffer();
+    this.canvas.focus();
+    this.nextTrialFloor();
+  }
+
+  // 进入下一层：一个房间，普通层一两波敌人，每 5 层是首领层
+  nextTrialFloor() {
+    const T = this.trial, f = ++T.floor;
+    this.stage = trialStage(f);
+    this.stageIdx = Math.min(4, Math.floor((f - 1) / 5));
+    this.diff = 0;
+    this.D = trialDiff(f);
+    this.maxAttackers = 2 + this.D.attackers;
+    const boss = isBossFloor(f);
+    const room = { x: 0, y: 0, type: boss ? 'boss' : 'fight', doors: {}, w: boss ? 1400 : 1200, waves: boss ? [] : trialWaves(f), cleared: false, visited: true };
+    this.dungeon = { rooms: new Map([['0,0', room]]), start: room, mainLength: 1, get: (x, y) => (x === 0 && y === 0 ? room : undefined) };
+    this.bossSpoils = null;
+    this.enterRoom(room, null);
+    if (!boss) this.banner = { title: `第 ${f} 层`, sub: f === 1 ? '越往上越强 · 每 5 层一个首领 · 每过一层可以选择继续或离开' : `纪录：第 ${this.save.trialBest || 0} 层`, t: 0, small: f > 1 };
+    sfx('wave');
+  }
+
+  // 这一层清空：奖励进池子，回一点血，弹出「继续 / 离开」
+  trialFloorCleared() {
+    const T = this.trial, f = T.floor;
+    if (T.cleared >= f) return;
+    T.cleared = f;
+    this.quest('trialFloor');
+    const r = floorReward(f);
+    T.pool.gold += r.gold;
+    T.pool.stones += r.stones;
+    const p = this.player;
+    p.hp = Math.min(p.maxHp, p.hp + p.maxHp * 0.2);
+    this.trialChoice = true;
+    music.setDuck(true);
+    this.trialEl.querySelector('h2').textContent = `第 ${f} 层 已肃清`;
+    this.trialEl.querySelector('.pool').textContent = `奖励池：金币 ${T.pool.gold} · 刻印石 ${T.pool.stones}${isBossFloor(f + 1) ? ' · 下一层是首领层，打赢再得 1 颗刻印石' : ''}`;
+    this.trialEl.querySelector('.hp').textContent = `生命 ${Math.round(p.hp)} / ${p.maxHp}（每层回复 20%）· 离开拿全部奖励，阵亡只拿一半`;
+    this.trialEl.querySelector('[data-act="trial-go"]').textContent = `继续 · 第 ${f + 1} 层（J）`;
+    this.trialEl.hidden = false;
+  }
+
+  trialContinue() {
+    if (!this.trialChoice) return;
+    this.trialChoice = false;
+    this.trialEl.hidden = true;
+    music.setDuck(false);
+    this.nextTrialFloor();
+  }
+
+  // 结束试炼：离开拿全部奖励池，阵亡减半；刷新纪录
+  endTrial(died) {
+    const T = this.trial;
+    if (!T || T.ended) return;
+    T.ended = true;
+    this.trialChoice = false;
+    this.trialEl.hidden = true;
+    music.setDuck(false);
+    const got = settle(T.pool, died);
+    this.gainGold(got.gold);
+    this.save.stones = (this.save.stones || 0) + got.stones;
+    const best = this.save.trialBest || 0;
+    this.save.trialBest = Math.max(best, T.cleared);
+    T.result = { ...got, floor: T.cleared, newBest: T.cleared > best, died };
+    this.endRun();
+    if (!died) {
+      this.openHub();
+      this.hub.toast(`残光试炼：过了 ${T.cleared} 层${T.cleared > best ? '（新纪录！）' : ''} · 金币 +${got.gold} · 刻印石 +${got.stones}`, '#ffd65a');
+    }
+  }
+
   // 训练场：一个没有门的长房间 + 两个打不死的木人（右边那个靠墙，练撞墙反弹）
   startTraining() {
+    this.trial = null;
     this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
     this.stageIdx = 0;
     this.diff = 0;
@@ -296,6 +398,7 @@ class Game {
     this.room.cleared = true;
     this.roomsCleared++;
     if (this.room.waves.length && this.player.dmgTaken === this.roomDmg0) this.quest('flawless');
+    if (this.trial) return this.trialFloorCleared();
     sfx('door');
     if (Object.keys(this.room.doors).length) this.toast('通道已开启', COLORS.blade);
   }
@@ -346,7 +449,8 @@ class Game {
     if (this.bossDownAt != null && this.frame - this.bossDownAt === 50) for (const l of this.loots) l.magnet = true;
     if (this.bossDownAt != null && this.frame - this.bossDownAt > 150) {
       this.bossDownAt = null;
-      this.finish();
+      if (this.trial) this.trialFloorCleared();
+      else this.finish();
     }
   }
 
@@ -1073,7 +1177,7 @@ class Game {
     this.ticks++;
     music.setMode(this.scene === 'play' ? (this.boss?.alive ? 'boss' : this.enemies.some((e) => e.alive) ? 'battle' : 'calm')
       : this.scene === 'title' || this.scene === 'hub' ? this.scene : 'calm');
-    if (this.paused) return;
+    if (this.paused || this.trialChoice) return; // 暂停、试炼层间选择时世界静止
     this.sceneT++;
     this.fx.update();
     this.zoom *= 0.86;
@@ -1134,6 +1238,7 @@ class Game {
     this.updateWaves();
     this.checkDoors();
     if (this.player.state === 'dead' && this.player.st > 90 && this.scene === 'play') {
+      if (this.trial) this.endTrial(true);
       this.endRun();
       this.setScene('dead');
       sfx('lose');

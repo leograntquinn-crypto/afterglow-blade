@@ -19,6 +19,7 @@ export const CONTRACTS = {
   gradeA: { n: [1], stones: 1, text: () => '以 A 或更高的评价通关任意关卡' },
   clearStage: { n: [1], stones: 2, text: (c) => `通关「${STAGES[c.stage].name}·${DIFFS[c.diff].name}」` },
   school: { n: [1], stones: 1, text: (c) => `装备${WTYPES[c.school].name}（${WTYPES[c.school].school}）通关任意关卡` },
+  trialFloor: { n: [5, 8, 12], stones: 1, text: (c) => `在残光试炼中累计通过 ${c.n} 层` },
 };
 
 export const today = () => {
@@ -36,7 +37,8 @@ function rollContract(save, exclude) {
     }
   });
   // 打断读条要先见过第二阶段的首领：没通关过第一关就不出
-  const types = Object.keys(CONTRACTS).filter((k) => !exclude.has(k) && !(k === 'interrupt' && !save.cleared.s1));
+  // 试炼委托要先解锁试炼（同样是通关第一关）
+  const types = Object.keys(CONTRACTS).filter((k) => !exclude.has(k) && !((k === 'interrupt' || k === 'trialFloor') && !save.cleared.s1));
   const type = types[Math.floor(Math.random() * types.length)];
   const T = CONTRACTS[type];
   const c = { id: Math.random().toString(36).slice(2, 9), type, n: T.n[Math.floor(Math.random() * T.n.length)], prog: 0, claimed: false };

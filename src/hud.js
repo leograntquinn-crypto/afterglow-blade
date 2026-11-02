@@ -475,6 +475,7 @@ export function drawHUD(ctx, game) {
     }
   }
   if (game.training) drawTraining(ctx, game);
+  else if (game.trial) drawTrialInfo(ctx, game);
   else drawMinimap(ctx, game);
   drawCombo(ctx, game);
   drawStyle(ctx, game);
@@ -664,6 +665,8 @@ function drawRewards(ctx, game, x, y, t) {
   ];
   if (r.ups.length) lines.push([`升级！Lv.${game.save.lv}`, COLORS.blade]);
   if (r.firstClear) lines.push(['首次通关奖励 ×3', COLORS.ember]);
+  const TR = game.trial?.result;
+  if (TR) lines.push([`试炼：过了 ${TR.floor} 层${TR.newBest ? '（新纪录）' : ''} · 刻印石 +${TR.stones}${TR.died ? '（阵亡减半）' : ''}`, '#c99bff']);
   const best = [...r.items].sort((a, b) => b.rar - a.rar)[0];
   lines.push([r.items.length ? `获得装备 ${r.items.length} 件` : '没有获得装备', COLORS.ink]);
   ctx.textAlign = 'left';
@@ -946,6 +949,24 @@ function drawBossBar(ctx, game) {
   }
   ctx.restore();
   return true;
+}
+
+// ---------------- 残光试炼：右上角的层数、纪录、奖励池 ----------------
+function drawTrialInfo(ctx, game) {
+  const T = game.trial, x = VIEW_W - 16, y = game.touch ? 70 : 34;
+  ctx.save();
+  ctx.textAlign = 'right';
+  ctx.textBaseline = 'middle';
+  ctx.font = `24px ${FONT_TITLE}`;
+  ctx.fillStyle = COLORS.gold;
+  ctx.shadowColor = 'rgba(0,0,0,.8)';
+  ctx.shadowBlur = 4;
+  ctx.fillText(`残光试炼 · 第 ${T.floor} 层`, x, y);
+  ctx.shadowBlur = 0;
+  ctx.font = `13px ${FONT_UI}`;
+  ctx.fillStyle = '#b9aec4';
+  ctx.fillText(`纪录 第 ${game.save.trialBest || 0} 层 · 奖励池 金币 ${T.pool.gold} · 刻印石 ${T.pool.stones}`, x, y + 22);
+  ctx.restore();
 }
 
 // ---------------- 小地图 ----------------

@@ -88,7 +88,14 @@ export class Hub {
         <p class="meta">第一次完成每条挑战 +40 金币，全部完成再 +400</p>
         <div class="stage-foot"><span class="first">${tDone >= CHALLENGES.length ? '已出师' : '推荐新手先来'}</span><button class="btn" data-act="train">进入训练</button></div>
       </article>`;
-    return `${this.render_contracts()}<div class="stages">${train}${STAGES.map((st, i) => {
+    const trialOpen = !!s.cleared.s1;
+    const trial = `<article class="stage training trial ${trialOpen ? '' : 'locked'}">
+        <div class="stage-head"><h3>残光试炼</h3><span class="rec">${s.trialBest ? `纪录 第 ${s.trialBest} 层` : '未挑战'}</span></div>
+        <p>一层一个房间，越往上越强、词缀越多，每 5 层一个首领。每过一层选择：继续往上，还是带着奖励离开？</p>
+        <p class="meta">每层金币，每个首领层 1 颗刻印石 · 离开拿全部奖励，阵亡只拿一半 · 一层约一分钟</p>
+        <div class="stage-foot"><span class="first">${trialOpen ? '适合碎片时间' : ''}</span>${trialOpen ? '<button class="btn" data-act="trial">进入试炼</button>' : '<span class="lock">通关「墓穴入口」解锁</span>'}</div>
+      </article>`;
+    return `${this.render_contracts()}<div class="stages">${train}${trial}${STAGES.map((st, i) => {
       const open = isUnlocked(s, i);
       const best = s.best[st.id];
       const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
@@ -316,6 +323,10 @@ export class Hub {
       case 'go':
         sfx('click');
         this.g.startStage(+el.dataset.i, +(el.dataset.d || 0));
+        return;
+      case 'trial':
+        sfx('click');
+        this.g.startTrial();
         return;
       case 'train':
         sfx('click');
