@@ -347,6 +347,13 @@ function drawStyle(ctx, game) {
   ctx.fillText(R.word, x, y - 4);
   // 进度条（往下一级）
   fancyBar(ctx, x - 150, y + 8, 150, 4, frac, 1, null, '#ffffff', R.color, { border: false });
+  // 战意：这个评级下击杀的战利品加成
+  const sp = game.spoils;
+  if (sp > 0) {
+    ctx.font = `13px ${FONT_UI}`;
+    ctx.fillStyle = '#ffd65a';
+    ctx.fillText(`战利品 +${Math.round(sp * 100)}%`, x, y + 28);
+  }
   ctx.restore();
 }
 
@@ -673,6 +680,88 @@ function drawRewards(ctx, game, x, y, t) {
   }
 }
 
+// ---------------- 复盘：输在哪、下一步练什么 ----------------
+const HURT_TIPS = {
+  slam: '看到地上的红圈就闪避穿过去，或用重击破招打断它',
+  lunge: '突刺是一条直线冲过来：上下走一步就能躲开，也可以在它红光蓄力时抢先破招',
+  melee: '红光亮起时三选一：闪避（极限闪避有子弹时间）、面朝它出刀弹刀、抢先打中它破招',
+  arrow: '先清掉远处的影弓手；地上的红线是箭的路线，上下走位就能躲开',
+  channel: '首领读条时留一个技能打断它；打不断就在读条结束前跳起来',
+  boss: '首领出招前也有红光预警，盯着它闪避；霸体条变灰（破防）时才是全力输出的窗口',
+  blast: '爆裂词缀的敌人死后会炸，杀完马上离开红圈；也可以把它打进敌群里炸别人',
+};
+
+export function hurtSummary(run) {
+  const list = run?.hurt || [];
+  const by = new Map();
+  for (const h of list) {
+    const e = by.get(h.name) || { name: h.name, cat: h.cat, n: 0, dmg: 0 };
+    e.n++;
+    e.dmg += h.dmg;
+    by.set(h.name, e);
+  }
+  const top = [...by.values()].sort((a, b) => b.dmg - a.dmg);
+  const total = list.reduce((a, h) => a + h.dmg, 0);
+  const busy = total ? list.filter((h) => h.busy).reduce((a, h) => a + h.dmg, 0) / total : 0;
+  // 建议：贪刀（一半以上的伤害是在自己出招时吃到的）优先，否则针对伤害最多的那种攻击
+  const tip = list.length >= 4 && busy >= 0.5
+    ? `你有 ${Math.round(busy * 100)}% 的伤害是在自己出招时吃到的：连段中看到红光就取消去闪避（技能和普攻都能被闪避取消）`
+    : top[0] ? HURT_TIPS[top[0].cat] : '';
+  return { top, total, busy, tip, hits: list.length };
+}
+
+function wrapText(ctx, text, x, y, maxW, lineH) {
+  let line = '', yy = y;
+  for (const ch of text) {
+    if (ctx.measureText(line + ch).width > maxW && line) {
+      ctx.fillText(line, x, yy);
+      line = ch;
+      yy += lineH;
+    } else line += ch;
+  }
+  if (line) ctx.fillText(line, x, yy);
+  return yy;
+}
+
+function drawRecap(ctx, game, x, y, t) {
+  if (t < 0) return;
+  const R = hurtSummary(game.run);
+  const w = 400;
+  ctx.save();
+  ctx.globalAlpha = Math.min(1, t / 15);
+  ctx.fillStyle = 'rgba(12,8,18,.7)';
+  ctx.fillRect(x, y, w, 196);
+  ctx.strokeStyle = 'rgba(232,196,120,.3)';
+  ctx.strokeRect(x + 0.5, y + 0.5, w - 1, 195);
+  ctx.textAlign = 'left';
+  ctx.textBaseline = 'middle';
+  ctx.font = `20px ${FONT_TITLE}`;
+  ctx.fillStyle = COLORS.gold;
+  ctx.fillText('复 盘', x + 14, y + 20);
+  ctx.font = `14px ${FONT_UI}`;
+  ctx.fillStyle = '#ff8a7a';
+  if (game.run?.killer) ctx.fillText(`致命一击：${game.run.killer}`, x + 80, y + 21);
+  ctx.fillStyle = '#b9aec4';
+  ctx.font = `13px ${FONT_UI}`;
+  ctx.fillText(`受伤最多的攻击（共被打中 ${R.hits} 次）`, x + 14, y + 46);
+  R.top.slice(0, 3).forEach((e, i) => {
+    const yy = y + 68 + i * 20;
+    ctx.fillStyle = '#e2d9ea';
+    ctx.font = `14px ${FONT_UI}`;
+    ctx.fillText(e.name, x + 14, yy);
+    ctx.textAlign = 'right';
+    ctx.fillStyle = '#ff8a7a';
+    ctx.fillText(`${e.n} 次 · ${Math.round(e.dmg)} 伤害`, x + w - 14, yy);
+    ctx.textAlign = 'left';
+  });
+  ctx.font = `13px ${FONT_UI}`;
+  ctx.fillStyle = '#b9aec4';
+  ctx.fillText(`出招中被打中的伤害占 ${Math.round(R.busy * 100)}%`, x + 14, y + 136);
+  ctx.fillStyle = '#ffd9a0';
+  wrapText(ctx, `建议：${R.tip}`, x + 14, y + 160, w - 28, 18);
+  ctx.restore();
+}
+
 export function drawDead(ctx, game) {
   const t = game.sceneT;
   ctx.save();
@@ -685,7 +774,8 @@ export function drawDead(ctx, game) {
   ctx.font = `17px ${FONT_UI}`;
   ctx.fillStyle = '#b9aec4';
   ctx.fillText(`倒在「${game.stage.name}」· 清理了 ${game.roomsCleared} 个房间 · 已获得的经验、金币和装备都会保留`, VIEW_W / 2, 230);
-  drawRewards(ctx, game, VIEW_W / 2 - 110, 290, t - 20);
+  drawRewards(ctx, game, 110, 290, t - 20);
+  drawRecap(ctx, game, 470, 268, t - 30);
   if (t > 60) prompt(ctx, game, game.touch ? '点击画面返回营地' : '按 J 返回营地', 480);
   ctx.restore();
 }
@@ -737,6 +827,24 @@ export function drawClear(ctx, game) {
     ctx.font = `20px ${FONT_TITLE}`;
     ctx.fillStyle = COLORS.gold;
     ctx.fillText('新纪录', VIEW_W - 260, 370);
+  }
+  // 下一步：最弱的那一项评价给一条提升建议
+  if (t > 100 && r.rows) {
+    const TIPS = [
+      '更快：用技能取消普攻，把敌人打向墙和同伴一次打多个',
+      '少挨打：盯住红光，闪避 / 弹刀 / 破招三选一',
+      '更长的连击：上挑 → 跳跃取消 → 空中三连 → 坠星斩，落地后扫腿追打',
+      '更高的风格：少重复同一招，穿插空中连、破招、极限闪避（风格越高，战利品越多）',
+    ];
+    const weakest = r.rows.reduce((wi, row, i) => (row[2] < r.rows[wi][2] ? i : wi), 0);
+    const all3 = r.rows.every((row) => row[2] >= 3);
+    ctx.textAlign = 'center';
+    ctx.font = `14px ${FONT_UI}`;
+    ctx.fillStyle = '#ffd9a0';
+    ctx.globalAlpha = Math.min(1, (t - 100) / 20);
+    const tip = all3 ? '四项全满！试试更高的难度' : `下一步：${TIPS[weakest]}`;
+    wrapText(ctx, tip, VIEW_W - 260, 448, 380, 18);
+    ctx.globalAlpha = 1;
   }
   if (game.unlockedDiff && t > 90) {
     ctx.textAlign = 'center';

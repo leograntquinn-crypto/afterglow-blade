@@ -58,6 +58,19 @@ export const AFFIX = {
   mpRegen: { roll: pct(0.08, 0.2) },
 };
 
+// 刻印：稀有 / 传说装备上的特殊词条，在你「做到某件事」时生效 —— 让装备奖励打法，而不是只奖励数字。
+// 每条都挂在已有的战斗机制上；每件装备最多一条，同名不叠加（效果实现在 main.js 的 calcDamage 等处）
+export const MARKS = {
+  counter: { name: '断势', desc: '破招后 4 秒内暴击率 +30%', style: '预判抢攻' },
+  air: { name: '凌空', desc: '对空中的敌人伤害 +25%', style: '浮空连' },
+  dodge: { name: '残心', desc: '极限闪避后 3 秒内技能伤害 +40%', style: '闪避反击' },
+  pristine: { name: '无瑕', desc: '满血时伤害 +20%', style: '无伤' },
+  desperate: { name: '背水', desc: '生命低于 35% 时伤害 +35%', style: '卖血' },
+  otg: { name: '追魂', desc: '追打倒地不打折，每次追打回复 2% 生命', style: '扫腿 / 坠星追打' },
+  wall: { name: '震壁', desc: '撞墙反弹后 3 秒内，该敌人受到伤害 +40%', style: '推墙' },
+  streak: { name: '连锋', desc: '连击每 10 下伤害 +5%（最多 +25%），被打中清零', style: '长连段' },
+};
+
 // 属性的显示名，以及是否按百分比显示
 export const STAT_INFO = {
   atk: ['攻击力', false], def: ['防御', false], hp: ['生命', false],
@@ -120,6 +133,8 @@ export function makeItem(slot, ilvl, rar, wtype) {
     const v = AFFIX[k].roll(ilvl) * boost;
     return { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
   });
+  // 刻印：稀有 40% 带一条，传说必带一条
+  if (rar === 3 || (rar === 2 && Math.random() < 0.4)) it.mark = pick(Object.keys(MARKS));
   const tier = Math.min(4, Math.floor(ilvl / 4));
   it.name = rar === 3 ? pick(LEGEND_NAMES[slot]) : TIER_NAMES[slot === 'weapon' ? it.wtype : slot][tier];
   return it;

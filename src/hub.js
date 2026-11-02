@@ -4,7 +4,7 @@
 
 import {
   RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, itemScore, itemGlyph, itemTitle, itemKind,
-  enhCost, enhRate, sellPrice, WTYPES,
+  enhCost, enhRate, sellPrice, WTYPES, MARKS,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
@@ -121,6 +121,7 @@ export class Hub {
         <span class="slot-label">${it ? itemTitle(it) : `${SLOT_NAME[k]}（空）`}</span>
       </button>`;
     }).join('');
+    const marks = [...S.marks].map((k) => `<div class="mk"><b>${MARKS[k].name}</b><span>${MARKS[k].desc}</span></div>`).join('');
     const rows = [
       ['攻击力', Math.round(S.atk)], ['生命', S.maxHp], ['魔力', S.maxMp], ['防御', Math.round(S.def)],
       ['暴击率', `${(S.crit * 100).toFixed(1)}%`], ['暴击伤害', `${Math.round(S.critDmg * 100)}%`], ['冷却缩减', `${(S.cdr * 100).toFixed(1)}%`],
@@ -132,7 +133,7 @@ export class Hub {
     const bag = s.bag.map((it) => {
       const better = itemScore(it) > itemScore(s.equip[it.slot]);
       return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
-        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}
+        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}
       </button>`;
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
@@ -144,6 +145,7 @@ export class Hub {
       <section class="panel">
         <h4>属性</h4>
         <div class="kvs">${rows}</div>
+        <div class="marks"><h4>刻印 <small>${S.marks.size ? '' : '稀有、传说装备可能带有刻印，在你做到某件事时生效'}</small></h4>${marks}</div>
         <div class="attr-head"><h4>属性点</h4><span class="pts">${s.statPts > 0 ? `可分配 <b>${s.statPts}</b>` : '升级获得 3 点'}</span></div>
         ${attrs}
         <button class="btn ghost" data-act="resetStats">重置属性点（免费）</button>
@@ -221,6 +223,7 @@ export class Hub {
       </div>
       <ul class="istats">${statRows}${affix}</ul>
       ${it.slot === 'weapon' ? `<p class="school">流派「${WTYPES[it.wtype].school}」${WTYPES[it.wtype].schoolDesc}</p>` : ''}
+      ${it.mark && MARKS[it.mark] ? `<p class="mark">刻印「${MARKS[it.mark].name}」${MARKS[it.mark].desc}<small>适合：${MARKS[it.mark].style}${!equipped && this.g.stats.marks.has(it.mark) ? ' · 身上已有同名刻印，不叠加' : ''}</small></p>` : ''}
       ${compare}
       <div class="actions">
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : `<button class="btn primary" data-act="equip">穿戴</button>`}

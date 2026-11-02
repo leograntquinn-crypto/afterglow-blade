@@ -4,7 +4,7 @@
 //   等级 + 属性点 + 装备 + 技能 → 攻击力、生命、暴击……
 // 战斗代码只读这个结果，不关心它从哪来。修改平衡性时只需要改这一个地方。
 
-import { SLOT_KEYS, itemStats, starterGear, RARITY, WTYPES } from './items.js';
+import { SLOT_KEYS, itemStats, starterGear, RARITY, WTYPES, MARKS } from './items.js';
 import { SKILLS } from './moves.js';
 
 export const MAX_LV = 30;
@@ -97,6 +97,7 @@ export function computeStats(save) {
     intMul: 1 + int * 0.012,
     skillLv: { skill1: sk.skill1, skill2: sk.skill2, skill3: sk.skill3, skill4: sk.skill4 },
     school: save.equip.weapon?.wtype || 'sword', // 武器流派（见 items.js 的 WTYPES）
+    marks: new Set(SLOT_KEYS.map((k) => save.equip[k]?.mark).filter((m) => m && MARKS[m])), // 已激活的刻印（同名不叠加）
   };
 }
 

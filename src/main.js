@@ -15,13 +15,13 @@ import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.
 import { Training } from './training.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
-import { STYLE_RANKS, STYLE_MAX } from './style.js';
+import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
 import { Chest, Shrine, Urn } from './props.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX } from './progression.js';
-import { RARITY, randomDrop, sellPrice, itemTitle } from './items.js';
+import { RARITY, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
 import { drawDoors, drawVignette, drawShadow } from './draw.js';
@@ -138,6 +138,8 @@ class Game {
     this.projectiles = [];
     this.hazards = [];
     this.seenAffix ??= new Set(); // 本次游戏里已经提示过的词缀
+    this.markT = { counter: 0, dodge: 0 }; // 刻印「断势」「残心」的剩余帧数
+    this.streak = 0; // 刻印「连锋」：连续命中数，被打中清零
     this.loots = [];
     this.toasts = [];
     this.attackers = new Set();
@@ -184,6 +186,7 @@ class Game {
     this.D = DIFFS[d];
     const st = STAGES[i];
     this.unlockedDiff = null;
+    this.bossSpoils = null;
     // 高难度：关卡等级提高（敌人等级、掉落装备等级跟着涨），名字后面标上难度
     this.stage = d ? { ...st, lv: st.lv + this.D.lvAdd, name: `${st.name}·${this.D.name}` } : st;
     this.refreshStats();
@@ -402,7 +405,7 @@ class Game {
     // 通关奖励（每个难度各有一次首通 ×3）
     const key = stageKey(STAGES[this.stageIdx], this.diff);
     const first = !s.cleared[key];
-    const mul = (first ? 3 : 1) * this.D.reward;
+    const mul = (first ? 3 : 1) * this.D.reward * (1 + (this.bossSpoils ?? this.spoils)); // 按击杀首领那一刻的评级
     this.run.firstClear = first;
     this.gainXp(Math.round(40 * st.lv * mul), false);
     this.gainGold(Math.round(60 * st.lv * mul));
@@ -454,15 +457,17 @@ class Game {
   }
 
   dropLoot(e) {
-    const L = this.stage.lv, D = this.D;
+    const L = this.stage.lv, D = this.D, sp = this.spoils;
     if (e.minion || e.dummy) return; // Boss 召唤的小怪不掉东西，防止刷
     const coins = e.isBoss ? 8 : e.elite ? 3 : 1;
-    for (let i = 0; i < coins; i++) this.loots.push(new Loot({ x: e.x, y: e.y, gold: Math.round(rand(4, 9) * (1 + L * 0.3) * D.reward) }));
+    for (let i = 0; i < coins; i++) this.loots.push(new Loot({ x: e.x, y: e.y, gold: Math.round(rand(4, 9) * (1 + L * 0.3) * D.reward * (1 + sp)) }));
+    // 战意：评级越高，掉装备的概率越高、品质越好
+    const luck = D.luck + sp * 1.5;
     if (e.isBoss) {
       // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高；地狱难度第一件必定是传说
-      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 3 : L > 1 ? 2 : 1, luck: 2 + D.luck }));
-    } else if (Math.random() < (e.elite ? 1 : e.T.drop * (1 + D.luck * 0.3))) {
-      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + D.luck }));
+      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 3 : L > 1 ? 2 : 1, luck: 2 + luck }));
+    } else if (Math.random() < (e.elite ? 1 : e.T.drop * (1 + D.luck * 0.3) * (1 + sp))) {
+      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + luck }));
     }
   }
 
@@ -552,6 +557,7 @@ class Game {
     }
     if (this.frame - (target.counterAt ?? -99) > 40) {
       target.counterAt = this.frame;
+      this.markOn('counter', 240);
       const hz = target.z + target.h * 0.6;
       this.fx.label(target.x, target.y, hz + target.h * 0.5 + 20, '破 招', '#ffb347', 30);
       this.fx.ring(target.x, target.y, hz, '#ffb347', 8, 9, 16, 5);
@@ -595,6 +601,16 @@ class Game {
     sfx('break');
   }
 
+  // 计时类刻印（断势、残心）触发：身上有这条刻印才生效，刚亮起时在头顶提示一下
+  markOn(key, frames) {
+    if (!this.stats.marks.has(key)) return;
+    if (this.markT[key] <= 0) {
+      const p = this.player;
+      this.fx.label(p.x, p.y, p.z + 130, MARKS[key].name, '#c99bff', 20);
+    }
+    this.markT[key] = frames;
+  }
+
   // 冷却回转：破招、极限闪避、弹刀成功时触发。长剑「游刃」翻倍
   refundCooldowns() {
     const p = this.player, n = this.stats.school === 'sword' ? 180 : 90;
@@ -609,6 +625,41 @@ class Game {
     if (any) this.cdRefundT = 24; // 技能栏闪一下，让玩家看到冷却跳了
   }
 
+  // ---------------- 复盘：记录每次受伤，死亡和通关画面用它告诉玩家输在哪 ----------------
+  // cat：攻击类别，决定给什么建议
+  describeHit(src) {
+    const BOSS_ACT = { combo: '三连斩', slam: '跳劈', shockwave: '震地波', charge: '冲锋', volley: '齐射', rain: '天降', teleport: '瞬移斩', roar: '咆哮' };
+    const RIG_ATK = { grunt: ['劈砍', 'melee'], brute: ['重砸', 'slam'], archer: ['射箭', 'arrow'] };
+    const who = src.owner || src;
+    if (who.isBoss) {
+      const act = who.act?.name;
+      if (src.kind === 'meteor') return [`${who.B.name}·天降`, 'boss'];
+      if (act === 'channel') return [`${who.B.name}·${who.B.channel}`, 'channel'];
+      return [`${who.B.name}·${BOSS_ACT[act] || (src.owner ? '弹幕' : '近身')}`, 'boss'];
+    }
+    if (who.T) {
+      if (who.atk === who.T.lunge) return [`${who.T.name}·突刺`, 'lunge'];
+      const [n, cat] = RIG_ATK[who.look?.rig] || ['攻击', 'melee'];
+      return [`${who.T.name}·${n}`, cat];
+    }
+    if (src.hitsEnemies) return ['爆裂词缀的爆炸', 'blast'];
+    if (src.kind === 'meteor' && this.boss) return [`${this.boss.B.name}·天降`, 'boss'];
+    if (this.boss) return [`${this.boss.B.name}·震地波`, 'boss'];
+    return ['未知攻击', 'melee'];
+  }
+
+  recordHurt(src, dmg, busy) {
+    if (!this.run || this.training) return;
+    const [name, cat] = this.describeHit(src);
+    (this.run.hurt ??= []).push({ name, cat, dmg, busy });
+    if (this.player.hp <= 0) this.run.killer = name;
+  }
+
+  // 战意：当前风格评级对应的战利品加成（0 ~ 1.0）。训练场没有战利品
+  get spoils() {
+    return this.training ? 0 : SPOILS[this.style?.rank ?? 0];
+  }
+
   // 训练场挑战：机制触发时打勾（不在训练场时什么也不做）
   tr(id) {
     this.training?.event(id);
@@ -616,6 +667,7 @@ class Game {
 
   perfectDodge() {
     this.tr('perfect');
+    this.markOn('dodge', 180);
     if (this.witch <= 0) this.refundCooldowns();
     const p = this.player;
     p.invuln = Math.max(p.invuln, 24);
@@ -679,6 +731,7 @@ class Game {
   // ---------------- 撞墙 / 坠星冲击 / 弹球 ----------------
   onWallBounce(e) {
     this.tr('wall');
+    if (this.stats.marks.has('wall')) e.wallMarkUntil = this.frame + 180; // 震壁
     const wx = e.x < world.w / 2 ? 10 : world.w - 10;
     this.debris(8);
     this.fx.crack(wx, e.y);
@@ -802,12 +855,22 @@ class Game {
       const S = this.stats;
       dmg *= S.atk / 20; // 20 = 1 级的攻击力，招式表里的伤害以它为基准
       dmg *= h.skill ? skillMul(S, h.skill) : h.ult ? 1.4 + this.save.lv * 0.05 : S.normalMul;
-      crit = Math.random() < S.crit || this.counterT > 0; // 极限闪避后的反击必定暴击
+      const M = S.marks, p = this.player;
+      // 刻印「断势」：破招后暴击率 +30%
+      crit = Math.random() < S.crit + (M.has('counter') && this.markT.counter > 0 ? 0.3 : 0) || this.counterT > 0; // 极限闪避后的反击必定暴击
       if (crit) dmg *= S.critDmg;
       if (this.counterT > 0) dmg *= 1.35;
       if (h.counterMul) dmg *= h.counterMul; // 破招
       if (target.brokenT > 0) dmg *= 1.3;
-      if (target.state === 'down') dmg *= 0.6; // 追打倒地伤害打折
+      if (target.state === 'down' && !M.has('otg')) dmg *= 0.6; // 追打倒地伤害打折（刻印「追魂」不打折）
+      if (M.size) {
+        if (M.has('air') && target.z > 20) dmg *= 1.25; // 凌空
+        if (M.has('dodge') && this.markT.dodge > 0 && h.skill) dmg *= 1.4; // 残心
+        if (M.has('pristine') && p.hp >= p.maxHp) dmg *= 1.2; // 无瑕
+        if (M.has('desperate') && p.hp < p.maxHp * 0.35) dmg *= 1.35; // 背水
+        if (M.has('wall') && this.frame < (target.wallMarkUntil ?? 0)) dmg *= 1.4; // 震壁
+        if (M.has('streak')) dmg *= 1 + Math.min(0.25, Math.floor(this.streak / 10) * 0.05); // 连锋
+      }
     } else {
       dmg *= (src.owner || src).dmgMul ?? 1;
       dmg *= 100 / (100 + this.stats.def); // 防御减伤：100 防御 = 伤害减半
@@ -829,6 +892,7 @@ class Game {
       return false;
     }
     if (target.canBeHit && !target.canBeHit(h)) return false;
+    const busy = target === this.player && (target.state === 'attack' || target.state === 'charge'); // 复盘：被打中时是不是正在出招
     // 坚盾：正面挡住普通攻击（不扣血），火花 + 金属声，把玩家轻轻弹开
     if (src.team === 'player' && blocks(target, src, h)) {
       const hz = target.z + target.h * 0.55, hx = target.x + target.facing * target.w * 0.5;
@@ -911,6 +975,8 @@ class Game {
       this.addStyle(pts, tag);
       this.addUlt(h.skill ? 0.45 : h.ult ? 0 : 0.8);
       this.combo++;
+      this.streak++;
+      if (r.otg && this.stats.marks.has('otg')) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.02); // 追魂
       this.comboDmg += dmg;
       this.comboT = 110;
       this.comboPop = 8;
@@ -937,6 +1003,8 @@ class Game {
       }
     } else {
       this.fx.flash(COLORS.blood, 0.22);
+      this.streak = 0;
+      this.recordHurt(src, dmg, busy);
       sfx('hurt');
       this.styleHit();
       this.addUlt(4);
@@ -950,12 +1018,13 @@ class Game {
     this.addUlt(2.5);
     this.addStyle(40, 'kill');
     this.fx.chips(e.x, e.y, e.z + e.h * 0.5, Math.sign(e.vx) || 1, 18, e.look?.bone || e.look?.cloak || e.look?.metal || '#cfc3ad');
-    const xp = Math.round(e.xp * this.D.reward);
+    const xp = Math.round(e.xp * this.D.reward * (1 + this.spoils));
     this.gainXp(xp);
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
     onAffixDeath(e, this);
     if (e.isBoss) {
+      this.bossSpoils = this.spoils;
       // 首领倒下：长慢动作、所有小怪一起倒下、准备结算
       this.slowmo = 60;
       this.hitstop = Math.max(this.hitstop, 16);
@@ -1012,6 +1081,7 @@ class Game {
     }
     if (this.counterT > 0) this.counterT--;
     if (this.cdRefundT > 0) this.cdRefundT--;
+    for (const k in this.markT) if (this.markT[k] > 0) this.markT[k]--;
     this.camKick *= 0.8;
 
     // 必杀演出期间：敌人全部定格
