@@ -137,7 +137,14 @@ export class Enemy {
         break;
       case 'dying':
         this.vy = 0;
-        if (this.z <= 0) { this.vx *= 0.85; if (++this.deadT > 45) this.remove = true; }
+        if (this.z <= 0) {
+          this.vx *= 0.85;
+          if (++this.deadT > 45) this.remove = true;
+          // 化成光点消散（首领更密、用自己的颜色）
+          else if (this.deadT < 40 && (this.isBoss || this.deadT % 2 === 0)) {
+            game.fx.emit('dissolve', this.x + rand(-this.w / 2, this.w / 2), this.y + rand(-6, 6), rand(4, this.h * 0.75), { color: this.isBoss ? this.B.glow : '#b9a6ff', n: this.isBoss ? 3 : 1 });
+          }
+        }
         break;
     }
     this.physics(game);

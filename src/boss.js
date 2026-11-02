@@ -372,6 +372,16 @@ export class Boss extends Enemy {
       this.startAct('roar');
     }
     super.update(game);
+    // 出招预警的一瞬间：脚下的红圈往里收、红光往身上聚（和「!」一起出现，告诉你要闪了）
+    if (this.tele && !this.wasTele && this.alive) {
+      game.fx.gwarn(this.x, this.y, '#ff3b3b', this.w * 1.4 + 70, this.w * 0.45, 24);
+      game.fx.converge(this.x, this.y, this.h * 0.6, 8, '#ff4d4d');
+    }
+    this.wasTele = this.tele;
+    // 首领身上不断往上飘的气：阶段越高越密
+    if (this.alive && this.state !== 'spawn' && game.ticks % (this.phase >= 1 ? 3 : 5) === 0) {
+      game.fx.emit('aura', this.x + rand(-this.w * 0.5, this.w * 0.5), this.y + rand(-6, 6), rand(0, this.h * 0.5), { color: this.B.glow, n: 1 });
+    }
   }
 
   think(game) {
