@@ -178,6 +178,7 @@ function whirlPulse(p, game) {
 }
 function whirlEnd(p, game) {
   game.fx.gring(p.x, p.y, '#ffffff', 30, 240, 20, 7);
+  game.fx.shock(p.x, p.y, p.z + 60, 230, 0.03, 20);
   game.fx.flare(p.x, p.y, p.z + 60, 1.2, p.glow);
   game.fx.lines(p.x, p.y, p.z + 60, 12, '#ffffff', p.facing);
   game.cine.speed('out', 8, p.glow);
@@ -210,6 +211,8 @@ function flurryEnd(p, game) {
   game.fx.flare(x, p.y, 60, 1.7, p.glow);
   game.fx.flare(x, p.y, 60, 1.1, '#ffffff');
   game.fx.gring(x, p.y, p.glow, 30, 300, 26, 8);
+  game.fx.shock(x, p.y, 60, 280, 0.042, 22);
+  game.fx.aberrate(0.01, x, p.y, 60);
   game.fx.pillar(x, p.y, p.glow, 70, 420, 24);
   game.fx.lines(x, p.y, 60, 16, '#ffffff', p.facing);
   game.cine.speed('out', 14, '#ffffff');
@@ -229,6 +232,8 @@ function quakeBurst(p, game) {
   game.cine.speed('out', 14, '#ffffff');
   game.cine.hold(0.2, 8, p);
   game.fx.gring(x, p.y, '#ffffff', 20, 230, 18, 7);
+  game.fx.shock(x, p.y, 20, 340, 0.05, 26);
+  game.fx.aberrate(0.012, x, p.y, 20);
   game.fx.gring(x, p.y, p.glow, 30, 330, 30, 10);
   game.fx.pillar(x, p.y, p.glow, 76, 470, 26);
   game.fx.flare(x, p.y, 40, 1.6, p.glow);

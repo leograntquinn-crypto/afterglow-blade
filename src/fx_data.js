@@ -67,11 +67,11 @@ EMIT.trailMote = { type: 'ember', n: [1, 1], life: [14, 26], speed: [0.4, 1.6], 
 // spark 火花数、ember 余烬比例、ringGrow / ringW 冲击环、cut / cutW 斩痕长度和粗细、flare 星芒大小、
 // lines 冲击线条数、chips 碎片数、light 命中光半径、stop 额外顿帧、kick 镜头后坐、soul 击杀魂火
 export const HIT_TIERS = {
-  light: { spark: 8, ringGrow: 4, ringW: 3, cut: 110, cutW: 1, flare: 0, lines: 0, chips: 4, light: 180, stop: 0, kick: 0 },
-  crit: { spark: 11, ringGrow: 6, ringW: 4, cut: 140, cutW: 1.2, flare: 0.55, lines: 6, chips: 6, light: 240, stop: 0, kick: 4, accent: '#ffd65a' },
-  heavy: { spark: 14, ringGrow: 7, ringW: 5, cut: 170, cutW: 1.35, flare: 0.75, lines: 8, chips: 9, light: 280, stop: 0, kick: 9 },
-  break: { spark: 18, ringGrow: 9, ringW: 6, cut: 200, cutW: 1.6, flare: 1.1, lines: 14, chips: 12, light: 340, stop: 2, kick: 12, accent: '#ffb347' },
-  kill: { spark: 16, ringGrow: 8, ringW: 5, cut: 190, cutW: 1.5, flare: 0.9, lines: 10, chips: 12, light: 320, stop: 3, kick: 10, soul: true },
+  light: { shock: 0, chroma: 0, spark: 8, ringGrow: 4, ringW: 3, cut: 110, cutW: 1, flare: 0, lines: 0, chips: 4, light: 180, stop: 0, kick: 0 },
+  crit: { shock: 0, chroma: 0.004, spark: 11, ringGrow: 6, ringW: 4, cut: 140, cutW: 1.2, flare: 0.55, lines: 6, chips: 6, light: 240, stop: 0, kick: 4, accent: '#ffd65a' },
+  heavy: { shock: 0.012, chroma: 0.005, spark: 14, ringGrow: 7, ringW: 5, cut: 170, cutW: 1.35, flare: 0.75, lines: 8, chips: 9, light: 280, stop: 0, kick: 9 },
+  break: { shock: 0.02, chroma: 0.009, spark: 18, ringGrow: 9, ringW: 6, cut: 200, cutW: 1.6, flare: 1.1, lines: 14, chips: 12, light: 340, stop: 2, kick: 12, accent: '#ffb347' },
+  kill: { shock: 0.012, chroma: 0.005, spark: 16, ringGrow: 8, ringW: 5, cut: 190, cutW: 1.5, flare: 0.9, lines: 10, chips: 12, light: 320, stop: 3, kick: 10, soul: true },
 };
 
 // ---------- 技能演出与首领 ----------

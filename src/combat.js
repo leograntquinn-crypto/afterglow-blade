@@ -131,6 +131,7 @@ export class Hazard {
       // 爆发：贴地冲击波 + 光柱 + 火星
       const col = this.color || '#ff6a3d';
       game.fx.gring(this.x, this.y, col, this.rx * 0.4, this.rx * 1.5, 20, 7);
+      game.fx.shock(this.x, this.y, 10, this.rx * 1.6, 0.016, 18);
       game.fx.pillar(this.x, this.y, col, Math.min(90, this.rx * 0.7), 260 + this.rx, 18);
       game.fx.spark(this.x, this.y, 10, 1, 8, col);
       game.fx.spark(this.x, this.y, 10, -1, 8, col);

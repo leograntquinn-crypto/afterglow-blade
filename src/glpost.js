@@ -22,7 +22,7 @@ vec3 pick(vec2 uv) {
   vec3 g = texture2D(uGlow, uv).rgb;
   vec3 s = texture2D(uScene, uv).rgb;
   float l = max(s.r, max(s.g, s.b));
-  return g + s * smoothstep(0.82, 1.0, l) * 0.35;
+  return g + s * smoothstep(0.85, 1.0, l) * 0.2;
 }
 void main() {
   vec2 o = uTexel * 0.5;
@@ -93,6 +93,9 @@ void main() {
   } else col = texture2D(uScene, uv).rgb;
   // 泛光缓冲和场景贴图的方向一致（都是第一行 = 画面顶部），用同一个坐标取
   col += texture2D(uB1, uv).rgb * uBloom1 + texture2D(uB2, uv).rgb * uBloom2;
+  // 高光肩部：0.6 以上平滑压缩，叠加发光的地方不会一片死白、还能看出层次
+  vec3 hi = max(col - 0.6, 0.0);
+  col = min(col, 0.6) + 0.4 * (1.0 - exp(-hi / 0.4));
   col = mix(col, softLight(clamp(col, 0.0, 1.0), uGrade), uGradeAmt);
   col = clamp(col, 0.0, 1.0);
   col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);
@@ -120,6 +123,11 @@ export class GLPost {
       const gl = this.canvas.getContext('webgl', opt) || this.canvas.getContext('experimental-webgl', opt);
       if (!gl) throw new Error('no webgl');
       this.gl = gl;
+      // 软件渲染（没有显卡加速时浏览器用 CPU 模拟 WebGL）：全屏着色器在 CPU 上非常慢，不如直接用 Canvas 后处理。
+      // 地址加 ?gl=force 可以强制打开（测试用）
+      const dbg = gl.getExtension('WEBGL_debug_renderer_info');
+      this.renderer = String(dbg ? gl.getParameter(dbg.UNMASKED_RENDERER_WEBGL) : gl.getParameter(gl.RENDERER));
+      if (/swiftshader|llvmpipe|software|basic render/i.test(this.renderer) && !/[?&]gl=force\b/.test(location.search)) throw new Error('software webgl');
       this.canvas.addEventListener('webglcontextlost', (e) => { e.preventDefault(); this.ok = false; this.failed = true; });
       this.build();
       this.ok = true;
@@ -257,8 +265,8 @@ export class GLPost {
         gl.uniform1f(u.uTime, (o.time % 1000) * 0.137);
         gl.uniform1f(u.uChroma, o.quality > 1 ? o.chroma || 0 : 0);
         gl.uniform2f(u.uChromaC, ...(o.chromaC || [0.5, 0.5]));
-        gl.uniform1f(u.uBloom1, 0.85);
-        gl.uniform1f(u.uBloom2, o.quality > 1 ? 1.0 : 0);
+        gl.uniform1f(u.uBloom1, 0.55);
+        gl.uniform1f(u.uBloom2, o.quality > 1 ? 0.6 : 0);
         gl.uniform3f(u.uGrade, ...g);
         gl.uniform1f(u.uGradeAmt, 0.32);
         gl.uniform1f(u.uSat, 1.06);
