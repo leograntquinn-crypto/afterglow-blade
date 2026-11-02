@@ -914,6 +914,7 @@ class Game {
     this.fx.ring(p.x, p.y, 4, p.glow, 20, 12, 18, 6);
     this.fx.ring(p.x, p.y, 4, '#ffffff', 10, 9, 12, 3);
     this.fx.dust(p.x, p.y, 20, 2.6);
+    this.fx.dustburst(p.x, p.y, 0.9);
     this.fx.crack(p.x, p.y);
     this.fx.shake(10, 18);
     this.hitLights.push({ x: p.x, y: p.y, z: 20, r: 300, life: 8 });
@@ -960,6 +961,7 @@ class Game {
     this.cine.hold(0.6, 150, p);
     this.cine.speed('in', 40, p.glow);
     this.fx.gwarn(p.x, p.y, p.glow, 240, 30, 44);
+    this.fx.rune(p.x, p.y, 0, p.glow, 150, 150, 0.012);
     this.fx.converge(p.x, p.y, p.z + 50, 24, p.glow);
     sfx('ultStart');
   }
@@ -1123,7 +1125,7 @@ class Game {
     const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
     this.fx.chips(hx, target.y, hz, dir, HT.chips, chip);
     if (fromPlayer) {
-      if (HT.flare && extra) this.fx.flare(hx, target.y, hz, HT.flare, HT.accent ?? this.player.glow);
+      if (HT.flare && extra) this.fx.flare(hx, target.y, hz, HT.flare, HT.accent ?? this.player.glow, tier === 'crit' || tier === 'break');
       if (HT.lines && extra) this.fx.lines(hx, target.y, hz, HT.lines, HT.accent ?? '#ffffff', dir);
       if (HT.shock && extra) this.fx.shock(hx, target.y, hz, 110 + HT.shock * 2500, HT.shock, 16);
       if (HT.chroma && extra) this.fx.aberrate(HT.chroma, hx, target.y, hz);
