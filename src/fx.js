@@ -162,11 +162,33 @@ export class FX {
     if (!p) return;
     p.img = pick(tex().crack); p.facing = Math.random() < 0.5 ? -1 : 1; p.color = '#ff9a4a';
   }
-  // 斩痕：命中点闪过一道沿挥砍方向的锐利光，先迅速拉长再变细消失
-  cut(x, y, z, angle, len, color) {
+  // 星芒：命中瞬间的十字闪光，迅速撑开、略微转动后收缩
+  flare(x, y, z, scale, color) {
+    const p = this.spawn('flare', x, y, z, 9);
+    if (!p) return;
+    p.size = scale; p.rot = rand(-0.3, 0.3); p.vr = rand(-0.02, 0.02); p.color = color;
+    p.tx = tintRamp(tex().flare, ramp(color, 'cool')); p.ramp = ramp(color, 'cool');
+  }
+  // 冲击线：从命中点向外射出的细线（漫画里的集中线），一半集中在打击方向
+  lines(x, y, z, n, color, dir = 1) {
+    n = Math.max(2, Math.round(n * this.lod));
+    for (let i = 0; i < n; i++) {
+      const p = this.spawn('line', x, y, z, rand(6, 9));
+      if (!p) return;
+      const a = i % 2 ? rand(-0.5, 0.5) + (dir > 0 ? 0 : Math.PI) : rand(0, Math.PI * 2);
+      p.angle = a; p.r0 = rand(10, 22); p.len = rand(40, 80); p.size = rand(1.4, 2.6); p.color = color;
+    }
+  }
+  // 击杀：魂火往上散 + 一团冷光
+  soul(x, y, z, color) {
+    this.emit('soul', x, y, z, { color });
+    this.emit('hitGlow', x, y, z, { color, scale: 2.2 });
+  }
+  // 斩痕：命中点闪过一道沿挥砍方向的锐利光，先迅速拉长再变细消失；w 粗细倍数
+  cut(x, y, z, angle, len, color, w = 1) {
     const p = this.spawn('cut', x, y, z, 10);
     if (!p) return;
-    p.angle = angle; p.len = len; p.color = color; p.ramp = ramp(color, 'hot');
+    p.angle = angle; p.len = len; p.color = color; p.ramp = ramp(color, 'hot'); p.w = w;
     p.img = tinted(tex().glow, color);
   }
 
@@ -198,7 +220,8 @@ export class FX {
         this.pool.push(p);
         continue;
       }
-      if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack') continue;
+      if (p.kind === 'flare') { p.rot += p.vr; continue; }
+      if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack' || p.kind === 'line') continue;
       p.vx *= p.drag; p.vy *= p.drag; p.vz = p.vz * p.drag - p.grav;
       if (p.sway) p.vx += Math.sin(p.life * 0.21 + p.seed) * p.sway * 0.1;
       p.x += p.vx; p.y += p.vy; p.z += p.vz; p.rot += p.vr;
@@ -343,7 +366,7 @@ export class FX {
         }
         case 'cut': {
           const age = p.max - p.life, grow = Math.min(1, age / 2.5);
-          const len = p.len * grow * 1.1, w = Math.max(0.8, 6 * (1 - t));
+          const len = p.len * grow * 1.1, w = Math.max(0.8, 6 * (1 - t)) * p.w;
           ctx.globalAlpha = Math.min(1, (1 - t) * 1.6) * (glowPass ? 0.5 : 0.8);
           this.put(ctx, p.img, sx, sy, p.angle, len / 64, (w * 2.2) / 64);
           if (!glowPass) {
@@ -353,6 +376,30 @@ export class FX {
               ctx.globalAlpha = (1 - age / 3) * 0.8;
               this.put(ctx, T.flare, sx, sy, p.angle * 0.5, 0.4, 0.4);
             }
+          }
+          break;
+        }
+        case 'flare': {
+          // 先猛地撑开（2 帧）再收缩消失
+          const k = p.size * (t < 0.2 ? 0.4 + t * 3.5 : 1.1 - (t - 0.2) * 1.1);
+          ctx.globalAlpha = (1 - t) * (glowPass ? 0.35 : 0.75);
+          this.put(ctx, p.tx[ci], sx, sy, p.rot, k, k * 0.85);
+          if (!glowPass) {
+            ctx.globalAlpha = (1 - t) * 0.7;
+            this.put(ctx, T.flare, sx, sy, p.rot + 0.4, k * 0.35, k * 0.3);
+          }
+          break;
+        }
+        case 'line': {
+          // 内端飞快往外推、外端减速：线先拉长再缩短消失
+          const e = easeOut(t), r0 = p.r0 + p.len * 1.1 * e, r1 = p.r0 + p.len * (0.35 + 0.9 * Math.min(1, t * 3));
+          const mid = (r0 + r1) / 2, L = Math.max(2, r1 - r0);
+          const cx = sx + Math.cos(p.angle) * mid, cy = sy + Math.sin(p.angle) * mid * 0.8;
+          ctx.globalAlpha = (1 - t) * (glowPass ? 0.4 : 0.95);
+          this.put(ctx, glowPass ? tinted(T.streak, p.color) : T.needle, cx, cy, p.angle, L / 128, (p.size * (1 - t * 0.6)) / 6);
+          if (!glowPass) {
+            ctx.globalAlpha = (1 - t) * 0.5;
+            this.put(ctx, tinted(T.needle, p.color), cx, cy, p.angle, L / 128, (p.size * 2.4) / 6);
           }
           break;
         }

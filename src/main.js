@@ -19,6 +19,7 @@ import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } f
 import { prepareBossSprites } from './enemy_sprites.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
+import { HIT_TIERS } from './fx_data.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
@@ -1082,19 +1083,30 @@ class Game {
     const hz = target.z + target.h * 0.55;
     const hx = target.x - dir * target.w * 0.25;
 
-    // 1. 火花 + 冲击环
-    this.fx.spark(hx, target.y, hz, dir, h.heavy ? 14 : 8, fromPlayer ? '#fff1c2' : '#ff8a7a');
-    this.fx.ring(hx, target.y, hz, fromPlayer ? this.player.glow : COLORS.blood, 6, h.heavy ? 7 : 4, 10, h.heavy ? 5 : 3);
+    // 1. 受击分级：轻击 < 暴击 < 重击 < 破招 / 破防 < 击杀，每档的表现见 fx_data.js 的 HIT_TIERS
+    const tier = !fromPlayer ? (h.heavy ? 'heavy' : 'light')
+      : r.killed ? 'kill' : h.counterMul || r.broke ? 'break' : h.heavy ? 'heavy' : crit ? 'crit' : 'light';
+    const HT = HIT_TIERS[tier];
+    // 同一帧打中多个敌人：只有分量最重的第一下给全套（星芒、冲击线），其余减半，避免叠加发光糊成一片白
+    if (this.hitFxTick !== this.ticks) { this.hitFxTick = this.ticks; this.hitFxN = 0; }
+    const extra = this.hitFxN++ === 0;
+    this.fx.spark(hx, target.y, hz, dir, extra ? HT.spark : Math.ceil(HT.spark / 2), fromPlayer ? '#fff1c2' : '#ff8a7a');
+    this.fx.ring(hx, target.y, hz, fromPlayer ? this.player.glow : COLORS.blood, 6, HT.ringGrow, 10, HT.ringW);
     // 材质碎片：骷髅掉骨渣、屠夫冒金属火星、弓手掉布屑
     const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
-    this.fx.chips(hx, target.y, hz, dir, h.heavy ? 9 : 4, chip);
-    if (fromPlayer && h.heavy) this.camKick += dir * 9;
+    this.fx.chips(hx, target.y, hz, dir, HT.chips, chip);
+    if (fromPlayer) {
+      if (HT.flare && extra) this.fx.flare(hx, target.y, hz, HT.flare, HT.accent ?? this.player.glow);
+      if (HT.lines && extra) this.fx.lines(hx, target.y, hz, HT.lines, HT.accent ?? '#ffffff', dir);
+      if (HT.soul) this.fx.soul(target.x, target.y, target.z + target.h * 0.5, this.player.glow);
+      if (HT.kick) this.camKick += dir * HT.kick;
+    }
     // 斩痕：沿挥砍方向的一道锐利白线
     if (fromPlayer && (src.move || h.ult)) {
       const sw = src.move?.swing;
       let ang = h.ult ? (Math.random() - 0.5) * 2.4 : !sw || Math.abs(sw[1] - sw[0]) < 0.2 ? (Math.random() - 0.5) * 0.2 : (sw[1] > sw[0] ? 0.62 : -0.62);
       if (dir < 0) ang = Math.PI - ang;
-      this.fx.cut(target.x, target.y, hz, ang + (Math.random() - 0.5) * 0.3, h.heavy ? 170 : 110, this.player.glow);
+      this.fx.cut(target.x, target.y, hz, ang + (Math.random() - 0.5) * 0.3, HT.cut, HT.accent ?? this.player.glow, HT.cutW);
     }
     // 受击闪白只持续 3 个真实帧（不受顿帧影响），之后露出原样配合抖动
     target.flashUntil = this.ticks + 3;
@@ -1107,10 +1119,10 @@ class Game {
     // 2. 伤害数字
     this.fx.number(target.x, target.y, target.z + target.h + 6, dmg, { crit, color: fromPlayer ? null : COLORS.blood });
     // 3. 顿帧：整个世界停住几帧，让「砍中」的瞬间被看清
-    this.hitstop = Math.max(this.hitstop, (h.stop ?? 4) + (crit ? 2 : 0));
+    this.hitstop = Math.max(this.hitstop, (h.stop ?? 4) + (crit ? 2 : 0) + HT.stop);
     // 4. 震屏 + 命中闪光 + 重击时镜头轻推
     if (h.shake) this.fx.shake(h.shake, 10 + h.shake);
-    this.hitLights.push({ x: hx, y: target.y, z: hz, r: h.heavy ? 280 : 180, life: 8 });
+    this.hitLights.push({ x: hx, y: target.y, z: hz, r: HT.light, life: 8 });
     if (fromPlayer && (h.heavy || crit) && !REDUCED_MOTION) this.zoom = Math.max(this.zoom, h.heavy ? 0.045 : 0.025);
     // 5. 音效：通用的「打中」+ 材质层（骨头脆响 / 金属鸣响 / 布料闷响）
     sfx(h.heavy || crit ? 'heavy' : 'hit');
@@ -1350,7 +1362,7 @@ class Game {
     // 3. 自发光的特效画在黑暗之上，再加泛光
     if (inWorld) {
       const g = post.beginGlow(view);
-      this.player.drawTrail(g, camX);
+      this.player.drawTrail(g, camX, true);
       this.fx.draw(g, camX, true);
       for (const pr of this.projectiles) pr.draw(g, camX, t);
       for (const l of this.loots) if (l.item) l.draw(g, camX, t);
