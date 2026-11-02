@@ -162,6 +162,7 @@ function charge(p, game) {
   game.cine.hold(0.28 + k * 0.12, 32, p);
   game.cine.speed('in', 10, p.glow);
   game.fx.gwarn(p.x, p.y, p.glow, 150, 28, 24);
+  if (p.mf === 0) game.fx.rune(p.x, p.y, 0, p.glow, 110, 34, 0.03);
 }
 
 function waveCharge(p, game) {
@@ -228,6 +229,7 @@ function quakeBurst(p, game) {
   game.fx.spark(x, p.y, 10, 1, 10, p.glow);
   game.fx.spark(x, p.y, 10, -1, 10, p.glow);
   game.fx.crack(x, p.y);
+  game.fx.dustburst(x, p.y, 1.2);
   // 爆发：集中线炸开、两层地面冲击波、冲天光柱、星芒和冲击线；余韵：残光从裂开的地面升起
   game.cine.speed('out', 14, '#ffffff');
   game.cine.hold(0.2, 8, p);

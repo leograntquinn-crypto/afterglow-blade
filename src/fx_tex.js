@@ -7,6 +7,8 @@
 // 染色：贴图本身是白色 / 灰度，用到某个颜色时再画一份染色版缓存（同一贴图 + 同一颜色只画一次）。
 // 以后换成美术画的特效贴图（docs 里的特效素材需求），只要同名替换这里的贴图即可。
 
+import { FX_ART } from './fx_art.js';
+
 const mk = (w, h) => {
   const c = document.createElement('canvas');
   c.width = w;
@@ -192,9 +194,61 @@ export function tex() {
       smoke: [11, 23, 37, 51].map(makeSmoke),
       chip: [3, 7, 13, 19, 29, 31].map(makeChip),
       crack: [5, 17, 41].map(makeCrack),
+      art: false,
     };
   }
+  if (!T.art && FX_ART.tex.ready) applyArt(T, FX_ART.tex.items);
   return T;
+}
+
+// 不透明部分的包围盒宽高（只在换贴图时算一次）
+function visible(c) {
+  const d = c.getContext('2d').getImageData(0, 0, c.width, c.height).data;
+  let x0 = c.width, x1 = -1, y0 = c.height, y1 = -1;
+  for (let y = 0; y < c.height; y++) {
+    for (let x = 0; x < c.width; x++) {
+      if (d[(y * c.width + x) * 4 + 3] > 8) {
+        if (x < x0) x0 = x;
+        if (x > x1) x1 = x;
+        if (y < y0) y0 = y;
+        if (y > y1) y1 = y;
+      }
+    }
+  }
+  return x1 < 0 ? [1, 1] : [x1 - x0 + 1, y1 - y0 + 1];
+}
+
+// 手绘贴图到了：替换程序生成的占位。
+// 画的代码是按占位贴图的像素尺寸写的（比如冲击环按 256 像素算缩放），所以每张手绘图记一个换算系数 u，
+// 让它画出来的「可见大小」和原来的占位一样，各处调用都不用改。
+function applyArt(T, A) {
+  const unit = (img, procPx, artPx) => Object.assign(img, { u: procPx / artPx });
+  // 烟：画的时候按图宽缩放，所以 u = 占位贴图里烟团占的比例（手绘图已经裁到烟团本身）
+  const smokeFrac = visible(T.smoke[0])[0] / T.smoke[0].width;
+  T.smoke = [1, 2, 3, 4, 5, 6].map((i) => unit(A[`smoke_0${i}`], smokeFrac, 1));
+  // 碎片：按 16 像素的占位画（可见约 11 像素）
+  const chipPx = visible(T.chip[0])[0];
+  T.chip = Object.keys(A).filter((k) => k.startsWith('chip_')).map((k) => unit(A[k], chipPx, Math.max(A[k].width, A[k].height)));
+  // 地裂：暗缝和炽热缝来自同一张原画布，用同一个系数才能对齐
+  const crackPx = visible(T.crack[0].dark)[0];
+  T.crack = [1, 2].map((i) => {
+    const dark = A[`crack_0${i}`], hot = A[`crackglow_0${i}`], u = crackPx / dark.width;
+    return { dark: Object.assign(dark, { u }), hot: Object.assign(hot, { u }) };
+  });
+  // 冲击环：细环替换前两档、粗环替换后两档；占位按 256 像素直径画
+  const thin = A.ring_energy_thin, thick = A.ring_energy_thick;
+  unit(thin, 256, thin.width * 0.96);
+  unit(thick, 256, thick.width * 0.96);
+  T.ring = [thin, thin, thick, thick];
+  // 星芒：占位 96 像素，光芒顶到边
+  T.flare = unit(A.flare_01, 96, A.flare_01.width);
+  T.flare2 = unit(A.flare_02, 96, A.flare_02.width);
+  // 新增：光柱、尘爆、能量丝、符文圈（画的代码按各自的实际尺寸处理）
+  T.pillar = A.pillar_01;
+  T.dustburst = [A.dustburst_01, A.dustburst_02, A.dustburst_03];
+  T.wisp = [A.wisp_01, A.wisp_02];
+  T.rune = [A.rune_circle_01, A.rune_circle_02];
+  T.art = true;
 }
 
 // ---------- 染色缓存 ----------
@@ -208,6 +262,7 @@ export function tinted(img, color, mode = 'fill') {
   let c = m.get(key);
   if (!c) {
     c = mk(img.width, img.height);
+    c.u = img.u; c.cx = img.cx; c.cy = img.cy; c.sc = img.sc; c.fw = img.fw; c.fh = img.fh; // 换算系数和锚点跟着走
     const x = c.getContext('2d');
     x.drawImage(img, 0, 0);
     x.globalCompositeOperation = mode === 'fill' ? 'source-in' : 'multiply';

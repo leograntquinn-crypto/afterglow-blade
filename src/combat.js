@@ -66,6 +66,11 @@ export class Projectile {
       // 剑气：新月形，后面拖两层渐淡的残像；外层柔光 + 刀刃白芯
       ctx.globalCompositeOperation = 'lighter';
       const a = Math.min(1, this.life / 10), sc = this.scale || 1, col = this.color || COLORS.blade, T = tex();
+      // 剑气后面拖着两缕能量丝（手绘素材到了才有）
+      if (T.wisp) {
+        ctx.globalAlpha = a * 0.7;
+        T.wisp.forEach((w, i) => ctx.drawImage(tinted(w, col), -170 * sc, (-82 + i * 50) * sc, 165 * sc, 34 * sc));
+      }
       ctx.globalAlpha = a * 0.35;
       ctx.drawImage(tinted(T.glow, col), -60 * sc, -112 * sc, 80 * sc, 124 * sc);
       for (let i = 2; i >= 0; i--) {
@@ -135,6 +140,7 @@ export class Hazard {
       game.fx.pillar(this.x, this.y, col, Math.min(90, this.rx * 0.7), 260 + this.rx, 18);
       game.fx.spark(this.x, this.y, 10, 1, 8, col);
       game.fx.spark(this.x, this.y, 10, -1, 8, col);
+      game.fx.dustburst(this.x, this.y, Math.min(1.4, this.rx / 120));
       if (this.rx > 90) game.fx.crack(this.x, this.y);
       sfx('heavy');
     }

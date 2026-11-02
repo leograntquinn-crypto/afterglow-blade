@@ -178,11 +178,13 @@ export class FX {
     p.img = pick(tex().crack); p.facing = Math.random() < 0.5 ? -1 : 1; p.color = '#ff9a4a';
   }
   // 星芒：命中瞬间的十字闪光，迅速撑开、略微转动后收缩
-  flare(x, y, z, scale, color) {
+  // alt：用第二种星芒（六芒，暴击、破招用；没有手绘素材时和第一种一样）
+  flare(x, y, z, scale, color, alt = false) {
     const p = this.spawn('flare', x, y, z, 9);
     if (!p) return;
+    const T = tex();
     p.size = scale; p.rot = rand(-0.3, 0.3); p.vr = rand(-0.02, 0.02); p.color = color;
-    p.tx = tintRamp(tex().flare, ramp(color, 'cool')); p.ramp = ramp(color, 'cool');
+    p.tx = tintRamp(alt && T.flare2 ? T.flare2 : T.flare, ramp(color, 'cool')); p.ramp = ramp(color, 'cool');
   }
   // 冲击线：从命中点向外射出的细线（漫画里的集中线），一半集中在打击方向
   lines(x, y, z, n, color, dir = 1) {
@@ -212,6 +214,24 @@ export class FX {
     const p = this.spawn('pillar', x, y, 0, life);
     if (!p) return;
     p.w = w; p.len = h; p.color = color; p.ramp = ramp(color, 'cool'); p.tx = tintRamp(tex().glow, p.ramp);
+    p.tx2 = tex().pillar ? tintRamp(tex().pillar, p.ramp) : null;
+  }
+  // 尘爆：贴地炸开的一片尘浪（手绘素材；没有素材时用普通尘土代替）
+  dustburst(x, y, scale = 1, color = '#b8aa9a', life = 34) {
+    const T = tex();
+    if (!T.dustburst) { this.dust(x, y, Math.round(10 * scale), 2); return; }
+    const p = this.spawn('dburst', x, y, 0, life);
+    if (!p) return;
+    p.img = tinted(pick(T.dustburst), color, 'mul'); p.size = scale; p.add = false; p.facing = Math.random() < 0.5 ? -1 : 1;
+    p.alphaC = CURVES.pop; p.alpha = 0.85;
+  }
+  // 符文圈：压扁成地面透视、缓慢旋转的法阵（which 0 = 主角用的，1 = 首领用的）。r 半径，spin 每帧转多少
+  rune(x, y, which, color, r, life, spin = 0.01) {
+    const T = tex();
+    if (!T.rune) { this.gwarn(x, y, color, r * 1.4, r * 0.4, Math.min(life, 40)); return; }
+    const p = this.spawn('rune', x, y, 0, life);
+    if (!p) return;
+    p.img = tinted(T.rune[which], color); p.r0 = r; p.vr = spin; p.rot = rand(0, 6.28); p.color = color;
   }
   // 击杀：魂火往上散 + 一团冷光
   soul(x, y, z, color) {
@@ -257,7 +277,8 @@ export class FX {
         this.pool.push(p);
         continue;
       }
-      if (p.kind === 'flare') { p.rot += p.vr; continue; }
+      if (p.kind === 'flare' || p.kind === 'rune') { p.rot += p.vr; continue; }
+      if (p.kind === 'dburst') continue;
       if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack' || p.kind === 'line' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'pillar') continue;
       p.vx *= p.drag; p.vy *= p.drag; p.vz = p.vz * p.drag - p.grav;
       if (p.sway) p.vx += Math.sin(p.life * 0.21 + p.seed) * p.sway * 0.1;
@@ -280,10 +301,16 @@ export class FX {
     this.M = [m.a, m.b, m.c, m.d, m.e, m.f];
   }
   // 以 (x, y) 为中心画贴图 img，旋转 rot，横向缩放 kx、纵向 ky；(ax, ay) 是贴图里对准 (x, y) 的点（默认中心）
-  put(ctx, img, x, y, rot, kx, ky, ax = img.width / 2, ay = img.height / 2) {
+  // 手绘贴图带着换算系数 u（让它和原来的占位贴图一样大）和锚点 cx, cy（裁过透明边的图，锚点不在正中）
+  put(ctx, img, x, y, rot, kx, ky, ax, ay) {
+    if (ax === undefined) { ax = img.cx ?? img.width / 2; ay = img.cy ?? img.height / 2; }
+    const u = img.u || 1, cs = Math.cos(rot), sn = Math.sin(rot);
+    kx *= u; ky *= u;
+    this.putM(ctx, img, x, y, cs * kx, sn * kx, -sn * ky, cs * ky, ax, ay);
+  }
+  // 任意 2×2 局部变换（la lb lc ld）+ 平移，叠在世界变换上
+  putM(ctx, img, x, y, la, lb, lc, ld, ax, ay) {
     const [a, b, c, d, e, f] = this.M;
-    const cs = Math.cos(rot), sn = Math.sin(rot);
-    const la = cs * kx, lb = sn * kx, lc = -sn * ky, ld = cs * ky;
     ctx.setTransform(a * la + c * lb, b * la + d * lb, a * lc + c * ld, b * lc + d * ld, a * x + c * y + e, b * x + d * y + f);
     ctx.drawImage(img, -ax, -ay);
   }
@@ -295,12 +322,12 @@ export class FX {
   // 地面上的效果（地裂），在角色之前画
   drawFloor(ctx, camX) {
     let any = false;
-    for (const p of this.live) if (p.kind === 'crack' || p.kind === 'gring' || p.kind === 'gwarn') { any = true; break; }
+    for (const p of this.live) if (p.kind === 'crack' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'rune') { any = true; break; }
     if (!any) return;
     this.base(ctx);
     const op = ctx.globalCompositeOperation;
     for (const p of this.live) {
-      if (p.kind === 'gring' || p.kind === 'gwarn') { this.drawGround(ctx, p, p.x - camX, GROUND_TOP + p.y); continue; }
+      if (p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'rune') { this.drawGround(ctx, p, p.x - camX, GROUND_TOP + p.y); continue; }
       if (p.kind !== 'crack') continue;
       const sx = p.x - camX, sy = GROUND_TOP + p.y;
       const age = p.max - p.life;
@@ -325,7 +352,7 @@ export class FX {
     ctx.globalCompositeOperation = 'lighter';
     if (p.kind === 'gring') {
       const r = p.r0 + (p.r1 - p.r0) * easeOut(t), want = (p.w * (2.2 - 1.4 * t)) / r;
-      if (r > 130) {
+      if (r > (tex().art ? 260 : 130)) {
         // 大环：贴图放大后绝大部分是透明的中心，白白耗填充率 —— 改成三层描边（只画到环带本身）
         const ci = Math.min(p.ramp.length - 1, (t * p.ramp.length) | 0), wd = p.w * (2.2 - 1.4 * t), fade = (1 - t) ** 1.3;
         this.restore(ctx);
@@ -350,6 +377,12 @@ export class FX {
         ctx.globalAlpha = 0.35 * (1 - t / 0.35);
         this.put(ctx, p.tx2[ci], sx, sy, 0, (r * 1.4) / 64, (r * 0.45) / 64);
       }
+    } else if (p.kind === 'rune') {
+      // 符文圈：先淡入（同时从 80% 撑到全尺寸），保持、缓慢旋转，最后 25% 淡出；压扁成地面透视
+      const age = p.max - p.life, fin = Math.min(1, age / 14), k = (p.r0 * 2 * (0.8 + 0.2 * easeOut(fin))) / p.img.width;
+      ctx.globalAlpha = fin * Math.min(1, p.life / (p.max * 0.25)) * (0.8 + 0.2 * Math.sin(age * 0.12));
+      const cs = Math.cos(p.rot), sn = Math.sin(p.rot), q = 0.32;
+      this.putM(ctx, p.img, sx, sy, k * cs, q * k * sn, -k * sn, q * k * cs, p.img.cx, p.img.cy);
     } else {
       // 预警：收缩的环，越接近出招越亮、闪得越快
       const r = p.r1 + (p.r0 - p.r1) * easeOut(t);
@@ -372,7 +405,11 @@ export class FX {
         const sx = p.x - camX, sy = GROUND_TOP + p.y - p.z;
         const t = 1 - p.life / p.max;
         ctx.globalAlpha = p.alpha * curve(p.alphaC, t);
-        if (p.kind === 'smoke') {
+        if (p.kind === 'dburst') {
+          // 尘爆：以地面线为锚（画布 85% 高处），从 75% 迅速撑到 110%
+          const k = ((300 * p.size) / p.img.fw) * (0.75 + 0.35 * easeOut(Math.min(1, t * 2.2)));
+          this.put(ctx, p.img, sx, sy, 0, k * p.facing, k, p.img.cx, p.img.cy + 0.35 * p.img.fh);
+        } else if (p.kind === 'smoke') {
           // 烟不旋转（旋转的半透明大贴图很费），靠 4 种形状 + 左右翻转 + 大小变化避免重复感
           const k = (p.size * 2 * curve(p.sizeC, t)) / p.img.width;
           this.put(ctx, p.img, sx, sy, 0, p.vr < 0 ? -k : k, k);
@@ -419,7 +456,7 @@ export class FX {
         }
         case 'ring': {
           const r = p.r0 + (p.r1 - p.r0) * easeOut(t);
-          if (r > 130) {
+          if (r > (T.art ? 260 : 130)) {
             // 大环改成描边（同 drawGround 的说明）
             const wd = p.w * (2.5 - 1.5 * t);
             this.restore(ctx);
@@ -500,6 +537,14 @@ export class FX {
           // 光柱：前 20% 从细变粗，之后变淡；底部最亮
           const w = p.w * (t < 0.2 ? 0.3 + t * 3.5 : 1), h = p.len * (0.6 + 0.4 * easeOut(Math.min(1, t * 3)));
           ctx.globalAlpha = (1 - t) ** 1.5 * (glowPass ? 0.6 : 0.85);
+          if (p.tx2) {
+            // 手绘光柱：锚点在底部，宽度按 w、高度按 h 拉伸；再叠一层柔光让底部更亮
+            const img = p.tx2[ci];
+            this.put(ctx, img, sx, sy, 0, (w * 1.5) / img.width, h / img.height);
+            ctx.globalAlpha *= 0.35;
+            this.put(ctx, p.tx[ci], sx, sy - h * 0.2, 0, (w * 1.2) / 64, (h * 0.5) / 64);
+            break;
+          }
           this.put(ctx, p.tx[ci], sx, sy - h * 0.45, 0, w / 64, h / 64);
           if (!glowPass) {
             ctx.globalAlpha = (1 - t) ** 2;

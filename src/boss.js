@@ -148,7 +148,7 @@ const ATTACKS = {
       b.tele = t < D;
       b.pa = t < D ? -2.6 : 1.2;
       b.pc = t < D ? 0.35 : 0.1;
-      if (t === D) { g.fx.shake(8, 14); g.fx.dust(b.x, b.y, 14, 2); sfx('heavy'); }
+      if (t === D) { g.fx.shake(8, 14); g.fx.dust(b.x, b.y, 14, 2); g.fx.dustburst(b.x, b.y, 1.1); sfx('heavy'); }
       if (t >= D && (t - D) % 10 === 0 && t < D + 60) {
         const i = (t - D) / 10 + 1;
         for (const s of [-1, 1]) {
@@ -245,6 +245,7 @@ const ATTACKS = {
     tick(b, g, t) {
       b.pa = -1.4;
       b.pc = 0.2;
+      if (t === 0) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
       if (t === 24) {
         for (const s of [-1, 1]) g.spawnMinion(b.B.minion, clamp(b.x + s * 170, 60, world.w - 60), clamp(b.y + rand(-40, 40), 10, DEPTH - 10));
         g.fx.flash(b.B.glow, 0.15);
@@ -296,6 +297,7 @@ const ATTACKS = {
         g.hazards.push(new Hazard({ x: b.x, y: b.y, rx: 900, ry: 260, delay: d.T, owner: b, ownerState: 'attack', color: b.B.glow,
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
+        g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
       }

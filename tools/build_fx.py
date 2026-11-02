@@ -1,0 +1,106 @@
+"""把特效素材包（afterglow.fxpack.v1）处理成游戏用的图集。
+
+python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录>
+
+输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
+  fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
+  fx_hero    FX-2 绯隼与通用序列帧（一直载入）
+  fx_bone    FX-3 里骸骨统领的两组（骨刺、骨裂斩痕），只在第 1 关载入
+  fx_warden  FX-3 里祭坛守护者的两组（魂火、召唤法阵），只在第 4 关载入
+序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
+JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
+"""
+import json, os, sys
+import numpy as np
+from PIL import Image
+
+TEX, HERO, BOSS = sys.argv[1:4]
+OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "fx")
+os.makedirs(OUT, exist_ok=True)
+GROUPS = {"fx_hero": None, "fx_bone": ["bone_spikes", "bone_rend"], "fx_warden": ["soul_fire", "summon_circle"]}
+
+
+def trim(im, pad=2):
+    a = np.asarray(im)[..., 3] > 2
+    if not a.any():
+        return None, (0, 0)
+    ys, xs = np.nonzero(a)
+    x0, y0 = max(0, int(xs.min()) - pad), max(0, int(ys.min()) - pad)
+    x1, y1 = min(im.width, int(xs.max()) + pad + 1), min(im.height, int(ys.max()) + pad + 1)
+    return im.crop((x0, y0, x1, y1)), (x0, y0)
+
+
+def pack(items, width):
+    """货架装箱：按高度从高到低一行行排。items: [(key, image)]，返回 {key: (x, y)} 和总高度"""
+    pos, x, y, row = {}, 0, 0, 0
+    for key, im in sorted(items, key=lambda kv: -kv[1].height):
+        if x + im.width > width:
+            x, y, row = 0, y + row + 1, 0
+        pos[key] = (x, y)
+        x += im.width + 1
+        row = max(row, im.height)
+    return pos, y + row
+
+
+def save_atlas(name, items, width, meta):
+    pos, h = pack(items, width)
+    atlas = Image.new("RGBA", (width, max(1, h)), (0, 0, 0, 0))
+    for key, im in items:
+        atlas.paste(im, pos[key])
+    # 透明像素的颜色清零，压缩更好、放大取样时边缘也不会渗出杂色
+    arr = np.asarray(atlas).copy()
+    arr[arr[..., 3] == 0] = 0
+    Image.fromarray(arr).save(f"{OUT}/{name}.webp", "WEBP", quality=88, method=6, alpha_quality=100)
+    dims = {k: [im.width, im.height] for k, im in items}
+    json.dump({**meta, "w": width, "h": h, "pos": {k: list(v) for k, v in pos.items()}, "dims": dims}, open(f"{OUT}/{name}.json", "w"), separators=(",", ":"))
+    kb = os.path.getsize(f"{OUT}/{name}.webp") / 1024
+    print(f"{name}: {width}×{h}，解码 {width * h * 4 / 2**20:.1f}MB，文件 {kb:.0f}KB，{len(items)} 块")
+
+
+# ---------- FX-1 单张贴图 ----------
+m = json.load(open(f"{TEX}/fx.json"))
+chips = json.load(open(f"{TEX}/docs/chip_regions.json"))
+for suffix, sc in (("", 1.0), ("_m", 0.5)):
+    items, tex = [], {}
+    for t in m["textures"]:
+        im = Image.open(f"{TEX}/{t['file']}").convert("RGBA")
+        if sc != 1:
+            im = im.resize((round(im.width * sc), round(im.height * sc)), Image.LANCZOS)
+        if t["id"].startswith("chip_"):
+            for i, r in enumerate(chips[t["id"]]):
+                key = f"{t['id']}_{i}"
+                items.append((key, im.crop(tuple(round(v * sc) for v in (r["x"], r["y"], r["x"] + r["w"], r["y"] + r["h"])))))
+                tex[key] = {"blend": t["blend"], "anchor": [0.5, 0.5], "full": [items[-1][1].width, items[-1][1].height], "off": [0, 0]}
+            continue
+        cut, (ox, oy) = trim(im)
+        items.append((t["id"], cut))
+        # full：原画布尺寸（图集像素），off：裁切后的左上角在原画布里的位置 —— 锚点按原画布算
+        tex[t["id"]] = {"blend": t["blend"], "anchor": t["anchor"], "full": [im.width, im.height], "off": [ox, oy]}
+    save_atlas(f"fx_tex{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "tex": tex})
+
+# ---------- FX-2 / FX-3 序列帧 ----------
+fbs = {}
+for root in (HERO, BOSS):
+    for f in json.load(open(f"{root}/fx.json"))["flipbooks"]:
+        fbs[f["id"]] = (root, f)
+for name, ids in GROUPS.items():
+    ids = ids or [k for k, (r, _) in fbs.items() if r == HERO]
+    for suffix, sc in (("", 0.5), ("_m", 0.25)):
+        items, meta = [], {}
+        for fid in ids:
+            root, f = fbs[fid]
+            W, H = round(f["w"] * sc), round(f["h"] * sc)
+            frames = []
+            for i, fn in enumerate(f["frames"]):
+                im = Image.open(f"{root}/{fn}").convert("RGBA").resize((W, H), Image.LANCZOS)
+                cut, (ox, oy) = trim(im)
+                if cut is None:
+                    frames.append(None)  # 完全透明的帧：引擎照常计时，不画
+                    continue
+                key = f"{fid}_{i:02d}"
+                items.append((key, cut))
+                frames.append([key, ox, oy, cut.width, cut.height])
+            meta[fid] = {"w": W, "h": H, "anchor": f["anchor"], "fps": f.get("fps", 30), "loop": bool(f.get("loop")), "blend": f["blend"], "frames": frames}
+        save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
+tot = sum(os.path.getsize(f"{OUT}/{f}") for f in os.listdir(OUT) if f.endswith(".webp"))
+print(f"合计 {tot / 1024:.0f}KB")
