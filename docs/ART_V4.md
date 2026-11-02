@@ -171,7 +171,7 @@ priest-like silhouette — clearly different from a butcher or a skeleton.
 | `roar` | 4 | — | — | 新阶段、召唤 | `wrathful proclamation: arms spread, halberd raised high, robe flaring.` |
 | `channel` | 4 | — | — | 读条「祭坛炎狱」 | `kneeling channel: one knee down, halberd held horizontally above the head in both hands, mask raised; looping tremble.` |
 
-合计 **56 帧**。
+合计 **60 帧**（6 组通用动作 28 帧 + 7 组专属动作 32 帧）。
 
 ### HERO-3 绯隼技能补完 `feisun_skills_v3`
 

@@ -16,6 +16,7 @@ import { Training } from './training.js';
 import { settings, setSetting, onSettings, renderSettings } from './settings.js';
 import { ensureContracts, progressContracts, contractText } from './contracts.js';
 import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } from './trial.js';
+import { prepareBossSprites } from './enemy_sprites.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
@@ -168,6 +169,7 @@ class Game {
   }
 
   openHub() {
+    prepareBossSprites(null); // 回营地释放首领图集
     this.setScene('hub');
     this.resetWorld();
     this.hub.show();
@@ -231,6 +233,7 @@ class Game {
     this.bossSpoils = null;
     // 高难度：关卡等级提高（敌人等级、掉落装备等级跟着涨），名字后面标上难度
     this.stage = d ? { ...st, lv: st.lv + this.D.lvAdd, name: `${st.name}·${this.D.name}` } : st;
+    prepareBossSprites(this.stage.boss); // 只载入这一关首领的专属图集，别的首领释放
     this.refreshStats();
     this.resetWorld();
     this.maxAttackers = 2 + this.D.attackers;
@@ -268,6 +271,8 @@ class Game {
     this.stageIdx = Math.min(4, Math.floor((f - 1) / 5));
     this.diff = 0;
     this.D = trialDiff(f);
+    // 首领层和它前一层才载入首领图集（前一层先载，进首领层时已经准备好）
+    prepareBossSprites(isBossFloor(f) ? this.stage.boss : isBossFloor(f + 1) ? trialStage(f + 1).boss : null);
     this.maxAttackers = 2 + this.D.attackers;
     const boss = isBossFloor(f);
     const room = { x: 0, y: 0, type: boss ? 'boss' : 'fight', doors: {}, w: boss ? 1400 : 1200, waves: boss ? [] : trialWaves(f), cleared: false, visited: true };
@@ -417,6 +422,7 @@ class Game {
 
   roomCleared() {
     this.room.cleared = true;
+    this.room.openedAt = this.ticks; // 铁栅门从这一刻开始升起
     this.roomsCleared++;
     if (this.room.waves.length && this.player.dmgTaken === this.roomDmg0) this.quest('flawless');
     if (this.trial) return this.trialFloorCleared();
@@ -841,6 +847,7 @@ class Game {
     this.quest('parry');
     this.refundCooldowns();
     const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
+    p.parryT = 15; // 弹刀动作（碰撞 → 后坐 → 回到架势）
     this.impactUntil = this.ticks + 2;
     const mx = (p.x + e.x) / 2, mz = 60;
     p.invuln = Math.max(p.invuln, 12);
@@ -1304,7 +1311,7 @@ class Game {
     // 1. 场景 + 角色
     ctx.save();
     view(ctx);
-    const torches = drawScenery(ctx, camX, t, themeName);
+    const torches = drawScenery(ctx, camX, t, themeName, inWorld ? this.room : null);
     if (inWorld) {
       drawDoors(ctx, camX, this.room, t);
       this.fx.drawFloor(ctx, camX);
@@ -1361,7 +1368,7 @@ class Game {
     // 4. 前景、暗角、调色、颗粒
     ctx.save();
     view(ctx);
-    drawForeground(ctx, camX, t, themeName);
+    drawForeground(ctx, camX, t, themeName, inWorld ? this.room : null);
     ctx.restore();
     drawVignette(ctx);
     post.applyGrade(ctx, th.grade, t, this.quality > 1);

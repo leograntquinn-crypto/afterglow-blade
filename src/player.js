@@ -80,6 +80,7 @@ export class Player {
       if (this.cd[k] > 0 && --this.cd[k] === 0) this.readyFlash[k] = 20; // 冷却结束，技能栏闪一下
       if (this.readyFlash[k] > 0) this.readyFlash[k]--;
     }
+    if (this.parryT > 0) this.parryT--; // 弹刀动作的剩余帧数
     for (const g of this.ghosts) g.life--;
     this.ghosts = this.ghosts.filter((g) => g.life > 0);
     if (this.chain && game.frame > this.chain.until) this.chain = null;
