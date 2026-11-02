@@ -2,6 +2,7 @@
 // 它们放在 game.enemies 里，这样玩家的攻击判定能打到宝箱；alive = false 让它们不影响清场判断。
 import { toScreen, hexA } from './config.js';
 import { sfx } from './audio.js';
+import { propsS, propsL, drawProp, PROP_SCALE } from './props_sprites.js';
 
 export class Chest {
   constructor(x, y, opened = false) {
@@ -15,6 +16,7 @@ export class Chest {
     this.shakeT = 8;
     if (this.hits >= 3) {
       this.opened = true;
+      this.openT = 0; // 开盖动画从这一帧开始
       game.openChest(this);
     }
     return {};
@@ -22,12 +24,26 @@ export class Chest {
   update() {
     this.t++;
     if (this.shakeT > 0) this.shakeT--;
+    if (this.openT != null) this.openT++;
   }
   draw(ctx, camX, t) {
     const [sx0, sy] = toScreen(this.x, this.y, 0, camX);
     const sx = sx0 + (this.shakeT ? Math.sin(this.shakeT * 2) * 3 : 0);
-    if (!this.opened) {
-      // 未开启时向上冒金光，提示可以互动
+    if (propsS.ready) {
+      // 逐帧：关闭 0，被打中晃动 1～2，开盖 3～6，打开 7（金光由引擎画）
+      const i = this.opened ? (this.openT == null ? 7 : Math.min(7, 3 + Math.floor(this.openT / 4))) : this.shakeT ? 1 + (this.shakeT >> 2) % 2 : 0;
+      if (!this.opened) this.drawGlow(ctx, sx, sy, t);
+      drawProp(ctx, propsS, 'chest', i, sx, sy, { scale: PROP_SCALE.chest });
+      if (this.opened) this.drawOpenGlow(ctx, sx, sy);
+      return;
+    }
+    if (!this.opened) this.drawGlow(ctx, sx, sy, t);
+    this.drawBody(ctx, sx, sy);
+    if (this.opened) this.drawOpenGlow(ctx, sx, sy);
+  }
+  // 未开启时向上冒金光，提示可以互动
+  drawGlow(ctx, sx, sy, t) {
+    {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       const g = ctx.createLinearGradient(0, sy - 120, 0, sy);
@@ -37,6 +53,9 @@ export class Chest {
       ctx.fillRect(sx - 30, sy - 120, 60, 120);
       ctx.restore();
     }
+  }
+  // 程序画的箱子（素材没载入时）
+  drawBody(ctx, sx, sy) {
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#0b0910';
     ctx.lineWidth = 3;
@@ -64,7 +83,9 @@ export class Chest {
     ctx.fillStyle = '#c9a45c';
     ctx.fillRect(22, -18, 8, 18);
     ctx.restore();
-    if (this.opened) {
+  }
+  drawOpenGlow(ctx, sx, sy) {
+    {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       ctx.fillStyle = hexA('#ffd65a', 0.3);
@@ -100,6 +121,11 @@ export class Shrine {
   }
   draw(ctx, camX, t) {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
+    // 逐帧：泉水 4 帧水波循环；用过之后换成干涸的泉台。上升的光点和光柱仍由引擎画
+    if (drawProp(ctx, propsL, this.used ? 'shrine_dry' : 'shrine', this.used ? 0 : Math.floor(t / 8) % 4, sx, sy, { scale: PROP_SCALE.shrine })) {
+      if (!this.used) this.drawSparkle(ctx, sx, sy - 10, t);
+      return;
+    }
     ctx.lineJoin = 'round';
     ctx.strokeStyle = '#0b0910';
     ctx.lineWidth = 3;
@@ -117,7 +143,10 @@ export class Shrine {
     ctx.beginPath();
     ctx.ellipse(sx, sy - 26, 26, 7, 0, 0, Math.PI * 2);
     ctx.fill();
-    if (!this.used) {
+    if (!this.used) this.drawSparkle(ctx, sx, sy, t);
+  }
+  drawSparkle(ctx, sx, sy, t) {
+    {
       ctx.save();
       ctx.globalCompositeOperation = 'lighter';
       for (let i = 0; i < 5; i++) {
@@ -149,13 +178,45 @@ export class Urn {
   takeHit(h, dir, dmg, game) {
     if (this.spot.broken) return null;
     this.spot.broken = true;
-    this.remove = true;
+    if (propsS.ready) {
+      // 逐帧：晃动 → 开裂 → 碎裂残底留在地上；四块陶片飞出去
+      this.breakT = 0;
+      this.shards = [0, 1, 2, 3].map((i) => ({ i, x: this.x, z: 18, vx: dir * (1.5 + Math.random() * 3) + (Math.random() - 0.5) * 3, vz: 3 + Math.random() * 4, rot: 0, vr: (Math.random() - 0.5) * 0.5, life: 50 }));
+    } else this.remove = true;
     game.breakUrn(this, dir);
     return {};
   }
-  update() { this.t++; }
+  update() {
+    this.t++;
+    if (this.breakT != null) this.breakT++;
+    for (const s of this.shards || []) {
+      if (s.life <= 0) continue;
+      s.life--;
+      s.x += s.vx;
+      s.z += s.vz;
+      s.vz -= 0.5;
+      s.rot += s.vr;
+      if (s.z <= 0) { s.z = 0; s.vz = -s.vz * 0.35; s.vx *= 0.6; s.vr *= 0.6; }
+    }
+  }
   draw(ctx, camX) {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
+    const anim = this.variant ? 'urn_b' : 'urn_a';
+    if (propsS.ready) {
+      const i = this.breakT == null ? 0 : this.breakT < 3 ? 1 : this.breakT < 6 ? 2 : 3;
+      drawProp(ctx, propsS, anim, i, sx, sy, { scale: PROP_SCALE.urn });
+      for (const s of this.shards || []) {
+        if (s.life <= 0) continue;
+        const [px, py] = toScreen(s.x, this.y, s.z, camX);
+        ctx.save();
+        ctx.globalAlpha = Math.min(1, s.life / 15);
+        ctx.translate(px, py);
+        ctx.rotate(s.rot);
+        drawProp(ctx, propsS, 'shards', s.i, 0, 0, { scale: PROP_SCALE.shards });
+        ctx.restore();
+      }
+      return;
+    }
     const tall = this.variant ? 1.15 : 1;
     ctx.save();
     ctx.translate(sx, sy);

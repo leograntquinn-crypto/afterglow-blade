@@ -8,6 +8,8 @@
 
 import { VIEW_W, VIEW_H, GROUND_TOP, rand } from './config.js';
 import { shade } from './rig.js';
+import { MOBILE } from './sprite.js';
+import { propsS } from './props_sprites.js';
 
 export const THEMES = {
   crypt: {
@@ -299,7 +301,8 @@ const embers = Array.from({ length: 26 }, () => ({ x: rand(0, VIEW_W), y: rand(0
 
 // ---------------- 对外接口 ----------------
 // 返回火把的屏幕位置，给光照系统用
-export function drawScenery(ctx, camX, t, name = 'crypt') {
+export function drawScenery(ctx, camX, t, name = 'crypt', room = null) {
+  if (envReady()) return drawEnv(ctx, camX, t, name, room);
   const th = THEMES[name], A = assets(name);
   const par = camX * 0.5;
   ctx.fillStyle = th.mortar;
@@ -388,8 +391,14 @@ export function drawFog(ctx, camX, t, name = 'crypt') {
 }
 
 // 光照之后：前景剪影（垂下的锁链、地上的碎石）和发光的浮尘
-export function drawForeground(ctx, camX, t, name = 'crypt') {
+export function drawForeground(ctx, camX, t, name = 'crypt', room = null) {
   const th = THEMES[name];
+  if (envReady()) drawEnvForeground(ctx, camX, room);
+  else drawProcForeground(ctx, camX, t);
+  drawParticles(ctx, camX, t, th);
+}
+
+function drawProcForeground(ctx, camX, t) {
   const off = camX * 1.35;
   ctx.fillStyle = '#030205';
   ctx.strokeStyle = '#030205';
@@ -418,6 +427,9 @@ export function drawForeground(ctx, camX, t, name = 'crypt') {
     ctx.lineTo(x + 300, VIEW_H - 16);
     ctx.stroke();
   }
+}
+
+function drawParticles(ctx, camX, t, th) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const m of motes) {
@@ -440,4 +452,298 @@ export function drawForeground(ctx, camX, t, name = 'crypt') {
     }
   }
   ctx.restore();
+}
+
+// ================= 手绘环境（ART_V4 ENV-1 地宫套件 + ENV-2 五关远景）=================
+// 从后往前：L0 远景（每关一张，视差 0.3）→ L1 后墙（wall_a / wall_b 按房间二选一，0.9）+ 墙上的火把台、旗帜
+//          → L2 地面（切成细条，越靠近镜头移动越快，做出透视）→ L3 贴花（按房间撒）→ 按关卡主题整体调色
+//          L4 前景剪影（1.35）在光照之后画。素材是中性灰，五关的色调由引擎乘色得到。
+// 桌面读 2 倍图、按一半画；手机读 1 倍图（_1x，内存是 2 倍图的 1/4）。
+// 远景和每关的专属贴花只在当前关载入，换关时释放上一关的。
+const ENV_DIR = 'assets/env/';
+const PX = MOBILE ? 1 : 0.5; // 图片像素 → 游戏逻辑像素
+const SUF = MOBILE ? '_1x' : '';
+const STAGE_OF = { crypt: 'stage_01', hall: 'stage_02', gallows: 'stage_03', altar: 'stage_04', abyss: 'stage_05' };
+// 墙上的布置（逻辑像素，以一张墙 1024 宽为周期）：火焰位置对齐素材里画好的空火把台
+const WALL_DECOR = {
+  wall_a: { torches: [[36, 145], [365, 145], [996, 145]], banners: [[657, 104]], beams: [530] },
+  wall_b: { torches: [[122, 119], [614, 119]], sconces: [[1000, 119]], beams: [232, 366, 498] },
+};
+const SCONCE_SCALE = 0.5, BANNER_SCALE = 0.8;
+
+let env = null;
+let curStage = null;
+const imgs = new Map(); // id → { im, ok }
+
+function loadImg(id) {
+  let e = imgs.get(id);
+  if (!e) {
+    const im = new Image();
+    e = { im, ok: false };
+    im.onload = () => (e.ok = true);
+    im.src = `${ENV_DIR}${id}${SUF}.webp`;
+    imgs.set(id, e);
+  }
+  return e;
+}
+function dropImg(id) {
+  const e = imgs.get(id);
+  if (!e) return;
+  e.im.onload = null;
+  e.im.src = '';
+  imgs.delete(id);
+}
+const got = (id) => {
+  const e = imgs.get(id);
+  return e && e.ok ? e.im : null;
+};
+
+if (typeof fetch === 'function' && typeof Image !== 'undefined') {
+  fetch(ENV_DIR + 'env.json')
+    .then((r) => (r.ok ? r.json() : null))
+    .then((m) => {
+      if (!m) return;
+      env = m;
+      for (const w of m.walls) loadImg(w.id);
+      loadImg(m.floor.id);
+      for (const d of m.decals) if (!d.stage) loadImg(d.id);
+      for (const f of m.fg) loadImg(f.id);
+      if (curStage) { const s = curStage; curStage = null; useStage(s); }
+    })
+    .catch(() => {});
+}
+
+// 后墙和地面载好之前一直用程序生成的场景
+function envReady() {
+  return !!(env && got(env.floor.id) && env.walls.every((w) => got(w.id)));
+}
+
+// 换关：载入这一关的远景和专属贴花，释放上一关的
+function useStage(st) {
+  if (st === curStage) return;
+  if (env && curStage) {
+    dropImg(curStage);
+    for (const d of env.decals) if (d.stage === curStage) dropImg(d.id);
+  }
+  curStage = st;
+  if (!env) return;
+  loadImg(st);
+  for (const d of env.decals) if (d.stage === st) loadImg(d.id);
+}
+
+// 给调试和测试用：envDebug.wall 强制用某一面后墙
+export const envDebug = { wall: null };
+export function envStatus() {
+  return { ready: envReady(), stage: curStage, loaded: [...imgs.entries()].filter(([, e]) => e.ok).map(([id]) => id) };
+}
+
+function hash(i) {
+  let x = Math.imul(i ^ 0x9e3779b9, 0x85ebca6b);
+  x ^= x >>> 13;
+  x = Math.imul(x, 0xc2b2ae35);
+  return (x ^ (x >>> 16)) >>> 0;
+}
+const roomSeed = (room) => (room ? hash(room.x * 73 + room.y * 977 + 11) : 7);
+
+function mixHex(hex, k) {
+  const n = parseInt(hex.slice(1), 16);
+  const c = [n >> 16, (n >> 8) & 255, n & 255].map((v) => Math.round(255 - (255 - v) * k));
+  return `rgb(${c})`;
+}
+const tints = {};
+const tintOf = (name) => (tints[name] ??= mixHex(THEMES[name].grade, 0.42));
+const bannerTints = {};
+const bannerTintOf = (name) => (bannerTints[name] ??= mixHex(shade(THEMES[name].banner, 1.6), 0.85));
+
+// 地面每一条的视差：最远（墙脚）0.88，最近 1.18
+const floorRate = (y) => 0.88 + (y / 228) * 0.3;
+
+const decalCache = new WeakMap();
+function roomDecals(room, stage) {
+  const hit = room && decalCache.get(room);
+  if (hit && hit.stage === stage) return hit.list;
+  const w = room?.w ?? 1400;
+  const R = seeded(roomSeed(room) ^ (stage.charCodeAt(7) * 7919));
+  const shared = env.decals.filter((d) => !d.stage), own = env.decals.filter((d) => d.stage === stage);
+  const n = Math.max(3, Math.round(w / 230)), list = [];
+  for (let i = 0; i < n; i++) {
+    const pool = own.length && R() < 0.35 ? own : shared;
+    const d = pool[Math.floor(R() * pool.length)];
+    const y = 16 + R() * 196; // 地面带里的纵深（逻辑像素，0 = 墙脚）
+    list.push({ d, x: 50 + ((i + R() * 0.8) * (w - 100)) / n, y, s: (0.62 + R() * 0.28) * (0.85 + (y / 222) * 0.3), flip: R() < 0.5, a: 0.75 + R() * 0.25 });
+  }
+  if (room) decalCache.set(room, { stage, list });
+  return list;
+}
+
+function drawEnv(ctx, camX, t, name, room) {
+  const th = THEMES[name] ?? THEMES.crypt;
+  useStage(STAGE_OF[name] ?? 'stage_01');
+  ctx.fillStyle = th.mortar;
+  ctx.fillRect(-60, -60, VIEW_W + 120, GROUND_TOP + 60);
+
+  // L0 远景
+  const bd = got(curStage), bdm = env.backdrops[curStage];
+  if (bd) {
+    const w = bdm.w * 0.5, h = bdm.h * 0.5;
+    for (let x = -((((camX * bdm.parallax) % w) + w) % w) - w; x < VIEW_W + 60; x += w) ctx.drawImage(bd, x, 0, w, h);
+  }
+
+  // L1 后墙
+  const wm = env.walls.find((w) => w.id === envDebug.wall) ?? env.walls[roomSeed(room) % env.walls.length], wall = got(wm.id), deco = WALL_DECOR[wm.id] ?? {};
+  const W = wm.w * 0.5, WH = wm.h * 0.5, par = camX * wm.parallax;
+  const i0 = Math.floor(par / W) - 1, i1 = Math.floor((par + VIEW_W) / W) + 1;
+  for (let i = i0; i <= i1; i++) ctx.drawImage(wall, i * W - par, 0, W, WH);
+
+  // 从墙上的破洞、窗口照进来的光柱
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (let i = i0; i <= i1; i++) {
+    for (const bx of deco.beams ?? []) {
+      const cx = i * W - par + bx;
+      if (cx < -200 || cx > VIEW_W + 100) continue;
+      const a = 0.05 + 0.02 * Math.sin(t * 0.02 + i + bx);
+      const g = ctx.createLinearGradient(0, 40, 0, GROUND_TOP + 120);
+      g.addColorStop(0, `rgba(${th.fog},${a * 2})`);
+      g.addColorStop(1, `rgba(${th.fog},0)`);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      ctx.moveTo(cx - 26, 40);
+      ctx.lineTo(cx + 18, 40);
+      ctx.lineTo(cx + 110, GROUND_TOP + 120);
+      ctx.lineTo(cx - 30, GROUND_TOP + 120);
+      ctx.fill();
+    }
+  }
+  ctx.restore();
+
+  // 墙上的火把台和旗帜（ENV-3 道具；旗帜是灰白布料，按关卡染色）
+  const torches = [];
+  for (let i = i0; i <= i1; i++) {
+    const ox = i * W - par;
+    if (propsS.ready) {
+      for (const [bx, by] of deco.sconces ?? []) {
+        propsS.draw(ctx, propsS.frame('sconce', 1 + (hash(i) % 3)), ox + bx, by + 4 + 86 * SCONCE_SCALE, 1, { scale: SCONCE_SCALE });
+      }
+      for (const [bx, by] of deco.banners ?? []) {
+        const f = propsS.frame('banner', Math.floor(t / 14 + i) % 4);
+        const sx = ox + bx, sy = by + 97 * BANNER_SCALE;
+        propsS.draw(ctx, f, sx, sy, 1, { scale: BANNER_SCALE });
+        ctx.save();
+        ctx.globalCompositeOperation = 'multiply';
+        propsS.draw(ctx, f, sx, sy, 1, { scale: BANNER_SCALE, ghost: bannerTintOf(name) });
+        ctx.restore();
+      }
+    }
+    for (const [bx, by] of [...(deco.torches ?? []), ...(propsS.ready ? deco.sconces ?? [] : [])]) {
+      const tx = ox + bx;
+      if (tx < -120 || tx > VIEW_W + 120) continue;
+      const k = i * 7 + bx;
+      torches.push([tx, by, 0.85 + Math.sin(t * 0.31 + k * 1.7) * 0.1 + Math.sin(t * 0.73 + k) * 0.06]);
+    }
+  }
+
+  // L2 地面：切成细条，每条按自己的纵深移动
+  const fm = env.floor, fl = got(fm.id), FW = fm.w * 0.5, FH = fm.h * 0.5, step = MOBILE ? 12 : 6;
+  for (let y = 0; y < FH; y += step) {
+    const h = Math.min(step, FH - y), off = camX * floorRate(y + h / 2);
+    const sh = Math.min(h + 1, FH - y);
+    for (let x = -(((off % FW) + FW) % FW) - FW; x < VIEW_W + 60; x += FW) ctx.drawImage(fl, 0, y / PX, FW / PX, sh / PX, x, GROUND_TOP + y, FW, sh);
+  }
+
+  // L3 贴花
+  for (const c of roomDecals(room, curStage)) {
+    const im = got(c.d.id);
+    if (!im) continue;
+    const s = c.s * 0.5, w = c.d.w * s, h = c.d.h * s;
+    const sx = c.x - camX * floorRate(c.y);
+    if (sx + w < -20 || sx - w > VIEW_W + 20) continue;
+    ctx.save();
+    ctx.globalAlpha = c.a;
+    ctx.translate(sx, GROUND_TOP + c.y);
+    if (c.flip) ctx.scale(-1, 1);
+    ctx.drawImage(im, -c.d.ax * s, -c.d.ay * s, w, h);
+    ctx.restore();
+  }
+
+  // 按关卡主题整体调色（素材是中性灰）
+  ctx.save();
+  ctx.globalCompositeOperation = 'multiply';
+  ctx.fillStyle = tintOf(name);
+  ctx.fillRect(-60, -60, VIEW_W + 120, VIEW_H + 120);
+  ctx.restore();
+
+  // 火焰（引擎画，会动，也是光照系统的光源）
+  for (const [tx, ty, fl2] of torches) {
+    const glow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 90 * fl2);
+    glow.addColorStop(0, `rgba(${th.torch},0.35)`);
+    glow.addColorStop(1, `rgba(${th.torch},0)`);
+    ctx.fillStyle = glow;
+    ctx.fillRect(tx - 100, ty - 100, 200, 200);
+    ctx.fillStyle = `rgba(${th.torch},0.9)`;
+    ctx.beginPath();
+    ctx.ellipse(tx, ty - 6, 6 * fl2, 12 * fl2, 0, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = th.flame;
+    ctx.beginPath();
+    ctx.ellipse(tx, ty - 4, 3.5 * fl2, 7 * fl2, 0, 0, Math.PI * 2);
+    ctx.fill();
+  }
+
+  // 墙脚的接触阴影 + 火光在地面上的倒影
+  const shg = ctx.createLinearGradient(0, GROUND_TOP, 0, GROUND_TOP + 30);
+  shg.addColorStop(0, 'rgba(0,0,0,0.45)');
+  shg.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = shg;
+  ctx.fillRect(-60, GROUND_TOP, VIEW_W + 120, 30);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  for (const [tx, , fl2] of torches) {
+    const g = ctx.createRadialGradient(tx, GROUND_TOP + 30, 0, tx, GROUND_TOP + 30, 110 * fl2);
+    g.addColorStop(0, `rgba(${th.torch},0.12)`);
+    g.addColorStop(1, `rgba(${th.torch},0)`);
+    ctx.fillStyle = g;
+    ctx.fillRect(tx - 120, GROUND_TOP, 240, 150);
+  }
+  ctx.restore();
+  return torches;
+}
+
+// 断柱的底边在素材里是一刀切的硬边，悬在半空像一块黑板：载入后把底部三分之一淡出，缓存一份
+const faded = new Map();
+function fgImage(f) {
+  const im = got(f.id);
+  if (!im || !f.id.startsWith('pillar')) return im;
+  let c = faded.get(f.id);
+  if (!c) {
+    c = document.createElement('canvas');
+    c.width = im.width;
+    c.height = im.height;
+    const x = c.getContext('2d');
+    x.drawImage(im, 0, 0);
+    x.globalCompositeOperation = 'destination-out';
+    const g = x.createLinearGradient(0, im.height * 0.62, 0, im.height);
+    g.addColorStop(0, 'rgba(0,0,0,0)');
+    g.addColorStop(1, 'rgba(0,0,0,1)');
+    x.fillStyle = g;
+    x.fillRect(0, 0, im.width, im.height);
+    faded.set(f.id, c);
+  }
+  return c;
+}
+
+// L4 前景剪影：每 760 像素一个位置，按房间随机挑一件或空着
+function drawEnvForeground(ctx, camX, room) {
+  const P = 760, off = camX * 1.35, seed = roomSeed(room);
+  for (let i = Math.floor(off / P) - 1; i <= Math.floor((off + VIEW_W) / P) + 1; i++) {
+    const h = hash(i ^ seed);
+    if (h % 5 < 2) continue;
+    const f = env.fg[(h >>> 4) % env.fg.length], im = fgImage(f);
+    if (!im) continue;
+    const w = f.w * 0.5, hh = f.h * 0.5;
+    const x = i * P + ((h >>> 12) % 280) - off - f.ax * 0.5;
+    if (x > VIEW_W + 20 || x + w < -20) continue;
+    const y = f.attach === 'top' ? 0 : Math.max(VIEW_H - hh, VIEW_H - f.ay * 0.5);
+    ctx.drawImage(im, x, y, w, hh);
+  }
 }

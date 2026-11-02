@@ -3,7 +3,10 @@
 // 每帧都有锚点（脚底）和对齐偏移；朝左时绕锚点镜像。
 // 闪白、残影、轮廓光都要「整帧换成一种颜色」：第一次用到时画一张染色版缓存起来，之后直接复用。
 
-export const HERO_SCALE = 0.54; // 图集里角色约 179px 高 → 游戏里约 96px
+export const HERO_SCALE = 0.54; // 图集里角色约 179px 高 → 游戏里约 96px（按 256 格子算）
+
+// 手机（触屏为主，或者屏幕短边很小）用 75% 格子的图集：内存约为桌面的 56%，手机上角色只有 85～245px 高，看不出区别
+export const MOBILE = typeof matchMedia === 'function' && (matchMedia('(pointer: coarse)').matches || Math.min(screen.width, screen.height) < 600);
 const TINT_CACHE_MAX = 140; // 染色缓存上限（全是半分辨率时约 9MB，全尺寸时约 36MB）
 
 function loadImage(src) {
@@ -17,28 +20,49 @@ function loadImage(src) {
 
 export class SpriteSheet {
   // base：目录；name：文件名前缀；art：额外要加载的立绘，比如 { full: 'fullbody' } → name_fullbody.webp
-  constructor(base, name, art = {}) {
-    Object.assign(this, { base, name, art });
+  // baseCell：桌面图集的格子大小。手机图集格子小一些，画的时候按 baseCell / 实际格子 放大回同样的屏幕尺寸
+  constructor(base, name, art = {}, baseCell = 256) {
+    Object.assign(this, { base, name, art, baseCell });
     this.ready = false;
     this.tints = new Map();
+    this.loading = null;
   }
 
-  async load() {
-    try {
-      const B = this.base + this.name;
-      const keys = Object.keys(this.art);
-      const [meta, atlas, ...imgs] = await Promise.all([
-        fetch(B + '.json').then((r) => (r.ok ? r.json() : null)),
-        loadImage(B + '_atlas.webp'),
-        ...keys.map((k) => loadImage(`${B}_${this.art[k]}.webp`)),
-      ]);
-      if (!meta || !atlas) return;
-      keys.forEach((k, i) => (this[k] = imgs[i]));
-      Object.assign(this, { meta, atlas, C: meta.cell, cols: meta.cols, pivot: meta.pivot });
-      this.ready = true;
-    } catch {
-      this.ready = false; // 加载失败就继续用程序化模型
-    }
+  // 可以重复调用：已经在载入 / 已经载入就直接返回
+  load() {
+    if (this.ready) return Promise.resolve();
+    if (this.loading) return this.loading;
+    this.loading = (async () => {
+      try {
+        const B = this.base + this.name;
+        const v = MOBILE ? '_m' : '';
+        const keys = Object.keys(this.art);
+        const [meta, atlas, ...imgs] = await Promise.all([
+          fetch(`${B}${v}.json`).then((r) => (r.ok ? r.json() : null)),
+          loadImage(`${B}${v}_atlas.webp`),
+          ...keys.map((k) => loadImage(`${B}_${this.art[k]}.webp`)),
+        ]);
+        if (!meta || !atlas || this.released) return;
+        keys.forEach((k, i) => (this[k] = imgs[i]));
+        Object.assign(this, { meta, atlas, C: meta.cell, cols: meta.cols, pivot: meta.pivot, k: this.baseCell / meta.cell });
+        this.ready = true;
+      } catch {
+        this.ready = false; // 加载失败就继续用程序化模型
+      } finally {
+        this.loading = null;
+      }
+    })();
+    this.released = false;
+    return this.loading;
+  }
+
+  // 释放（首领离开自己那一关时）：丢掉图集和染色缓存，内存马上还给浏览器
+  release() {
+    this.released = true;
+    this.ready = false;
+    this.atlas = null;
+    for (const c of this.tints.values()) c.width = c.height = 0;
+    this.tints.clear();
   }
 
   frame(anim, idx) {
@@ -83,7 +107,7 @@ export class SpriteSheet {
   // (sx, sy) 是脚底的屏幕坐标
   draw(ctx, name, sx, sy, facing, o = {}) {
     const f = this.meta.frames[name];
-    const C = this.C, s = o.scale ?? HERO_SCALE;
+    const C = this.C, s = (o.scale ?? HERO_SCALE) * this.k;
     const dx = -this.pivot[0] + f.dx, dy = -this.pivot[1] + f.dy;
     ctx.save();
     ctx.translate(sx, sy);
@@ -185,6 +209,9 @@ function onceIndex(S, anim, ms) {
 export function heroFrame(p, t) {
   const S = heroSprite, ms = t * (1000 / 60), sms = p.st * (1000 / 60);
   const F = (a, i) => S.frame(a, i);
+  const has = (a) => !!S.meta.anims[a]; // 技能补完素材（feisun_skills_v3）是否在图集里
+  // 弹刀：弹开对方的那一刻起播弹刀动作（碰撞 → 后坐 → 回到架势），覆盖当前招式的帧
+  if (p.parryT > 0 && has('parry')) return F('parry', p.parryT > 10 ? 1 : p.parryT > 5 ? 2 : 3);
   switch (p.state) {
     case 'idle':
       // 刚落地：跳跃的落地缓冲两帧
@@ -196,7 +223,7 @@ export function heroFrame(p, t) {
       if (p.st < 3 && p.vz > 0) return F('jump', 0);
       return F('jump', p.vz > 6 ? 1 : p.vz > 2.5 ? 2 : p.vz > 0 ? 3 : p.vz > -2.5 ? 4 : 5);
     case 'dash': return F('dodge', Math.floor((p.st / 20) * 8));
-    case 'airdash': return F('dodge', 3);
+    case 'airdash': return has('air_dash') ? F('air_dash', Math.floor(p.st / 3) % 4) : F('dodge', 3);
     case 'hurt': return F('hurt', Math.floor((p.st / Math.max(1, p.hurtT)) * 6));
     case 'knock': return F('air_hurt', onceIndex(S, 'air_hurt', sms));
     case 'down':
@@ -210,6 +237,8 @@ export function heroFrame(p, t) {
       if (u == null) return F('cast', Math.min(2, Math.floor(p.st / 8)));
       if (u === -2.9) return F('charge', loopIndex(S, 'charge', ms * 2));
       if (u === 1.4) return F('attack_03', 4);
+      // 瞬身连斩：每次换位交替「出刀」和「收刀」两个瞬身斩姿势
+      if (has('dash_slash')) return F('dash_slash', u < 0 ? 1 : 2);
       return u < 0 ? F('attack_02', 4) : F('attack_01', 4);
     }
     case 'attack': {
@@ -218,12 +247,21 @@ export function heroFrame(p, t) {
       if (m.id === 'rush' && f < 26) return F('thrust', f < 3 ? 1 : f % 4 < 2 ? 2 : 3);
       // 千刃：起手施法 → 突刺 / 三段斩的出刀帧轮换 → 重斩收尾
       if (m.flurry && f < 8) return F('cast', Math.min(3, Math.floor(f / 2)));
+      // 八连斩：每一下（每 5 帧）是一次瞬身斩：出刀 → 收刀
+      if (m.flurry && f < 50 && has('dash_slash')) return F('dash_slash', (f - 8) % 5 < 2 ? 1 : 2);
       if (m.flurry && f < 50) return F(['thrust', 'attack_01', 'attack_02', 'attack_03'][Math.floor(f / 3) % 4], f % 3 ? 3 : 4);
       if (m.flurry) return F('attack_03', attackIndex(S, 'attack_03', m, f));
+      // 回风斩：8 帧转一圈（接触帧 2、6），每 2 帧换一帧，正好每 8 帧（一次判定）转半圈
+      if (m.spin && has('whirl')) return F('whirl', (((Math.floor((f - 6) / 2) + 2) % 8) + 8) % 8);
       if (m.spin) return F(['attack_01', 'attack_02'][Math.floor(f / 4) % 2], 4);
       if (m.plunge) return F('starfall_air', Math.min(2, Math.floor(f / 3)));
       if (m.id === 'plungeLand') return F('starfall_land', Math.min(2, Math.floor(f / 5)));
-      // 崩山击：前半段蓄力用蓄力循环
+      // 崩山击：双手举刀蓄力 → 跃起倒持刀（预警帧 3）→ 第 30 帧插地（接触帧 4）→ 拔刀起身
+      if (m.id === 'quake' && has('quake')) {
+        if (f < 24) return F('quake', Math.floor(f / 6) % 2);
+        if (f < 30) return F('quake', f < 27 ? 2 : 3);
+        return F('quake', f < 38 ? 4 : f < 46 ? 5 : f < 56 ? 6 : 7);
+      }
       if (m.id === 'quake' && f < 24) return F('charge', loopIndex(S, 'charge', f * 33));
       const anim = MOVE_ANIM[m.id] || 'attack_01';
       return F(anim, attackIndex(S, anim, m, f, p.chained));
@@ -235,7 +273,8 @@ export function heroFrame(p, t) {
 // 刀身在屏幕上的位置：[刀柄x, 刀柄y, 刀尖x, 刀尖y]，相对脚底锚点、已乘缩放和朝向；没检测到刀返回 null
 export function bladeOf(name, facing, scale = HERO_SCALE) {
   const b = heroSprite.meta?.frames[name]?.blade;
-  return b ? [b[0] * scale * facing, b[1] * scale, b[2] * scale * facing, b[3] * scale] : null;
+  const k = scale * (heroSprite.k || 1);
+  return b ? [b[0] * k * facing, b[1] * k, b[2] * k * facing, b[3] * k] : null;
 }
 
 // 首领「残影」：同一套动画，暗紫色覆盖

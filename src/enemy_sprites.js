@@ -155,3 +155,88 @@ export function bossFrame(b, t) {
   if (b.state !== 'attack' || !b.act) return common(S, b, t) || S.frame('idle', 0);
   return BOSS_FRAMES[b.B.base](S, b);
 }
+
+// ---------- 首领专属素材（ART_V4：骸骨统领、祭坛守护者）----------
+// 只在自己那一关载入、离开就释放（见 prepareBossSprites）。没有专属素材的首领继续借用杂兵素材
+// standH：站立高度（256 格子，含举起的武器）
+export const BOSS_SPRITES = {
+  boneLord: { sheet: new SpriteSheet('assets/bosses/', 'bone_lord', { avatar: 'avatar' }), standH: 180, frames: boneLordFrame },
+  warden: { sheet: new SpriteSheet('assets/bosses/', 'altar_warden', { avatar: 'avatar' }), standH: 198, frames: wardenFrame },
+};
+
+// 进入关卡时调用：载入这一关首领的图集，释放别的首领
+export function prepareBossSprites(key) {
+  for (const [k, B] of Object.entries(BOSS_SPRITES)) {
+    if (k === key) B.sheet.load();
+    else if (B.sheet.ready || B.sheet.loading) B.sheet.release();
+  }
+}
+
+// 攻击动画按时间推进：预警阶段停在预警帧（windup），出手后依次播接触帧和收招
+const seq = (S, anim, idx) => S.frame(anim, idx);
+
+// 骸骨统领：三连斩 = 劈（cleave）/ 反手上撩（backhand）/ 劈；跳劈、冲锋、震地、召唤、读条各有专属动作
+function boneLordFrame(S, b) {
+  const { name, t } = b.act;
+  const pa = b.pa ?? 0;
+  switch (name) {
+    case 'combo':
+      // 每一刀开始前 pa 被设成起手角度：-2.3 = 下劈，1.2 = 反手上撩
+      if (pa === -2.3) b.swing = 'cleave';
+      else if (pa === 1.2 && b.swing !== 'cleave-done') b.swing = 'backhand';
+      if (b.tele) return seq(S, 'cleave', t < 8 ? 1 : 2);
+      if (b.swing === 'backhand') {
+        const u = (1.2 - pa) / 3; // 1.2 → -1.8
+        return seq(S, 'backhand', u <= 0 ? 1 : u < 0.5 ? 3 : u < 1 ? 4 : 5);
+      }
+      { const u = (pa + 2.3) / 3.5; // -2.3 → 1.2
+        if (u >= 1) b.swing = 'cleave-done';
+        return seq(S, 'cleave', u <= 0 ? 2 : u < 0.4 ? 3 : u < 1 ? 4 : 5); }
+    case 'slam': case 'shockwave': {
+      // 跳劈 / 震地：预警段蓄势（最后 8 帧腾空），出手瞬间砸地
+      const D = Math.round((name === 'slam' ? 48 : 34) / b.spd);
+      if (t < D - 8) return seq(S, 'leap_slam', t < 6 ? 1 : 2);
+      if (t < D) return seq(S, 'leap_slam', t < D - 4 ? 3 : 4);
+      return seq(S, 'leap_slam', t < D + 6 ? 5 : t < D + 16 ? 6 : 7);
+    }
+    case 'charge':
+      if (b.tele) return seq(S, 'charge', 0);
+      if (Math.abs(b.vx) > 3) return seq(S, 'charge', Math.floor(t / 4) % 4);
+      return b.act.d?.stunned ? seq(S, 'stunned', Math.floor(t / 8) % 4) : seq(S, 'idle', 0);
+    case 'channel': return seq(S, 'channel', Math.floor(t / 8) % 4);
+    case 'summon': case 'roar': return seq(S, 'roar', Math.min(3, Math.floor(t / 6)));
+  }
+  return b.tele ? seq(S, 'cleave', 2) : seq(S, 'idle', 0);
+}
+
+// 祭坛守护者：重砸、跺地（震地波）、召唤落石（天降）、冲锋、读条
+function wardenFrame(S, b) {
+  const { name, t } = b.act;
+  switch (name) {
+    case 'slam': {
+      const D = Math.round(48 / b.spd);
+      if (t < D) return seq(S, 'slam', t < 6 ? 1 : t < 12 ? 2 : 3);
+      return seq(S, 'slam', t < D + 5 ? 4 : t < D + 14 ? 5 : t < D + 22 ? 6 : 7);
+    }
+    case 'shockwave': {
+      const D = Math.round(34 / b.spd);
+      if (t < D) return seq(S, 'stomp', t < 6 ? 0 : 1);
+      return seq(S, 'stomp', t < D + 8 ? 2 : 3);
+    }
+    case 'rain': return b.tele ? seq(S, 'invoke', t < 6 ? 0 : 1) : seq(S, 'invoke', t < 30 ? 2 : 3);
+    case 'charge':
+      if (b.tele) return seq(S, 'charge', 0);
+      if (Math.abs(b.vx) > 3) return seq(S, 'charge', Math.floor(t / 4) % 4);
+      return b.act.d?.stunned ? seq(S, 'stunned', Math.floor(t / 8) % 4) : seq(S, 'idle', 0);
+    case 'channel': return seq(S, 'channel', Math.floor(t / 8) % 4);
+    case 'summon': case 'roar': return seq(S, 'roar', Math.min(3, Math.floor(t / 6)));
+  }
+  return b.tele ? seq(S, 'slam', 3) : seq(S, 'idle', 0);
+}
+
+// 有专属素材的首领：普通状态（走、受击、倒地……）共用 common()，招式用各自的映射
+export function bossOwnFrame(b, t) {
+  const B = BOSS_SPRITES[b.key];
+  if (b.state !== 'attack' || !b.act) return common(B.sheet, b, t) || B.sheet.frame('idle', 0);
+  return B.frames(B.sheet, b);
+}
