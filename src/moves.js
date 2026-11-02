@@ -90,11 +90,12 @@ export const MOVES = {
   // ---------- 技能 ----------
   wave: {
     skill: true, total: 30, cancel: 20, armor: true, swing: [-2.3, 1.0], swingAt: 8, swingDur: 4, heavy: true,
-    events: { 10: spawnWave },
+    events: { 1: waveCharge, 10: spawnWave },
     hits: [],
   },
   whirl: {
     skill: true, total: 56, cancel: 46, armor: true, moveDuring: 2.4, spin: true,
+    events: { 0: whirlStart, 6: whirlPulse, 14: whirlPulse, 22: whirlPulse, 30: whirlPulse, 38: whirlEnd },
     hits: [6, 14, 22, 30, 38].map((at, i) => {
       const last = i === 4;
       return {
@@ -143,11 +144,44 @@ function spawnWave(p, game) {
     color: p.glow, styleTag: 'wave',
   }));
   game.fx.ring(p.x + p.facing * 40, p.y, 50, p.glow, 10, 6, 12, 4);
+  game.fx.flare(p.x + p.facing * 40, p.y, 55, 0.9, p.glow);
+  game.cine.speed('out', 6, p.glow);
+}
+
+// ---------- 技能演出（三拍：蓄力 → 爆发 → 余韵）----------
+// 余韵：残光从一片地面上慢慢升起
+function afterglow(game, x, y, color, half = 3, step = 45) {
+  for (let k = -half; k <= half; k++) game.fx.emit('afterglow', x + k * step, y + (Math.random() - 0.5) * 30, 2, { color, n: 3 });
 }
 
 function charge(p, game) {
   game.fx.converge(p.x, p.y, p.z + 50, 14, p.glow);
   game.fx.flash(p.glow, 0.08);
+  // 崩山蓄力：每一段蓄力压得更暗，地面光圈往脚下收
+  const k = p.mf / 8;
+  game.cine.hold(0.28 + k * 0.12, 32, p);
+  game.cine.speed('in', 10, p.glow);
+  game.fx.gwarn(p.x, p.y, p.glow, 150, 28, 24);
+}
+
+function waveCharge(p, game) {
+  game.fx.converge(p.x + p.facing * 20, p.y, p.z + 50, 8, p.glow);
+  game.cine.hold(0.18, 12, p);
+}
+
+function whirlStart(p, game) {
+  game.cine.hold(0.2, 44, p);
+  game.fx.gwarn(p.x, p.y, p.glow, 140, 40, 8);
+}
+function whirlPulse(p, game) {
+  game.fx.gring(p.x, p.y, p.glow, 40, 200, 16, 5);
+}
+function whirlEnd(p, game) {
+  game.fx.gring(p.x, p.y, '#ffffff', 30, 240, 20, 7);
+  game.fx.flare(p.x, p.y, p.z + 60, 1.2, p.glow);
+  game.fx.lines(p.x, p.y, p.z + 60, 12, '#ffffff', p.facing);
+  game.cine.speed('out', 8, p.glow);
+  afterglow(game, p.x, p.y, p.glow, 2);
 }
 
 // 满蓄力：斩出一道巨大的剑气
@@ -163,12 +197,23 @@ function chargeWave(p, game) {
 function flurryStart(p, game) {
   game.fx.dust(p.x, p.y, 10, 2);
   game.fx.flash(p.glow, 0.12);
+  game.cine.hold(0.4, 58, p);
+  game.cine.speed('in', 12, p.glow);
 }
 
 function flurryEnd(p, game) {
+  const x = p.x + p.facing * 60;
   game.fx.flash('#ffffff', 0.3);
-  game.fx.ring(p.x + p.facing * 60, p.y, 60, p.glow, 20, 10, 16, 6);
-  game.fx.spark(p.x + p.facing * 60, p.y, 60, p.facing, 16, p.glow);
+  game.fx.ring(x, p.y, 60, p.glow, 20, 10, 16, 6);
+  game.fx.spark(x, p.y, 60, p.facing, 16, p.glow);
+  // 收尾重斩：十字星芒 + 地面冲击波 + 光柱 + 集中线炸开，然后残光飘散
+  game.fx.flare(x, p.y, 60, 1.7, p.glow);
+  game.fx.flare(x, p.y, 60, 1.1, '#ffffff');
+  game.fx.gring(x, p.y, p.glow, 30, 300, 26, 8);
+  game.fx.pillar(x, p.y, p.glow, 70, 420, 24);
+  game.fx.lines(x, p.y, 60, 16, '#ffffff', p.facing);
+  game.cine.speed('out', 14, '#ffffff');
+  afterglow(game, x, p.y, p.glow, 3);
 }
 
 function quakeBurst(p, game) {
@@ -180,5 +225,14 @@ function quakeBurst(p, game) {
   game.fx.spark(x, p.y, 10, 1, 10, p.glow);
   game.fx.spark(x, p.y, 10, -1, 10, p.glow);
   game.fx.crack(x, p.y);
+  // 爆发：集中线炸开、两层地面冲击波、冲天光柱、星芒和冲击线；余韵：残光从裂开的地面升起
+  game.cine.speed('out', 14, '#ffffff');
+  game.cine.hold(0.2, 8, p);
+  game.fx.gring(x, p.y, '#ffffff', 20, 230, 18, 7);
+  game.fx.gring(x, p.y, p.glow, 30, 330, 30, 10);
+  game.fx.pillar(x, p.y, p.glow, 76, 470, 26);
+  game.fx.flare(x, p.y, 40, 1.6, p.glow);
+  game.fx.lines(x, p.y, 40, 18, '#ffffff', p.facing);
+  afterglow(game, x, p.y, p.glow, 3);
   sfx('quake');
 }

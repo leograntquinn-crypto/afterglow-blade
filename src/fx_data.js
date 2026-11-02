@@ -73,3 +73,11 @@ export const HIT_TIERS = {
   break: { spark: 18, ringGrow: 9, ringW: 6, cut: 200, cutW: 1.6, flare: 1.1, lines: 14, chips: 12, light: 340, stop: 2, kick: 12, accent: '#ffb347' },
   kill: { spark: 16, ringGrow: 8, ringW: 5, cut: 190, cutW: 1.5, flare: 0.9, lines: 10, chips: 12, light: 320, stop: 3, kick: 10, soul: true },
 };
+
+// ---------- 技能演出与首领 ----------
+// 余韵：技能打完后，残光慢慢从地面升起、飘散（「残光」这个名字的由来）
+EMIT.afterglow = { type: 'ember', n: [6, 6], life: [60, 110], speed: [0.3, 1.2], angle: -1.57, spread: 1.2, drag: 0.97, grav: -0.035, size: [1.6, 3], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.4 };
+// 首领身上不断往上飘的气（阶段越高越密）
+EMIT.aura = { type: 'ember', n: [1, 1], life: [30, 50], speed: [0.4, 1.2], angle: -1.57, spread: 0.5, drag: 0.97, grav: -0.05, size: [1.6, 3], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.3 };
+// 倒下的敌人化成光点消散
+EMIT.dissolve = { type: 'ember', n: [2, 2], life: [24, 44], speed: [0.3, 1.4], angle: -1.57, spread: 1, drag: 0.95, grav: -0.06, size: [1.4, 2.8], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.3 };

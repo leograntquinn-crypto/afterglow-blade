@@ -11,6 +11,7 @@ import { EMIT, CURVES, curve } from './fx_data.js';
 import { tex, tinted, ramp, tintRamp, RING_BANDS } from './fx_tex.js';
 
 const MAX = MOBILE ? 900 : 2400;
+const T_ring = (color) => tex().ring.map((img) => tinted(img, color));
 const pick = (arr) => arr[(Math.random() * arr.length) | 0];
 const easeOut = (t) => 1 - (1 - t) ** 3;
 
@@ -179,6 +180,25 @@ export class FX {
       p.angle = a; p.r0 = rand(10, 22); p.len = rand(40, 80); p.size = rand(1.4, 2.6); p.color = color;
     }
   }
+  // 地面冲击波：贴着地面（压扁成透视）的环，从脚下迅速扩散
+  gring(x, y, color, r0, r1, life = 22, w = 6) {
+    const p = this.spawn('gring', x, y, 0, life);
+    if (!p) return;
+    p.r0 = r0; p.r1 = r1; p.w = w; p.color = color; p.ramp = ramp(color, 'cool');
+    p.tx = tex().ring.map((img) => tintRamp(img, p.ramp)); p.tx2 = tintRamp(tex().glow, p.ramp);
+  }
+  // 地面预警 / 聚气：从大圈收缩到脚下（首领出招前、主角蓄力时）
+  gwarn(x, y, color, r1, r0, life = 26) {
+    const p = this.spawn('gwarn', x, y, 0, life);
+    if (!p) return;
+    p.r0 = r0; p.r1 = r1; p.color = color; p.tx = T_ring(color);
+  }
+  // 光柱：从地面冲天的一道光，先细后粗再淡出
+  pillar(x, y, color, w = 60, h = 420, life = 24) {
+    const p = this.spawn('pillar', x, y, 0, life);
+    if (!p) return;
+    p.w = w; p.len = h; p.color = color; p.ramp = ramp(color, 'cool'); p.tx = tintRamp(tex().glow, p.ramp);
+  }
   // 击杀：魂火往上散 + 一团冷光
   soul(x, y, z, color) {
     this.emit('soul', x, y, z, { color });
@@ -221,7 +241,7 @@ export class FX {
         continue;
       }
       if (p.kind === 'flare') { p.rot += p.vr; continue; }
-      if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack' || p.kind === 'line') continue;
+      if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack' || p.kind === 'line' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'pillar') continue;
       p.vx *= p.drag; p.vy *= p.drag; p.vz = p.vz * p.drag - p.grav;
       if (p.sway) p.vx += Math.sin(p.life * 0.21 + p.seed) * p.sway * 0.1;
       p.x += p.vx; p.y += p.vy; p.z += p.vz; p.rot += p.vr;
@@ -258,11 +278,12 @@ export class FX {
   // 地面上的效果（地裂），在角色之前画
   drawFloor(ctx, camX) {
     let any = false;
-    for (const p of this.live) if (p.kind === 'crack') { any = true; break; }
+    for (const p of this.live) if (p.kind === 'crack' || p.kind === 'gring' || p.kind === 'gwarn') { any = true; break; }
     if (!any) return;
     this.base(ctx);
     const op = ctx.globalCompositeOperation;
     for (const p of this.live) {
+      if (p.kind === 'gring' || p.kind === 'gwarn') { this.drawGround(ctx, p, p.x - camX, GROUND_TOP + p.y); continue; }
       if (p.kind !== 'crack') continue;
       const sx = p.x - camX, sy = GROUND_TOP + p.y;
       const age = p.max - p.life;
@@ -279,6 +300,46 @@ export class FX {
     }
     ctx.globalAlpha = 1;
     this.restore(ctx);
+  }
+
+  // 贴地的环：压扁成地面透视（纵向 0.32）
+  drawGround(ctx, p, sx, sy) {
+    const t = 1 - p.life / p.max;
+    ctx.globalCompositeOperation = 'lighter';
+    if (p.kind === 'gring') {
+      const r = p.r0 + (p.r1 - p.r0) * easeOut(t), want = (p.w * (2.2 - 1.4 * t)) / r;
+      if (r > 130) {
+        // 大环：贴图放大后绝大部分是透明的中心，白白耗填充率 —— 改成三层描边（只画到环带本身）
+        const ci = Math.min(p.ramp.length - 1, (t * p.ramp.length) | 0), wd = p.w * (2.2 - 1.4 * t), fade = (1 - t) ** 1.3;
+        this.restore(ctx);
+        for (const [mul, al, col] of [[3, 0.12, p.ramp[ci]], [1.5, 0.3, p.ramp[ci]], [0.45, 0.85, p.ramp[0]]]) {
+          ctx.globalAlpha = fade * al;
+          ctx.strokeStyle = col;
+          ctx.lineWidth = Math.max(1, wd * mul);
+          ctx.beginPath();
+          ctx.ellipse(sx, sy, r - wd * 0.3, (r - wd * 0.3) * 0.32, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+        ctx.globalCompositeOperation = 'source-over';
+        return;
+      }
+      let bi = 0;
+      while (bi < RING_BANDS.length - 1 && RING_BANDS[bi + 1] <= want * 1.2) bi++;
+      const ci = Math.min(p.ramp.length - 1, (t * p.ramp.length) | 0);
+      ctx.globalAlpha = (1 - t) ** 1.3;
+      this.put(ctx, p.tx[bi][ci], sx, sy, 0, (r * 2) / 256, (r * 0.64) / 256);
+      // 刚炸开时地面上一片亮
+      if (t < 0.35) {
+        ctx.globalAlpha = 0.35 * (1 - t / 0.35);
+        this.put(ctx, p.tx2[ci], sx, sy, 0, (r * 1.4) / 64, (r * 0.45) / 64);
+      }
+    } else {
+      // 预警：收缩的环，越接近出招越亮、闪得越快
+      const r = p.r1 + (p.r0 - p.r1) * easeOut(t);
+      ctx.globalAlpha = (0.35 + 0.65 * t) * (0.75 + 0.25 * Math.sin(p.life * (0.5 + t)));
+      this.put(ctx, p.tx[1], sx, sy, 0, (r * 2) / 256, (r * 0.64) / 256);
+    }
+    ctx.globalCompositeOperation = 'source-over';
   }
 
   // glowPass = true 时只画发光的部分（给泛光层用）
@@ -341,6 +402,21 @@ export class FX {
         }
         case 'ring': {
           const r = p.r0 + (p.r1 - p.r0) * easeOut(t);
+          if (r > 130) {
+            // 大环改成描边（同 drawGround 的说明）
+            const wd = p.w * (2.5 - 1.5 * t);
+            this.restore(ctx);
+            for (const [mul, al, c] of [[3, 0.12, p.ramp[ci]], [1.4, 0.32, p.ramp[ci]], [0.45, 0.85, p.ramp[0]]]) {
+              if (glowPass && mul < 1) continue;
+              ctx.globalAlpha = a * al * (glowPass ? 0.5 : 1);
+              ctx.strokeStyle = c;
+              ctx.lineWidth = Math.max(1, wd * mul);
+              ctx.beginPath();
+              ctx.ellipse(sx, sy, r - wd * 0.3, (r - wd * 0.3) * 0.75, 0, 0, Math.PI * 2);
+              ctx.stroke();
+            }
+            break;
+          }
           // 环宽：从 w 的 2.5 倍收到 1 倍左右，按「环宽 / 半径」挑最接近的一档贴图
           const want = (p.w * (2.5 - 1.5 * t)) / r;
           let bi = 0;
@@ -400,6 +476,17 @@ export class FX {
           if (!glowPass) {
             ctx.globalAlpha = (1 - t) * 0.5;
             this.put(ctx, tinted(T.needle, p.color), cx, cy, p.angle, L / 128, (p.size * 2.4) / 6);
+          }
+          break;
+        }
+        case 'pillar': {
+          // 光柱：前 20% 从细变粗，之后变淡；底部最亮
+          const w = p.w * (t < 0.2 ? 0.3 + t * 3.5 : 1), h = p.len * (0.6 + 0.4 * easeOut(Math.min(1, t * 3)));
+          ctx.globalAlpha = (1 - t) ** 1.5 * (glowPass ? 0.6 : 0.85);
+          this.put(ctx, p.tx[ci], sx, sy - h * 0.45, 0, w / 64, h / 64);
+          if (!glowPass) {
+            ctx.globalAlpha = (1 - t) ** 2;
+            this.put(ctx, T.core, sx, sy - h * 0.4, 0, (w * 0.25) / 32, (h * 0.8) / 32);
           }
           break;
         }

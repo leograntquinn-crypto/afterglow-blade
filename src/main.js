@@ -9,6 +9,7 @@ import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
+import { Cine } from './cine.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
@@ -188,6 +189,7 @@ class Game {
     this.toasts = [];
     this.attackers = new Set();
     this.fx = new FX();
+    this.cine = new Cine(); // 技能演出：压暗聚光、集中线
     this.hitstop = 0;
     this.slowmo = 0;
     this.camX = 0;
@@ -359,6 +361,7 @@ class Game {
   // ---------------- 房间 ----------------
   // from：玩家是朝哪个方向走进来的（'e' = 从西边的门向东走进来）
   enterRoom(room, from) {
+    this.cine.clear();
     this.room = room;
     room.visited = true;
     world.w = room.w;
@@ -945,6 +948,11 @@ class Game {
     p.invuln = 999;
     this.ultSeq = { t: 0, i: 0, home: { x: p.x, y: p.y } };
     this.fx.flash('#ffffff', 0.35);
+    // 蓄力：压暗聚光、集中线收拢、地面的光圈往脚下收
+    this.cine.hold(0.6, 150, p);
+    this.cine.speed('in', 40, p.glow);
+    this.fx.gwarn(p.x, p.y, p.glow, 240, 30, 44);
+    this.fx.converge(p.x, p.y, p.z + 50, 24, p.glow);
     sfx('ultStart');
   }
 
@@ -981,6 +989,15 @@ class Game {
       p.ultPose = 1.4;
       this.fx.flash('#ffffff', 0.8);
       for (let i = 0; i < 3; i++) this.fx.ring(p.x, p.y, 50, i ? p.glow : '#ffffff', 30 + i * 20, 22 - i * 4, 26 + i * 6, 7);
+      // 爆发：集中线炸开、地面冲击波、冲天光柱、巨大星芒；余韵：残光从整个画面的地面升起
+      this.cine.speed('out', 22, '#ffffff');
+      this.cine.hold(0.3, 12, p);
+      this.fx.gring(p.x, p.y, '#ffffff', 40, 520, 34, 12);
+      this.fx.gring(p.x, p.y, p.glow, 30, 420, 44, 8);
+      this.fx.pillar(p.x, p.y, p.glow, 120, 560, 34);
+      this.fx.flare(p.x, p.y, 70, 2.4, p.glow);
+      this.fx.lines(p.x, p.y, 70, 24, '#ffffff', 1);
+      for (let k = 0; k < 11; k++) this.fx.emit('afterglow', this.camX + 40 + k * 88, rand(10, DEPTH - 10), 2, { color: p.glow, n: 3 });
       this.fx.shake(20, 40);
       if (!REDUCED_MOTION) this.zoom = 0.08;
       sfx('quake');
@@ -1198,6 +1215,13 @@ class Game {
       this.fx.flash('#ffffff', 0.6);
       this.fx.shake(16, 40);
       this.banner = { title: '击 破', sub: `${e.B.name} 倒下了`, t: 0, color: e.B.glow };
+      this.cine.speed('out', 20, e.B.glow);
+      this.cine.hold(0.4, 40, e);
+      this.fx.flare(e.x, e.y, e.z + e.h * 0.5, 2.2, e.B.glow);
+      this.fx.gring(e.x, e.y, '#ffffff', 30, 380, 30, 10);
+      this.fx.gring(e.x, e.y, e.B.glow, 20, 300, 40, 7);
+      this.fx.pillar(e.x, e.y, e.B.glow, 90, 520, 40);
+      this.fx.lines(e.x, e.y, e.z + e.h * 0.5, 20, '#ffffff', 1);
       for (const m of this.enemies) if (m.alive && m !== e && m.setState) { m.setState('dying'); m.vz = 6; m.z = Math.max(m.z, 0.01); }
       this.room.cleared = true;
       this.bossDownAt = this.frame;
@@ -1221,6 +1245,7 @@ class Game {
     this.sceneT++;
     this.fx.lod = [0.45, 0.75, 1][this.quality] ?? 1; // 画质越低，特效粒子越少
     this.fx.update();
+    this.cine.update();
     this.zoom *= 0.86;
     for (const hl of this.hitLights) hl.life--;
     this.hitLights = this.hitLights.filter((hl) => hl.life > 0);
@@ -1358,6 +1383,10 @@ class Game {
     }
     if (this.scene === 'title') post.addLight(VIEW_W * 0.3, 360, 340, 1);
     post.applyLighting(ctx, th.ambient);
+    // 技能演出的压暗：主角（或演出对象）身边留一圈光，特效画在压暗之上
+    const cf = this.cine.focus ?? this.player;
+    const [cfx, cfy] = at(cf.x, cf.y, (cf.z ?? 0) + 45);
+    if (inWorld) this.cine.drawDim(ctx, cfx, cfy);
 
     // 3. 自发光的特效画在黑暗之上，再加泛光
     if (inWorld) {
@@ -1372,6 +1401,7 @@ class Game {
       this.fx.draw(ctx, camX);
       ctx.restore();
       if (this.quality > 0) post.applyBloom(ctx);
+      this.cine.drawLines(ctx, cfx, cfy);
       ctx.save();
       view(ctx);
       this.fx.drawTexts(ctx, camX);
@@ -1408,7 +1438,7 @@ class Game {
     }
     // 必杀演出时世界压暗，只有剑光亮着
     if (this.ultSeq && this.ultSeq.t < 150) {
-      ctx.fillStyle = `rgba(4,2,8,${Math.min(0.55, this.ultSeq.t / 20)})`;
+      ctx.fillStyle = `rgba(4,2,8,${Math.min(0.3, this.ultSeq.t / 30)})`;
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
     }
 
