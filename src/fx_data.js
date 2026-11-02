@@ -56,3 +56,20 @@ export const EMIT = {
   // 蓄力汇聚的光点（往中心加速吸入，带拖尾）
   mote: { type: 'mote', n: [10, 10], life: [18, 18], size: [2.4, 3.6], sizeC: 'grow', alphaC: 'pop', ramp: 'cool', blend: 'add' },
 };
+
+// 命中的余波：击杀时魂火往上散（比余烬大、慢、偏冷色）
+EMIT.soul = { type: 'ember', n: [12, 12], life: [40, 70], speed: [0.8, 2.6], angle: -1.57, spread: 0.7, drag: 0.96, grav: -0.06, size: [2, 3.6], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.35 };
+// 刀光挥动时从刀尖甩出的细碎光点
+EMIT.trailMote = { type: 'ember', n: [1, 1], life: [14, 26], speed: [0.4, 1.6], angle: -0.4, spread: 1.6, drag: 0.9, grav: -0.03, size: [1.2, 2.2], sizeC: 'shrink', alphaC: 'flicker', ramp: 'hot', blend: 'add', sway: 0.15 };
+
+// ---------- 受击分级 ----------
+// 同一个命中处理，按这一击的分量挑一档表现：轻击 < 暴击 < 重击 < 破招 / 破防 < 击杀
+// spark 火花数、ember 余烬比例、ringGrow / ringW 冲击环、cut / cutW 斩痕长度和粗细、flare 星芒大小、
+// lines 冲击线条数、chips 碎片数、light 命中光半径、stop 额外顿帧、kick 镜头后坐、soul 击杀魂火
+export const HIT_TIERS = {
+  light: { spark: 8, ringGrow: 4, ringW: 3, cut: 110, cutW: 1, flare: 0, lines: 0, chips: 4, light: 180, stop: 0, kick: 0 },
+  crit: { spark: 11, ringGrow: 6, ringW: 4, cut: 140, cutW: 1.2, flare: 0.55, lines: 6, chips: 6, light: 240, stop: 0, kick: 4, accent: '#ffd65a' },
+  heavy: { spark: 14, ringGrow: 7, ringW: 5, cut: 170, cutW: 1.35, flare: 0.75, lines: 8, chips: 9, light: 280, stop: 0, kick: 9 },
+  break: { spark: 18, ringGrow: 9, ringW: 6, cut: 200, cutW: 1.6, flare: 1.1, lines: 14, chips: 12, light: 340, stop: 2, kick: 12, accent: '#ffb347' },
+  kill: { spark: 16, ringGrow: 8, ringW: 5, cut: 190, cutW: 1.5, flare: 0.9, lines: 10, chips: 12, light: 320, stop: 3, kick: 10, soul: true },
+};

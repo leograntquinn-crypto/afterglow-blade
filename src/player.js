@@ -14,6 +14,15 @@ import { hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { heroSprite, heroFrame, bladeOf } from './sprite.js';
+import { mix, scaleColor } from './fx_tex.js';
+
+// 刀光的颜色渐变：刚扫过近白 → 刀光色 → 冷却变暗（每种刀光色只算一次）
+const trailRamps = new Map();
+function trailRamp(c) {
+  let r = trailRamps.get(c);
+  if (!r) trailRamps.set(c, (r = [mix('#ffffff', c, 0.7), c, c, scaleColor(c, 0.85), scaleColor(c, 0.65), scaleColor(c, 0.45)]));
+  return r;
+}
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
 const CHARGE_LV1 = 24, CHARGE_LV2 = 66, CHARGE_HOLD = 14;
@@ -152,18 +161,24 @@ export class Player {
     if (heroSprite.ready) {
       // 逐帧精灵：记录当前帧里刀柄和刀尖的位置（素材处理时检测出来的）
       const b = bladeOf(heroFrame(this, 0), this.facing);
-      if (b) this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, b, life: 10 });
-      else if (this.trail.length) this.trail[this.trail.length - 1].end = true;
+      if (b) {
+        this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, b, life: 10 });
+        // 刀尖甩出的细碎光点（刀尖移动得快时才有）
+        const pv = this.trail[this.trail.length - 2];
+        if (pv?.b && Math.hypot(b[2] - pv.b[2], b[3] - pv.b[3]) > 14 && Math.random() < 0.6) {
+          game.fx.emit('trailMote', this.x + b[2], this.y, this.z - b[3], { dir: this.facing, color: this.glow });
+        }
+      } else if (this.trail.length) this.trail[this.trail.length - 1].end = true;
       return;
     }
     const p = this.pose(0);
     this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, a: p.angle, lean: p.lean || 0, crouch: p.crouch || 0, life: 9 });
   }
 
-  drawTrail(ctx, camX) {
+  drawTrail(ctx, camX, glowPass = false) {
     const T = this.trail;
     if (T.length < 2) return;
-    if (heroSprite.ready) return this.drawSpriteTrail(ctx, camX);
+    if (heroSprite.ready) return this.drawSpriteTrail(ctx, camX, glowPass);
     const L = this.look.weapon.len;
     // 和 rig.js 里的骨骼计算一致：肩膀 → 手（伸出 24）→ 刀身（从手往外 14 到 L）
     const pts = (s, a) => {
@@ -209,55 +224,81 @@ export class Player {
     ctx.restore();
   }
 
-  // 精灵刀光：相邻两次采样之间，刀柄直线插值、刀尖绕刀柄按角度插值，扫出一段弧
-  drawSpriteTrail(ctx, camX) {
-    const T = this.trail;
-    const pts = (s, hx, hy, ang, len) => {
-      const [bx, by] = toScreen(s.x, s.y, s.z, camX);
-      const c = Math.cos(ang), si = Math.sin(ang);
-      // 内沿从刀身 30% 处开始，外沿是刀尖
-      // 外沿比刀尖再长一点：判定框比画出来的刀略远，刀光把这段距离补上，看起来就是刀风扫到的
-      return [[bx + hx + c * len * 0.3, by + hy + si * len * 0.3], [bx + hx + c * len * 1.2, by + hy + si * len * 1.2]];
-    };
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
+  // 精灵刀光：一条连续的光带。
+  // 先把所有采样（以及相邻采样之间按角度插值出的点）连成一串「内沿 / 外沿」点，每个点带年龄（1 = 刚扫过），然后分层画：
+  //   1. 外圈柔光（比刀身宽，颜色淡）  2. 主体（按年龄从近白 → 刀光色 → 冷却变暗，越老越透明）
+  //   3. 贴着外沿的亮边（刚扫过的地方最粗）  4. 白色细芯
+  // 内沿从刀身 30% 处开始，外沿比刀尖再长 20%：判定框比画出来的刀略远，刀光把这段距离补上
+  drawSpriteTrail(ctx, camX, glowPass = false) {
+    const T = this.trail, P = [];
     for (let i = 1; i < T.length; i++) {
       const s0 = T[i - 1], s1 = T[i];
-      if (s0.end || s0.f !== s1.f || Math.abs(s0.x - s1.x) > 60) continue;
+      if (s0.end || s0.f !== s1.f || Math.abs(s0.x - s1.x) > 60) { P.push(null); continue; }
       const [h0x, h0y, t0x, t0y] = s0.b, [h1x, h1y, t1x, t1y] = s1.b;
       const a0 = Math.atan2(t0y - h0y, t0x - h0x), l0 = Math.hypot(t0x - h0x, t0y - h0y);
       let da = Math.atan2(t1y - h1y, t1x - h1x) - a0;
       da -= Math.round(da / (2 * Math.PI)) * 2 * Math.PI; // 走短的那一边
       const l1 = Math.hypot(t1x - h1x, t1y - h1y);
       const moved = Math.abs(da) > 0.05 || Math.hypot(h1x - h0x, h1y - h0y) > 2 || Math.abs(s1.z - s0.z) > 2 || Math.abs(s1.x - s0.x) > 2;
-      if (!moved) continue;
+      if (!moved) { P.push(null); continue; }
       const steps = Math.min(10, 2 + Math.ceil(Math.abs(da) / 0.18));
-      const at = (u) => {
-        const s = { x: s0.x + (s1.x - s0.x) * u, y: s0.y + (s1.y - s0.y) * u, z: s0.z + (s1.z - s0.z) * u };
-        return pts(s, h0x + (h1x - h0x) * u, h0y + (h1y - h0y) * u, a0 + da * u, l0 + (l1 - l0) * u);
-      };
-      let prev = at(0);
-      for (let k = 1; k <= steps; k++) {
+      for (let k = P.length && P[P.length - 1] ? 1 : 0; k <= steps; k++) {
         const u = k / steps;
-        const cur = at(u);
-        const life = (s0.life + (s1.life - s0.life) * u) / 10;
-        ctx.globalAlpha = 0.5 * life * life;
-        ctx.fillStyle = this.glow;
-        ctx.beginPath();
-        ctx.moveTo(prev[0][0], prev[0][1]);
-        ctx.lineTo(prev[1][0], prev[1][1]);
-        ctx.lineTo(cur[1][0], cur[1][1]);
-        ctx.lineTo(cur[0][0], cur[0][1]);
-        ctx.closePath();
-        ctx.fill();
-        ctx.globalAlpha = 0.95 * life;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.4 * life + 0.4;
-        ctx.beginPath();
-        ctx.moveTo(prev[1][0], prev[1][1]);
-        ctx.lineTo(cur[1][0], cur[1][1]);
-        ctx.stroke();
-        prev = cur;
+        const [bx, by] = toScreen(s0.x + (s1.x - s0.x) * u, s0.y + (s1.y - s0.y) * u, s0.z + (s1.z - s0.z) * u, camX);
+        const hx = bx + h0x + (h1x - h0x) * u, hy = by + h0y + (h1y - h0y) * u;
+        const a = a0 + da * u, len = l0 + (l1 - l0) * u, c = Math.cos(a), si = Math.sin(a);
+        P.push({ ix: hx + c * len * 0.3, iy: hy + si * len * 0.3, ox: hx + c * len * 1.2, oy: hy + si * len * 1.2, life: (s0.life + (s1.life - s0.life) * u) / 10 });
+      }
+    }
+    // 断开的地方（换方向、瞬移）分成几段分别画
+    const runs = [];
+    let cur = [];
+    for (const q of P) {
+      if (q) cur.push(q);
+      else if (cur.length) { if (cur.length > 1) runs.push(cur); cur = []; }
+    }
+    if (cur.length > 1) runs.push(cur);
+    if (!runs.length) return;
+    const R = trailRamp(this.glow);
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    // 在内沿 w0 和外沿 w1（0 = 内沿，1 = 外沿，可以超出）之间取点
+    const at = (q, w) => [q.ix + (q.ox - q.ix) * w, q.iy + (q.oy - q.iy) * w];
+    const quad = (q0, q1, w0a, w1a, w0b, w1b) => {
+      ctx.beginPath();
+      ctx.moveTo(...at(q0, w0a));
+      ctx.lineTo(...at(q0, w1a));
+      ctx.lineTo(...at(q1, w1b));
+      ctx.lineTo(...at(q1, w0b));
+      ctx.closePath();
+      ctx.fill();
+    };
+    for (const run of runs) {
+      // 1. 外圈柔光：一整条多边形，透明度跟最新那端走
+      const head = run[run.length - 1].life;
+      ctx.globalAlpha = 0.12 * head * (glowPass ? 1.6 : 1);
+      ctx.fillStyle = this.glow;
+      ctx.beginPath();
+      run.forEach((q, i) => { const [x, y] = at(q, 1.12 + 0.08 * q.life); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
+      for (let i = run.length - 1; i >= 0; i--) ctx.lineTo(...at(run[i], 0.05));
+      ctx.closePath();
+      ctx.fill();
+      for (let i = 1; i < run.length; i++) {
+        const q0 = run[i - 1], q1 = run[i], life = (q0.life + q1.life) / 2;
+        if (life <= 0.02) continue;
+        // 2. 主体：越新越亮、越白；越老越暗、越窄（内沿往外收）
+        ctx.globalAlpha = 0.5 * life ** 1.6 * (glowPass ? 0.7 : 1);
+        ctx.fillStyle = R[Math.min(R.length - 1, ((1 - life) * R.length) | 0)];
+        quad(q0, q1, 0.45 * (1 - q0.life), 1, 0.45 * (1 - q1.life), 1);
+        if (glowPass) continue;
+        // 3. 外沿亮边：宽度随年龄收窄
+        ctx.globalAlpha = 0.6 * life;
+        ctx.fillStyle = R[0];
+        quad(q0, q1, 1 - 0.1 * q0.life, 1, 1 - 0.1 * q1.life, 1);
+        // 4. 白芯
+        ctx.globalAlpha = 0.9 * life * life;
+        ctx.fillStyle = '#ffffff';
+        quad(q0, q1, 1 - 0.03 * q0.life, 1, 1 - 0.03 * q1.life, 1);
       }
     }
     ctx.restore();
