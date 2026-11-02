@@ -114,7 +114,7 @@ export const MOVES = {
   flurry: {
     skill: true, total: 80, cancel: 70, armor: true, invuln: [0, 22], lunge: [0, 10, 9], flurry: true, heavy: true,
     swing: [-2.2, 1.4], swingAt: 56, swingDur: 4,
-    events: { 0: flurryStart, 56: flurryEnd },
+    events: { 0: flurryStart, 8: flurryCut, 13: flurryCut, 18: flurryCut, 23: flurryCut, 28: flurryCut, 33: flurryCut, 38: flurryCut, 43: flurryCut, 56: flurryEnd },
     hits: [
       ...[8, 13, 18, 23, 28, 33, 38, 43].map((at) => ({
         at, dur: 3, box: { x: 34, w: 150, d: 40, z0: -10, z1: 140 }, dmg: 9, kb: 0.6, stun: 30, stop: 2, shake: 2,
@@ -145,6 +145,7 @@ function spawnWave(p, game) {
   }));
   game.fx.ring(p.x + p.facing * 40, p.y, 50, p.glow, 10, 6, 12, 4);
   game.fx.flare(p.x + p.facing * 40, p.y, 55, 0.9, p.glow);
+  game.fx.flip('burst_energy', p.x + p.facing * 40, p.y, 55, { color: p.glow, scale: 0.4 });
   game.cine.speed('out', 6, p.glow);
 }
 
@@ -176,12 +177,14 @@ function whirlStart(p, game) {
 }
 function whirlPulse(p, game) {
   game.fx.gring(p.x, p.y, p.glow, 40, 200, 16, 5);
+  game.fx.flip('slash_spin', p.x, p.y, p.z + 46, { facing: p.facing, color: p.glow, alpha: 0.9 });
 }
 function whirlEnd(p, game) {
   game.fx.gring(p.x, p.y, '#ffffff', 30, 240, 20, 7);
   game.fx.shock(p.x, p.y, p.z + 60, 230, 0.03, 20);
   game.fx.flare(p.x, p.y, p.z + 60, 1.2, p.glow);
   game.fx.lines(p.x, p.y, p.z + 60, 12, '#ffffff', p.facing);
+  game.fx.flip('burst_energy', p.x, p.y, p.z + 55, { color: p.glow, scale: 0.6 });
   game.cine.speed('out', 8, p.glow);
   afterglow(game, p.x, p.y, p.glow, 2);
 }
@@ -203,6 +206,12 @@ function flurryStart(p, game) {
   game.cine.speed('in', 12, p.glow);
 }
 
+// 千刃八连斩：每一斩一道手绘刀光，方向交替、角度随机
+function flurryCut(p, game) {
+  const up = p.mf % 10 < 5;
+  game.fx.flip('slash_sweep', p.x + p.facing * 30, p.y, p.z + 56, { facing: p.facing, flipY: up ? -1 : 1, color: p.glow, rot: (Math.random() - 0.5) * 0.6, scale: 0.9, alpha: 0.85 });
+}
+
 function flurryEnd(p, game) {
   const x = p.x + p.facing * 60;
   game.fx.flash('#ffffff', 0.3);
@@ -216,6 +225,8 @@ function flurryEnd(p, game) {
   game.fx.aberrate(0.01, x, p.y, 60);
   game.fx.pillar(x, p.y, p.glow, 70, 420, 24);
   game.fx.lines(x, p.y, 60, 16, '#ffffff', p.facing);
+  game.fx.flip('slash_cross', x, p.y, 60, { color: p.glow, rot: (Math.random() - 0.5) * 0.3 });
+  game.fx.flip('burst_energy', x, p.y, 60, { color: p.glow, scale: 0.9 });
   game.cine.speed('out', 14, '#ffffff');
   afterglow(game, x, p.y, p.glow, 3);
 }
@@ -240,6 +251,7 @@ function quakeBurst(p, game) {
   game.fx.pillar(x, p.y, p.glow, 76, 470, 26);
   game.fx.flare(x, p.y, 40, 1.6, p.glow);
   game.fx.lines(x, p.y, 40, 18, '#ffffff', p.facing);
+  game.fx.flip('impact_ground', x, p.y, 0, { color: p.glow, scale: 1.1 });
   afterglow(game, x, p.y, p.glow, 3);
   sfx('quake');
 }

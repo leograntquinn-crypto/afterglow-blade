@@ -81,3 +81,20 @@ EMIT.afterglow = { type: 'ember', n: [6, 6], life: [60, 110], speed: [0.3, 1.2],
 EMIT.aura = { type: 'ember', n: [1, 1], life: [30, 50], speed: [0.4, 1.2], angle: -1.57, spread: 0.5, drag: 0.97, grav: -0.05, size: [1.6, 3], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.3 };
 // 倒下的敌人化成光点消散
 EMIT.dissolve = { type: 'ember', n: [2, 2], life: [24, 44], speed: [0.3, 1.4], angle: -1.57, spread: 1, drag: 0.95, grav: -0.06, size: [1.4, 2.8], sizeC: 'shrink', alphaC: 'flicker', ramp: 'cool', blend: 'add', sway: 0.3 };
+
+// ---------- 手绘序列帧（FX-2 / FX-3）----------
+// 每组在游戏里画多大：游戏逻辑像素 / 交付像素（交付尺寸见 docs/ART_FX.md 第六、七节）
+export const FB_SCALE = {
+  slash_sweep: 0.42, slash_rise: 0.4, slash_down: 0.42, slash_spin: 0.44, slash_cross: 0.48,
+  hit_light: 0.45, hit_heavy: 0.55, hit_break: 0.5, impact_ground: 0.75, burst_energy: 0.6, smoke_roll: 0.5, afterglow_burst: 1.0,
+  bone_spikes: 0.62, bone_rend: 0.5, soul_fire: 0.22, summon_circle: 0.75,
+};
+// 普攻和技能出刀时叠在程序刀光带上的手绘刀光：[序列帧, 上下翻转, 大小倍数]
+export const SLASH_FX = {
+  slash1: ['slash_sweep', 1, 1], slash2: ['slash_sweep', -1, 1], slash3: ['slash_down', 1, 1.15],
+  upper: ['slash_rise', 1, 1], airSlash: ['slash_sweep', 1, 0.95], airSlash2: ['slash_sweep', -1, 0.95], airSlash3: ['slash_down', 1, 1.1],
+  sweep: ['slash_sweep', -1, 1], chargeSlash1: ['slash_down', 1, 1.15], chargeSlash2: ['slash_down', 1, 1.3],
+  wave: ['slash_down', 1, 1.1], quake: ['slash_down', 1, 1.25],
+};
+// 受击分级用哪组命中爆点
+export const HIT_FB = { light: ['hit_light', 1], crit: ['hit_light', 1.35], heavy: ['hit_heavy', 1], break: ['hit_break', 1], kill: ['hit_heavy', 1.15] };

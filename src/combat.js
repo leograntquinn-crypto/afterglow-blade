@@ -141,6 +141,10 @@ export class Hazard {
       game.fx.spark(this.x, this.y, 10, 1, 8, col);
       game.fx.spark(this.x, this.y, 10, -1, 8, col);
       game.fx.dustburst(this.x, this.y, Math.min(1.4, this.rx / 120));
+      // 首领专属的地面特效（骸骨统领的骨刺）；没有或还没载好时用通用的地面爆发
+      if (!this.art || !game.fx.flip(this.art, this.x, this.y, 0, { color: '#d8cbb8', scale: Math.min(1.3, this.rx / 120), facing: Math.random() < 0.5 ? -1 : 1 })) {
+        game.fx.flip('impact_ground', this.x, this.y, 0, { color: col, scale: Math.min(1.2, this.rx / 140) });
+      }
       if (this.rx > 90) game.fx.crack(this.x, this.y);
       sfx('heavy');
     }

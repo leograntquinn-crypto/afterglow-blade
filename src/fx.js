@@ -9,6 +9,8 @@ import { settings } from './settings.js';
 import { MOBILE } from './sprite.js';
 import { EMIT, CURVES, curve } from './fx_data.js';
 import { tex, tinted, ramp, tintRamp, RING_BANDS } from './fx_tex.js';
+import { flipbook } from './fx_art.js';
+import { FB_SCALE } from './fx_data.js';
 
 const MAX = MOBILE ? 900 : 2400;
 const T_ring = (color) => tex().ring.map((img) => tinted(img, color));
@@ -27,6 +29,7 @@ class P {
     this.tx = null; this.tx2 = null; // 出生时取好的染色贴图（按年龄取下标）
     this.color = '#fff'; this.bounced = false;
     // 冲击环 / 刀光 / 斩痕 / 汇聚 / 地裂 用到的额外参数
+    this.follow = null; this.fb = null; this.ground = false; // 序列帧：跟随谁、哪组、是否贴地
     this.r0 = 0; this.r1 = 0; this.w = 0; this.facing = 1; this.a0 = 0; this.a1 = 0; this.angle = 0; this.len = 0; this.ox = 0; this.oz = 0;
   }
 }
@@ -97,6 +100,7 @@ export class FX {
     p.size = 1; p.rot = 0; p.vr = 0;
     p.drag = 1; p.grav = 0; p.bounce = 0; p.stretch = 0; p.sway = 0; p.seed = Math.random() * 100; p.alpha = 1;
     p.sizeC = CURVES.one; p.alphaC = CURVES.fade; p.ramp = null; p.add = true; p.img = null; p.bounced = false; p.tx = p.tx2 = null;
+    p.follow = null; p.fb = null; p.ground = false;
     this.live.push(p);
     return p;
   }
@@ -148,6 +152,8 @@ export class FX {
   }
   dust(x, y, n = 6, spread = 1) {
     this.emit('dust', x + rand(-6, 6), y, rand(0, 6), { n, speed: spread, scale: 0.8 + spread * 0.2 });
+    // 大团的尘土（落地、撞墙、砸地）再叠一团手绘滚烟
+    if (n >= 10) this.flip('smoke_roll', x, y, 4, { color: '#b8aa9a', scale: 0.7 + spread * 0.25, facing: Math.random() < 0.5 ? -1 : 1, alpha: 0.85 });
   }
   // 材质碎片：受重力影响、会在地上弹跳翻滚的小块（骨渣、布屑、金属屑）
   chips(x, y, z, dir, n, color) {
@@ -233,6 +239,23 @@ export class FX {
     if (!p) return;
     p.img = tinted(T.rune[which], color); p.r0 = r; p.vr = spin; p.rot = rand(0, 6.28); p.color = color;
   }
+  // 手绘序列帧特效（FX-2 / FX-3）。素材没载好时返回 false，调用方照常有程序特效兜底
+  // o：facing 朝向、flipY 上下翻转、color 染色、scale 大小倍数、alpha、rot 旋转、ground 贴地（压扁成地面透视，画在角色下面）、
+  //    hold 播完后停在最后一帧多少帧（法阵读条）、life 循环素材的总时长、follow 跟随的对象 + ox / oz 相对位置
+  flip(id, x, y, z, o = {}) {
+    const fb = flipbook(id);
+    if (!fb) return false;
+    const step = 60 / fb.fps, n = fb.frames.length;
+    const life = fb.loop ? o.life ?? 120 : Math.ceil(n * step) + (o.hold ?? 0);
+    const p = this.spawn('flip', x, y, z, life);
+    if (!p) return false;
+    const color = o.color ?? '#ffffff';
+    p.fb = fb; p.add = fb.add; p.color = color; p.facing = o.facing ?? 1; p.w = o.flipY ?? 1; p.rot = o.rot ?? 0;
+    p.size = (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); p.alpha = o.alpha ?? 1; p.ground = !!o.ground;
+    p.tx = fb.frames.map((c) => c && tinted(c, color, fb.add ? 'fill' : 'mul'));
+    if (o.follow) { p.follow = o.follow; p.ox = o.ox ?? 0; p.oz = o.oz ?? 0; }
+    return p;
+  }
   // 击杀：魂火往上散 + 一团冷光
   soul(x, y, z, color) {
     this.emit('soul', x, y, z, { color });
@@ -279,6 +302,14 @@ export class FX {
       }
       if (p.kind === 'flare' || p.kind === 'rune') { p.rot += p.vr; continue; }
       if (p.kind === 'dburst') continue;
+      if (p.kind === 'flip') {
+        const f = p.follow;
+        if (f) {
+          p.x = f.x + p.ox * f.facing; p.y = f.y; p.z = f.z + p.oz; p.facing = f.facing;
+          if (!f.alive || f.remove) p.life = Math.min(p.life, 8);
+        }
+        continue;
+      }
       if (p.kind === 'ring' || p.kind === 'arc' || p.kind === 'cut' || p.kind === 'mote' || p.kind === 'crack' || p.kind === 'line' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'pillar') continue;
       p.vx *= p.drag; p.vy *= p.drag; p.vz = p.vz * p.drag - p.grav;
       if (p.sway) p.vx += Math.sin(p.life * 0.21 + p.seed) * p.sway * 0.1;
@@ -322,12 +353,13 @@ export class FX {
   // 地面上的效果（地裂），在角色之前画
   drawFloor(ctx, camX) {
     let any = false;
-    for (const p of this.live) if (p.kind === 'crack' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'rune') { any = true; break; }
+    for (const p of this.live) if (p.kind === 'crack' || p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'rune' || p.ground) { any = true; break; }
     if (!any) return;
     this.base(ctx);
     const op = ctx.globalCompositeOperation;
     for (const p of this.live) {
       if (p.kind === 'gring' || p.kind === 'gwarn' || p.kind === 'rune') { this.drawGround(ctx, p, p.x - camX, GROUND_TOP + p.y); continue; }
+      if (p.ground) { ctx.globalCompositeOperation = p.add ? 'lighter' : 'source-over'; this.drawFlip(ctx, p, p.x - camX, GROUND_TOP + p.y, false); ctx.globalCompositeOperation = 'source-over'; continue; }
       if (p.kind !== 'crack') continue;
       const sx = p.x - camX, sy = GROUND_TOP + p.y;
       const age = p.max - p.life;
@@ -344,6 +376,23 @@ export class FX {
     }
     ctx.globalAlpha = 1;
     this.restore(ctx);
+  }
+
+  // 序列帧：按年龄取帧（30 帧 / 秒的素材在 60 帧的游戏里每帧停 2 个刻）；hold 期间停在最后一帧轻轻脉动
+  drawFlip(ctx, p, sx, sy, glowPass) {
+    const fb = p.fb, n = fb.frames.length, age = p.max - p.life, step = 60 / fb.fps;
+    let i = Math.floor(age / step), a = p.alpha;
+    if (fb.loop) i %= n;
+    else if (i >= n) { i = n - 1; a *= 0.85 + 0.15 * Math.sin(age * 0.15); }
+    if (fb.loop && p.life < 10) a *= p.life / 10;
+    const img = p.tx[i];
+    if (!img) return;
+    ctx.globalAlpha = a * (glowPass ? 0.4 : 1);
+    const k = p.size / img.sc;
+    if (p.ground) {
+      const cs = Math.cos(p.rot), sn = Math.sin(p.rot), q = 0.32;
+      this.putM(ctx, img, sx, sy, k * cs * p.facing, q * k * sn, -k * sn, q * k * cs, img.cx, img.cy);
+    } else this.put(ctx, img, sx, sy, p.rot, k * p.facing, k * p.w);
   }
 
   // 贴地的环：压扁成地面透视（纵向 0.32）
@@ -405,6 +454,10 @@ export class FX {
         const sx = p.x - camX, sy = GROUND_TOP + p.y - p.z;
         const t = 1 - p.life / p.max;
         ctx.globalAlpha = p.alpha * curve(p.alphaC, t);
+        if (p.kind === 'flip') {
+          if (!p.ground) this.drawFlip(ctx, p, sx, sy, false);
+          continue;
+        }
         if (p.kind === 'dburst') {
           // 尘爆：以地面线为锚（画布 85% 高处），从 75% 迅速撑到 110%
           const k = ((300 * p.size) / p.img.fw) * (0.75 + 0.35 * easeOut(Math.min(1, t * 2.2)));
@@ -509,6 +562,9 @@ export class FX {
           }
           break;
         }
+        case 'flip':
+          if (!p.ground) this.drawFlip(ctx, p, sx, sy, glowPass);
+          break;
         case 'flare': {
           // 先猛地撑开（2 帧）再收缩消失
           const k = p.size * (t < 0.2 ? 0.4 + t * 3.5 : 1.1 - (t - 0.2) * 1.1);

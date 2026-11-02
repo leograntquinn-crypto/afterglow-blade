@@ -2,6 +2,7 @@
 //
 // 敌人出招分两段：windup（预警，停在「一眼看得出要出什么招」的姿势上，引擎同时画红光和感叹号）→ attack（出招）。
 // 素材里每个攻击动画标了预警帧（windup）和接触帧（contact），这里把它们对到游戏的预警时长和出伤帧上。
+import { prepareBossFx } from './fx_art.js';
 import { SpriteSheet } from './sprite.js';
 
 const sheet = (name) => {
@@ -166,6 +167,7 @@ export const BOSS_SPRITES = {
 
 // 进入关卡时调用：载入这一关首领的图集，释放别的首领
 export function prepareBossSprites(key) {
+  prepareBossFx(key); // 首领专属的手绘特效也只在这一关载入
   for (const [k, B] of Object.entries(BOSS_SPRITES)) {
     if (k === key) B.sheet.load();
     else if (B.sheet.ready || B.sheet.loading) B.sheet.release();
