@@ -181,4 +181,27 @@ export const MAX_ENH = 10;
 const ENH_RATE = [1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2];
 export const enhRate = (it) => ENH_RATE[it.enh] ?? 0;
 export const enhCost = (it) => Math.round((40 + it.ilvl * 20) * (1 + it.enh * 0.7) * (1 + it.rar * 0.3));
+// 重铸：把第 i 条词条换成另一种属性（不和这件装备的其他词条重复），数值按物品等级重新随机。
+// 每重铸一次下次贵 50%：金币换来「更接近理想」的确定进展，但不能无限便宜地刷
+export const reforgeCost = (it) => Math.round((60 + it.ilvl * 25) * (1 + it.rar * 0.5) * (1 + (it.reforged || 0) * 0.5));
+export function reforgeAffix(it, i) {
+  if (!it.affix[i]) return false;
+  const used = new Set(it.affix.map((a) => a.k));
+  const pool = Object.keys(AFFIX).filter((k) => !used.has(k));
+  if (!pool.length) return false;
+  const k = pick(pool);
+  const v = AFFIX[k].roll(it.ilvl) * (it.rar === 3 ? 1.3 : 1);
+  it.affix[i] = { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
+  it.reforged = (it.reforged || 0) + 1;
+  return true;
+}
+
+// 传承：新装备继承同部位旧装备的强化等级（旧装备变回 +0）。
+// 价格约为「在新装备上重新强化到同等级」的 35%（还不用承担失败），让强化成为长期投入，换装备只看底子
+export function inheritCost(it, from) {
+  let c = 0;
+  for (let e = it.enh; e < from.enh; e++) c += (40 + it.ilvl * 20) * (1 + e * 0.7) * (1 + it.rar * 0.3);
+  return Math.round(c * 0.35);
+}
+
 export const sellPrice = (it) => Math.round((5 + it.ilvl * 3) * [1, 3, 8, 25][it.rar] * (1 + it.enh * 0.25));

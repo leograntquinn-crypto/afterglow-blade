@@ -4,7 +4,7 @@
 
 import {
   RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, itemScore, itemGlyph, itemTitle, itemKind,
-  enhCost, enhRate, sellPrice, WTYPES, MARKS,
+  enhCost, enhRate, sellPrice, WTYPES, MARKS, reforgeCost, reforgeAffix, inheritCost,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
@@ -163,7 +163,7 @@ export class Hub {
     const bag = s.bag.map((it) => {
       const better = itemScore(it) > itemScore(s.equip[it.slot]);
       return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
-        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}
+        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
       </button>`;
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
@@ -182,7 +182,7 @@ export class Hub {
       </section>
       <section class="panel">
         <div class="attr-head"><h4>背包 <small>${s.bag.length} / ${BAG_MAX}</small></h4>
-          <span class="bag-tools"><button class="btn ghost mini-text" data-act="sort">整理</button><button class="btn ghost mini-text" data-act="sellJunk">出售全部普通</button></span>
+          <span class="bag-tools"><button class="btn ghost mini-text" data-act="sort">整理</button><button class="btn ghost mini-text" data-act="sellJunk" data-r="0">出售普通</button><button class="btn ghost mini-text" data-act="sellJunk" data-r="1" title="不包括锁定、强化过、带刻印的装备">出售精良及以下</button></span>
         </div>
         <div class="bag">${bag}</div>
         ${s.bag.length ? '' : '<p class="hint">打倒敌人会掉落装备，出现光柱的就是。品质：<span style="color:#d8d3c8">普通</span> <span style="color:#4fa3ff">精良</span> <span style="color:#b46bff">稀有</span> <span style="color:#ff9a2e">传说</span></p>'}
@@ -251,7 +251,11 @@ export class Hub {
       const diff = cur && Math.abs(d) > 1e-6 ? `<em class="${d > 0 ? 'up' : 'down'}">${d > 0 ? '+' : ''}${fmtStat(k, d)}</em>` : '';
       return `<li><span>${STAT_INFO[k][0]}</span><b>${fmtStat(k, mine[k])}</b>${diff}</li>`;
     }).join('');
-    const affix = it.affix.map((a) => `<li class="affix">${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}</li>`).join('');
+    // 词条：每条后面有「重铸」，花金币把它换成另一种属性
+    const rc = reforgeCost(it);
+    const affix = it.affix.map((a, i) => `<li class="affix">${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}<button class="btn ghost mini-text reforge" data-act="reforge" data-i="${i}" ${s.gold >= rc ? '' : 'disabled'} title="把这条换成另一种属性 · ${rc} 金币">重铸</button></li>`).join('');
+    // 传承：同部位正在穿的装备强化得更高 → 可以把强化等级转到这件上
+    const inh = !equipped && cur && cur.enh > it.enh ? inheritCost(it, cur) : 0;
     const dScore = itemScore(it) - itemScore(cur);
     const compare = equipped ? '<p class="cmp same">已穿戴</p>'
       : cur ? `<p class="cmp ${dScore >= 0 ? 'up' : 'down'}">对比当前「${itemTitle(cur)}」：评分 ${dScore >= 0 ? '▲' : '▼'} ${Math.abs(dScore)}</p>`
@@ -266,14 +270,17 @@ export class Hub {
         <button class="close" data-act="close" aria-label="关闭">×</button>
       </div>
       <ul class="istats">${statRows}${affix}</ul>
+      ${it.affix.length ? `<p class="hint reforge-hint">重铸一条词条：${rc} 金币${it.reforged ? `（已重铸 ${it.reforged} 次，每次贵 50%）` : '（每重铸一次贵 50%）'}</p>` : ''}
       ${it.slot === 'weapon' ? `<p class="school">流派「${WTYPES[it.wtype].school}」${WTYPES[it.wtype].schoolDesc}</p>` : ''}
       ${it.mark && MARKS[it.mark] ? `<p class="mark">刻印「${MARKS[it.mark].name}」${MARKS[it.mark].desc}<small>适合：${MARKS[it.mark].style}${!equipped && this.g.stats.marks.has(it.mark) ? ' · 身上已有同名刻印，不叠加' : ''}</small></p>` : ''}
       ${compare}
       <div class="actions">
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : `<button class="btn primary" data-act="equip">穿戴</button>`}
         ${enhBtn}
+        ${inh ? `<button class="btn" data-act="inherit" ${s.gold >= inh ? '' : 'disabled'} title="把「${itemTitle(cur)}」的强化等级转到这件上，旧装备变回 +0">传承 +${cur.enh} 强化 · ${inh} 金币</button>` : ''}
         ${it.rar >= 2 ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
-        ${equipped ? '' : `<button class="btn ghost" data-act="sell">出售 · ${sellPrice(it)} 金币</button>`}
+        <button class="btn ghost" data-act="lock">${it.locked ? '🔒 已锁定（点击解锁）' : '锁定（批量出售时跳过）'}</button>
+        ${equipped ? '' : `<button class="btn ghost" data-act="sell" ${it.locked ? 'disabled' : ''}>出售 · ${sellPrice(it)} 金币</button>`}
       </div>
       <p class="hint">强化失败只扣金币，装备不会损坏。每级强化让基础属性 +8%，+7 起武器会发出脉动的光。</p>
     </div>`;
@@ -362,8 +369,10 @@ export class Hub {
         commit();
         return;
       case 'sellJunk': {
-        const junk = s.bag.filter((it) => it.rar === 0 && it.enh === 0);
-        if (!junk.length) return this.toast('没有可以出售的普通装备');
+        // 批量出售：只卖这个品质及以下、没锁定、没强化、没刻印的
+        const maxR = +(el.dataset.r || 0);
+        const junk = s.bag.filter((it) => it.rar <= maxR && it.enh === 0 && !it.locked && !it.mark);
+        if (!junk.length) return this.toast(maxR ? '没有可以出售的精良及以下装备' : '没有可以出售的普通装备');
         const gold = junk.reduce((a, it) => a + sellPrice(it), 0);
         s.bag = s.bag.filter((it) => !junk.includes(it));
         s.gold += gold;
@@ -402,7 +411,32 @@ export class Hub {
       sfx('enhance');
       commit();
       this.toast(`${itemTitle(it)} 铭刻了「${MARKS[k].name}」`, '#c99bff');
-    } else if (act === 'sell' && !equipped) {
+    } else if (act === 'reforge') {
+      const cost = reforgeCost(it);
+      if (s.gold < cost) return;
+      const i = +el.dataset.i, before = it.affix[i];
+      if (!reforgeAffix(it, i)) return;
+      s.gold -= cost;
+      sfx('enhance');
+      commit();
+      const a = it.affix[i];
+      this.toast(`${STAT_INFO[before.k][0]} → ${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}`, '#7ff3ff');
+    } else if (act === 'inherit' && !equipped) {
+      const cur = s.equip[it.slot];
+      if (!cur || cur.enh <= it.enh) return;
+      const cost = inheritCost(it, cur);
+      if (s.gold < cost) return;
+      s.gold -= cost;
+      it.enh = cur.enh;
+      cur.enh = 0;
+      sfx('enhance');
+      commit();
+      this.toast(`${itemTitle(it)} 传承了强化等级`, '#ffd65a');
+    } else if (act === 'lock') {
+      it.locked = !it.locked;
+      sfx('click');
+      commit();
+    } else if (act === 'sell' && !equipped && !it.locked) {
       const gold = sellPrice(it);
       s.bag = s.bag.filter((x) => x !== it);
       s.gold += gold;
