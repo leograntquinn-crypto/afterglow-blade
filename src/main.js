@@ -13,6 +13,7 @@ import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
 import { Training } from './training.js';
+import { ensureContracts, progressContracts, contractText } from './contracts.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
@@ -253,6 +254,7 @@ class Game {
     else if (from === 'n') { p.x = world.w / 2; p.y = DEPTH - 12; }
     else if (from === 's') { p.x = world.w / 2; p.y = 12; }
     this.camX = clamp(p.x - VIEW_W / 2, 0, world.w - VIEW_W);
+    this.roomDmg0 = p.dmgTaken; // 委托「无伤清空房间」：进房间时的已受伤害
 
     // 道具房：状态记在房间上，回来时保持
     if (room.type === 'treasure') {
@@ -293,6 +295,7 @@ class Game {
   roomCleared() {
     this.room.cleared = true;
     this.roomsCleared++;
+    if (this.room.waves.length && this.player.dmgTaken === this.roomDmg0) this.quest('flawless');
     sfx('door');
     if (Object.keys(this.room.doors).length) this.toast('通道已开启', COLORS.blade);
   }
@@ -413,6 +416,7 @@ class Game {
     const b = s.best[key];
     this.newBest = !b || this.result.total > b.total || (this.result.total === b.total && this.frame / 60 < b.time);
     if (this.newBest) s.best[key] = { letter: this.result.letter, total: this.result.total, time: this.frame / 60, maxCombo: this.maxCombo };
+    this.quest('clear', 1, { stage: this.stageIdx, diff: this.diff, letter: this.result.letter, school: this.stats.school });
     // 刚解锁下一个难度时提示一下
     this.unlockedDiff = first && this.diff < DIFFS.length - 1 ? DIFFS[this.diff + 1] : null;
     this.endRun();
@@ -530,6 +534,7 @@ class Game {
     S.rank = r;
     S.peak = Math.max(S.peak, r);
     if (r >= 4) this.tr('styleS');
+    if (r >= 5 && this.run && !this.run.ssDone) { this.run.ssDone = true; this.quest('styleSS'); }
     this.maxAttackers = 2 + (r >= 4 ? 1 : 0) + this.D.attackers; // 打得越好、难度越高，敌人越凶
   }
 
@@ -558,6 +563,7 @@ class Game {
     if (this.frame - (target.counterAt ?? -99) > 40) {
       target.counterAt = this.frame;
       this.markOn('counter', 240);
+      this.quest('counter');
       const hz = target.z + target.h * 0.6;
       this.fx.label(target.x, target.y, hz + target.h * 0.5 + 20, '破 招', '#ffb347', 30);
       this.fx.ring(target.x, target.y, hz, '#ffb347', 8, 9, 16, 5);
@@ -596,6 +602,7 @@ class Game {
     this.slowmo = Math.max(this.slowmo, 24);
     this.impactUntil = this.ticks + 3;
     this.addStyle(300, 'interrupt');
+    this.quest('interrupt');
     this.addUlt(15);
     this.refundCooldowns();
     sfx('break');
@@ -660,6 +667,16 @@ class Game {
     return this.training ? 0 : SPOILS[this.style?.rank ?? 0];
   }
 
+  // 委托进度（训练场不算）。刚完成的委托在战斗中提示一下，回营地领取
+  quest(type, amount = 1, ctx = null) {
+    if (this.training || !this.run || (this.run.ended && type !== 'clear')) return;
+    ensureContracts(this.save);
+    for (const c of progressContracts(this.save, type, amount, ctx)) {
+      this.toast(`委托完成：${contractText(c)}（回营地领取）`, '#ffd65a');
+      sfx('rank');
+    }
+  }
+
   // 训练场挑战：机制触发时打勾（不在训练场时什么也不做）
   tr(id) {
     this.training?.event(id);
@@ -667,6 +684,7 @@ class Game {
 
   perfectDodge() {
     this.tr('perfect');
+    this.quest('perfect');
     this.markOn('dodge', 180);
     if (this.witch <= 0) this.refundCooldowns();
     const p = this.player;
@@ -695,6 +713,7 @@ class Game {
 
   parry(e) {
     this.tr('parry');
+    this.quest('parry');
     this.refundCooldowns();
     const p = this.player, dir = Math.sign(e.x - p.x) || p.facing;
     this.impactUntil = this.ticks + 2;
@@ -731,6 +750,7 @@ class Game {
   // ---------------- 撞墙 / 坠星冲击 / 弹球 ----------------
   onWallBounce(e) {
     this.tr('wall');
+    this.quest('wall');
     if (this.stats.marks.has('wall')) e.wallMarkUntil = this.frame + 180; // 震壁
     const wx = e.x < world.w / 2 ? 10 : world.w - 10;
     this.debris(8);
@@ -976,6 +996,7 @@ class Game {
       this.addUlt(h.skill ? 0.45 : h.ult ? 0 : 0.8);
       this.combo++;
       this.streak++;
+      if (target.z > 20) this.quest('airHit');
       if (r.otg && this.stats.marks.has('otg')) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.02); // 追魂
       this.comboDmg += dmg;
       this.comboT = 110;
@@ -1023,8 +1044,10 @@ class Game {
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${xp} EXP`, '#c8b6ff', 16);
     this.dropLoot(e);
     onAffixDeath(e, this);
+    if (e.aff && !e.dummy) this.quest('affixKill');
     if (e.isBoss) {
       this.bossSpoils = this.spoils;
+      if (this.player.dmgTaken === this.roomDmg0) this.quest('flawless');
       // 首领倒下：长慢动作、所有小怪一起倒下、准备结算
       this.slowmo = 60;
       this.hitstop = Math.max(this.hitstop, 16);

@@ -178,6 +178,28 @@
   .stage.locked { opacity: .5; }
   .stage.training { border-style: dashed; background: linear-gradient(160deg, rgba(120, 170, 220, .08), transparent 60%), var(--panel); }
   .stage.training h3 { color: var(--blade); }
+  .stat-chip.stone b { color: #c99bff; }
+  /* 委托 */
+  .contracts { margin: 0 0 14px; }
+  .contracts-head { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; margin-bottom: 8px; }
+  .contracts-head h3 { font: 24px var(--font-title); margin: 0; }
+  .contracts-head small { color: var(--mute); font-size: 12px; }
+  .clist { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(240px, 100%), 1fr)); gap: 10px; }
+  .contract { position: relative; display: flex; flex-direction: column; gap: 6px; padding: 12px 14px; background: var(--panel); border: 1px solid var(--line); border-radius: 8px; }
+  .contract.done { border-color: #ffd65a; box-shadow: 0 0 0 1px rgba(255,214,90,.3) inset; }
+  .contract.claimed { opacity: .5; }
+  .contract p { margin: 0; font-size: 14px; line-height: 1.5; }
+  .contract .bar { height: 5px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; }
+  .contract .bar i { display: block; height: 100%; background: linear-gradient(90deg, #c7782a, #ffd65a); }
+  .contract .cfoot { display: flex; align-items: center; justify-content: space-between; gap: 8px; font-size: 12px; color: var(--mute); }
+  .contract .cfoot b { color: #c99bff; font-weight: 600; }
+  .contract .btn { padding: 4px 10px; font-size: 12px; }
+  /* 铭刻 */
+  .sheet.wide { width: min(640px, 100%); }
+  .engrave-list { display: grid; grid-template-columns: repeat(auto-fill, minmax(min(250px, 100%), 1fr)); gap: 6px; margin: 10px 0; }
+  .engrave-list .btn { text-align: left; display: flex; flex-direction: column; gap: 2px; padding: 8px 12px; }
+  .engrave-list .btn b { color: #c99bff; font-weight: 600; }
+  .engrave-list .btn small { color: var(--mute); font-size: 12px; }
   .mark { margin: 8px 0 0; padding: 8px 10px; font-size: 13px; line-height: 1.6; color: #e6d0ff; background: rgba(180,107,255,.1); border-left: 2px solid #b46bff; }
   .mark small { display: block; color: var(--mute); font-size: 12px; }
   .marks { margin: 10px 0 4px; }
@@ -373,6 +395,7 @@
       </div>
       <span class="stat-chip">战力<b id="h-power">0</b></span>
       <span class="stat-chip gold">金币<b id="h-gold">0</b></span>
+      <span class="stat-chip stone" title="完成委托获得，用来给稀有、传说装备铭刻指定的刻印">刻印石<b id="h-stones">0</b></span>
       <span class="sync" id="h-sync"></span>
       <button class="btn ghost mini-text" id="h-music" data-act="music" aria-label="开关背景音乐">音乐：开</button>
     </header>

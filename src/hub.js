@@ -9,6 +9,7 @@ import {
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
 import { CHALLENGES } from './training.js';
+import { ensureContracts, isDone, contractText, contractReward, claimContract, rerollContract } from './contracts.js';
 import { TYPES } from './enemy.js';
 import { SKILLS } from './moves.js';
 import { BOSSES } from './boss.js';
@@ -59,6 +60,8 @@ export class Hub {
     this.root.querySelector('#h-xptext').textContent = s.lv >= MAX_LV ? '满级' : `${s.xp} / ${need}`;
     this.root.querySelector('#h-power').textContent = power(S).toLocaleString();
     this.root.querySelector('#h-gold').textContent = s.gold.toLocaleString();
+    ensureContracts(s);
+    this.root.querySelector('#h-stones').textContent = s.stones;
     this.root.querySelector('#h-sync').textContent = this.g.store.status === 'cloud' ? '云存档已同步' : '本地存档';
     this.root.querySelector('#h-music').textContent = music.muted ? '音乐：关' : '音乐：开';
     this.root.querySelectorAll('[data-tab]').forEach((b) => {
@@ -85,7 +88,7 @@ export class Hub {
         <p class="meta">第一次完成每条挑战 +40 金币，全部完成再 +400</p>
         <div class="stage-foot"><span class="first">${tDone >= CHALLENGES.length ? '已出师' : '推荐新手先来'}</span><button class="btn" data-act="train">进入训练</button></div>
       </article>`;
-    return `<div class="stages">${train}${STAGES.map((st, i) => {
+    return `${this.render_contracts()}<div class="stages">${train}${STAGES.map((st, i) => {
       const open = isUnlocked(s, i);
       const best = s.best[st.id];
       const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
@@ -110,6 +113,26 @@ export class Hub {
         }).join('')}</div>` : ''}
       </article>`;
     }).join('')}</div>`;
+  }
+
+  // 委托：三张目标卡。进度在出征中累计，完成后在这里领取
+  render_contracts() {
+    const s = this.save, B = ensureContracts(s);
+    const cards = B.list.map((c) => {
+      const done = isDone(c), r = contractReward(c, s.lv);
+      const btn = c.claimed ? '<span>已领取 · 明天补上新委托</span>'
+        : done ? `<button class="btn primary" data-act="claim" data-id="${c.id}">领取</button>`
+        : `<button class="btn ghost" data-act="reroll" data-id="${c.id}" ${B.rerolls > 0 ? '' : 'disabled'} title="每天可以免费换一次">换一个</button>`;
+      return `<article class="contract ${c.claimed ? 'claimed' : done ? 'done' : ''}">
+        <p>${contractText(c)}</p>
+        <div class="bar"><i style="width:${(c.prog / c.n) * 100}%"></i></div>
+        <div class="cfoot"><span>${c.prog} / ${c.n} · 刻印石 <b>×${r.stones}</b> · 金币 ${r.gold}</span>${btn}</div>
+      </article>`;
+    }).join('');
+    return `<section class="contracts">
+      <div class="contracts-head"><h3>委托</h3><small>在出征中完成（训练场不算）· 领过的格子明天补上，没完成的不会过期 · 今天还能免费换 ${B.rerolls} 次</small></div>
+      <div class="clist">${cards}</div>
+    </section>`;
   }
 
   render_hero() {
@@ -199,6 +222,20 @@ export class Hub {
     if (!f) return this.closeModal();
     const { it, equipped } = f;
     const s = this.save, R = RARITY[it.rar];
+    // 铭刻：八选一，覆盖原来的刻印
+    if (this.engrave) {
+      const list = Object.entries(MARKS).map(([k, M]) => `<button class="btn" data-act="engraveMark" data-k="${k}" ${it.mark === k ? 'disabled' : ''}>
+          <b>${M.name}${it.mark === k ? '（当前）' : ''}</b><span>${M.desc}</span><small>适合：${M.style}</small></button>`).join('');
+      this.modal.innerHTML = `<div class="sheet wide" role="dialog" aria-label="铭刻">
+        <div class="card-head"><span class="glyph big r${it.rar}">${itemGlyph(it)}</span>
+          <div><h3 style="color:${R.color}">铭刻 · ${itemTitle(it)}</h3><p class="isub">消耗 1 颗刻印石，指定一条刻印${it.mark ? `（覆盖原来的「${MARKS[it.mark].name}」）` : ''} · 剩余 ${s.stones} 颗</p></div>
+          <button class="close" data-act="close" aria-label="关闭">×</button></div>
+        <div class="engrave-list">${list}</div>
+        <div class="actions"><button class="btn ghost" data-act="engraveCancel">返回</button></div>
+      </div>`;
+      this.modal.hidden = false;
+      return;
+    }
     const cur = equipped ? null : s.equip[it.slot];
     const mine = itemStats(it), other = cur ? itemStats(cur) : {};
     const keys = Object.keys(it.base);
@@ -228,6 +265,7 @@ export class Hub {
       <div class="actions">
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : `<button class="btn primary" data-act="equip">穿戴</button>`}
         ${enhBtn}
+        ${it.rar >= 2 ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
         ${equipped ? '' : `<button class="btn ghost" data-act="sell">出售 · ${sellPrice(it)} 金币</button>`}
       </div>
       <p class="hint">强化失败只扣金币，装备不会损坏。每级强化让基础属性 +8%，+7 起武器会发出脉动的光。</p>
@@ -237,6 +275,7 @@ export class Hub {
 
   closeModal() {
     this.sel = null;
+    this.engrave = false;
     this.modal.hidden = true;
     this.modal.innerHTML = '';
   }
@@ -256,6 +295,24 @@ export class Hub {
     const commit = () => { this.g.refreshStats(); this.g.store.save(); this.render(); };
 
     switch (act) {
+      case 'claim': {
+        const r = claimContract(s, el.dataset.id);
+        if (!r) return;
+        sfx('chest');
+        commit();
+        this.toast(`获得 刻印石 ×${r.stones}、金币 ${r.gold}`, '#c99bff');
+        return;
+      }
+      case 'reroll':
+        if (rerollContract(s, el.dataset.id)) { sfx('click'); commit(); }
+        return;
+      case 'engrave':
+        this.engrave = true;
+        sfx('click');
+        return this.renderModal();
+      case 'engraveCancel':
+        this.engrave = false;
+        return this.renderModal();
       case 'go':
         sfx('click');
         this.g.startStage(+el.dataset.i, +(el.dataset.d || 0));
@@ -266,6 +323,7 @@ export class Hub {
         return;
       case 'sel':
         this.sel = el.dataset.id;
+        this.engrave = false;
         sfx('click');
         return this.renderModal();
       case 'close':
@@ -324,6 +382,15 @@ export class Hub {
       s.bag.push(it);
       this.closeModal();
       commit();
+    } else if (act === 'engraveMark' && it.rar >= 2) {
+      const k = el.dataset.k;
+      if (!MARKS[k] || s.stones < 1 || it.mark === k) return;
+      s.stones--;
+      it.mark = k;
+      this.engrave = false;
+      sfx('enhance');
+      commit();
+      this.toast(`${itemTitle(it)} 铭刻了「${MARKS[k].name}」`, '#c99bff');
     } else if (act === 'sell' && !equipped) {
       const gold = sellPrice(it);
       s.bag = s.bag.filter((x) => x !== it);
