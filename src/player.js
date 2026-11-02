@@ -15,6 +15,7 @@ import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { heroSprite, heroFrame, bladeOf } from './sprite.js';
 import { mix, scaleColor } from './fx_tex.js';
+import { SLASH_FX } from './fx_data.js';
 
 // 刀光的颜色渐变：刚扫过近白 → 刀光色 → 冷却变暗（每种刀光色只算一次）
 const trailRamps = new Map();
@@ -155,6 +156,12 @@ export class Player {
     const m = this.move;
     if (this.state === 'attack' && m) {
       const at = m.swingAt ?? m.hits[0]?.at ?? 6, dur = m.swingDur ?? m.hits[0]?.dur ?? 4;
+      // 出刀的那一帧：在程序刀光带上叠一道手绘刀光（光带跟着刀走，手绘刀光给笔刷质感）
+      const sf = SLASH_FX[m.id];
+      if (sf && this.mf === at && game.ticks - (this.slashFxAt ?? -9) > 2) {
+        this.slashFxAt = game.ticks;
+        game.fx.flip(sf[0], this.x + this.facing * 8, this.y, this.z + 58, { facing: this.facing, flipY: sf[1], scale: sf[2], color: this.glow, alpha: 0.9 });
+      }
       on = m.spin || m.flurry || m.id === 'rush' || m.plunge || (this.mf >= at - 1 && this.mf <= at + dur + 2);
     } else if (this.state === 'ult') on = true;
     if (!on) { if (this.trail.length) this.trail[this.trail.length - 1].end = true; return; }

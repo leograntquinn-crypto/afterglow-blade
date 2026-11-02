@@ -21,7 +21,7 @@ import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } f
 import { prepareBossSprites } from './enemy_sprites.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
-import { HIT_TIERS } from './fx_data.js';
+import { HIT_TIERS, HIT_FB } from './fx_data.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
@@ -835,6 +835,7 @@ class Game {
     this.fx.ring(p.x, p.y, p.z + 45, '#ffffff', 20, 14, 22, 5);
     this.fx.ring(p.x, p.y, p.z + 45, p.glow, 30, 18, 28, 3);
     this.fx.shock(p.x, p.y, p.z + 45, 260, 0.02, 24);
+    this.fx.flip('burst_energy', p.x, p.y, p.z + 45, { color: p.glow, scale: 0.5, alpha: 0.8 });
     this.fx.aberrate(0.01, p.x, p.y, p.z + 45);
     this.fx.flash(p.glow, 0.25);
     this.fx.label(p.x, p.y, p.z + 130, '极 限 闪 避', '#ffffff', 30);
@@ -867,6 +868,7 @@ class Game {
     this.fx.spark(mx, p.y, mz, -1, 14, '#fff1c2');
     this.fx.ring(mx, p.y, mz, '#ffffff', 8, 10, 14, 5);
     this.fx.shock(mx, p.y, mz, 160, 0.02, 16);
+    this.fx.flip('hit_break', mx, p.y, mz, { color: '#ffffff', scale: 0.8 });
     this.fx.aberrate(0.008, mx, p.y, mz);
     this.fx.flash('#ffffff', 0.2);
     this.fx.shake(8, 14);
@@ -915,6 +917,7 @@ class Game {
     this.fx.ring(p.x, p.y, 4, '#ffffff', 10, 9, 12, 3);
     this.fx.dust(p.x, p.y, 20, 2.6);
     this.fx.dustburst(p.x, p.y, 0.9);
+    this.fx.flip('impact_ground', p.x, p.y, 0, { color: p.glow, scale: 0.8 });
     this.fx.crack(p.x, p.y);
     this.fx.shake(10, 18);
     this.hitLights.push({ x: p.x, y: p.y, z: 20, r: 300, life: 8 });
@@ -1004,6 +1007,7 @@ class Game {
       this.cine.hold(0.3, 12, p);
       this.fx.gring(p.x, p.y, '#ffffff', 40, 520, 34, 12);
       this.fx.shock(p.x, p.y, 70, 520, 0.06, 34);
+      this.fx.flip('afterglow_burst', p.x, p.y, 20, { color: p.glow, scale: 1.1, alpha: 0.75 });
       this.fx.aberrate(0.016, p.x, p.y, 70);
       this.fx.gring(p.x, p.y, p.glow, 30, 420, 44, 8);
       this.fx.pillar(p.x, p.y, p.glow, 120, 560, 34);
@@ -1121,6 +1125,9 @@ class Game {
     const extra = this.hitFxN++ === 0;
     this.fx.spark(hx, target.y, hz, dir, extra ? HT.spark : Math.ceil(HT.spark / 2), fromPlayer ? '#fff1c2' : '#ff8a7a');
     this.fx.ring(hx, target.y, hz, fromPlayer ? this.player.glow : COLORS.blood, 6, HT.ringGrow, 10, HT.ringW);
+    // 手绘命中爆点：同一帧的第一下全亮，其余淡一些
+    const hf = HIT_FB[tier];
+    this.fx.flip(hf[0], hx, target.y, hz, { color: fromPlayer ? HT.accent ?? this.player.glow : COLORS.blood, scale: hf[1], facing: dir, alpha: extra ? 1 : 0.55, rot: (Math.random() - 0.5) * 0.6 });
     // 材质碎片：骷髅掉骨渣、屠夫冒金属火星、弓手掉布屑
     const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
     this.fx.chips(hx, target.y, hz, dir, HT.chips, chip);
@@ -1234,6 +1241,7 @@ class Game {
       this.fx.flare(e.x, e.y, e.z + e.h * 0.5, 2.2, e.B.glow);
       this.fx.gring(e.x, e.y, '#ffffff', 30, 380, 30, 10);
       this.fx.shock(e.x, e.y, e.z + e.h * 0.5, 400, 0.055, 30);
+      this.fx.flip('afterglow_burst', e.x, e.y, 10, { color: e.B.glow, scale: 0.9 });
       this.fx.aberrate(0.012, e.x, e.y, e.z + e.h * 0.5);
       this.fx.gring(e.x, e.y, e.B.glow, 20, 300, 40, 7);
       this.fx.pillar(e.x, e.y, e.B.glow, 90, 520, 40);

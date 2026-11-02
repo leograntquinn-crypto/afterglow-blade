@@ -112,6 +112,7 @@ const ATTACKS = {
           d.set = new Set();
           b.vx = b.facing * 6;
           g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.62, b.facing, 70 * sz, up ? 1.2 : -2.3, up ? -1.8 : 1.2, b.B.glow, 14);
+          if (b.key === 'boneLord') g.fx.flip('bone_rend', b.x + b.facing * 14, b.y, b.h * 0.6, { facing: b.facing, flipY: up ? -1 : 1, color: b.B.glow, scale: sz / 1.5 });
           sfx('swing');
         }
         if (t >= s && t < s + 6) {
@@ -131,7 +132,7 @@ const ATTACKS = {
       if (t === 0) {
         b.facing = sign(g.player.x - b.x);
         g.hazards.push(new Hazard({ x: clamp(b.x + b.facing * 110 * b.B.scale, 60, world.w - 60), y: b.y, rx: 150, ry: 56, delay: D, owner: b, ownerState: 'attack',
-          hit: { dmg: 26, kb: 9, launch: 10, stop: 9, shake: 12, heavy: true }, color: b.B.glow }));
+          hit: { dmg: 26, kb: 9, launch: 10, stop: 9, shake: 12, heavy: true }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null }));
         sfx('warn');
       }
       b.tele = t < D;
@@ -154,7 +155,7 @@ const ATTACKS = {
         for (const s of [-1, 1]) {
           const x = b.x + s * i * 95;
           if (x < 20 || x > world.w - 20) continue;
-          g.hazards.push(new Hazard({ x, y: b.y, rx: 58, ry: 62, delay: 22, hit: { dmg: 18, kb: 6, launch: 7, stop: 5, shake: 6 }, color: b.B.glow }));
+          g.hazards.push(new Hazard({ x, y: b.y, rx: 58, ry: 62, delay: 22, hit: { dmg: 18, kb: 6, launch: 7, stop: 5, shake: 6 }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null }));
         }
       }
       return t >= D + 90;
@@ -245,7 +246,7 @@ const ATTACKS = {
     tick(b, g, t) {
       b.pa = -1.4;
       b.pc = 0.2;
-      if (t === 0) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
+      if (t === 0 && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: 30, color: b.B.glow, scale: 0.65 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
       if (t === 24) {
         for (const s of [-1, 1]) g.spawnMinion(b.B.minion, clamp(b.x + s * 170, 60, world.w - 60), clamp(b.y + rand(-40, 40), 10, DEPTH - 10));
         g.fx.flash(b.B.glow, 0.15);
@@ -297,7 +298,7 @@ const ATTACKS = {
         g.hazards.push(new Hazard({ x: b.x, y: b.y, rx: 900, ry: 260, delay: d.T, owner: b, ownerState: 'attack', color: b.B.glow,
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
-        g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
+        if (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 })) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
       }
@@ -380,6 +381,10 @@ export class Boss extends Enemy {
       game.fx.converge(this.x, this.y, this.h * 0.6, 8, '#ff4d4d');
     }
     this.wasTele = this.tele;
+    // 祭坛守护者：香炉里的魂火（循环序列帧，跟着首领走）
+    if (this.key === 'warden' && this.alive && this.state !== 'spawn' && !(this.soulFx?.life > 0 && this.soulFx.follow === this)) {
+      this.soulFx = game.fx.flip('soul_fire', this.x, this.y, 0, { follow: this, ox: this.h * 0.03, oz: this.h * 0.31, color: this.B.glow, life: 240, scale: this.h / 200 }) || null;
+    }
     // 首领身上不断往上飘的气：阶段越高越密
     if (this.alive && this.state !== 'spawn' && game.ticks % (this.phase >= 1 ? 3 : 5) === 0) {
       game.fx.emit('aura', this.x + rand(-this.w * 0.5, this.w * 0.5), this.y + rand(-6, 6), rand(0, this.h * 0.5), { color: this.B.glow, n: 1 });
