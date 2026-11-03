@@ -18,8 +18,8 @@ import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.
 import { Training } from './training.js';
 import { settings, setSetting, onSettings, renderSettings } from './settings.js';
 import { ensureContracts, progressContracts, contractText } from './contracts.js';
-import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle } from './trial.js';
-import { prepareBossSprites } from './enemy_sprites.js';
+import { trialStage, trialDiff, trialWaves, isBossFloor, floorReward, settle, trialTypes } from './trial.js';
+import { prepareBossSprites, prepareEnemySprites, stageEnemyTypes } from './enemy_sprites.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { HIT_TIERS, HIT_FB } from './fx_data.js';
@@ -185,6 +185,7 @@ class Game {
 
   openHub() {
     prepareBossSprites(null); // 回营地释放首领图集
+    prepareEnemySprites([]); // 和按关卡载入的敌人图集
     this.setScene('hub');
     this.resetWorld();
     this.hub.show();
@@ -256,6 +257,7 @@ class Game {
     // 高难度：关卡等级提高（敌人等级、掉落装备等级跟着涨），名字后面标上难度
     this.stage = d ? { ...st, lv: st.lv + this.D.lvAdd, name: `${st.name}·${this.D.name}` } : st;
     prepareBossSprites(this.stage.boss); // 只载入这一关首领的专属图集，别的首领释放
+    prepareEnemySprites(stageEnemyTypes(st)); // 烬翼从第 2 关起、灰烛司祭从第 3 关起才载入
     this.refreshStats();
     this.resetWorld();
     this.maxAttackers = 2 + this.D.attackers;
@@ -304,6 +306,7 @@ class Game {
     this.D = trialDiff(f);
     // 首领层和它前一层才载入首领图集（前一层先载，进首领层时已经准备好）
     prepareBossSprites(isBossFloor(f) ? this.stage.boss : isBossFloor(f + 1) ? trialStage(f + 1).boss : null);
+    prepareEnemySprites(trialTypes(f + 1)); // 下一层要出现的新敌人提前一层载入
     this.maxAttackers = 2 + this.D.attackers;
     const boss = isBossFloor(f);
     const room = { x: 0, y: 0, type: boss ? 'boss' : 'fight', doors: {}, w: boss ? 1400 : 1200, waves: boss ? [] : trialWaves(f), cleared: false, visited: true };

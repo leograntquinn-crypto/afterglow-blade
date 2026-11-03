@@ -448,11 +448,13 @@ export class Enemy {
     const flash = this.game.ticks < (this.flashUntil ?? 0);
     const SP = ENEMY_SPRITES[this.look.rig];
     if (AI[this.T.ai] && !SP?.sheet.ready) {
-      // 灰烛司祭 / 烬翼：专属素材到之前用程序画的占位
+      // 灰烛司祭 / 烬翼：素材还没载入完（或载入失败）时用程序画的占位
       AI[this.T.ai].draw(ctx, this, t, { flash, alpha });
     } else if (SP?.sheet.ready) {
-      // 逐帧精灵（腐骨兵、铁甲屠夫、影弓手）。轮廓光和提亮让它们在暗背景里也看得清
-      SP.sheet.draw(ctx, enemyFrame(this, t), 0, 0, this.facing, { scale: this.look.h / SP.standH, flash, alpha, rim: SP.rim, rimAlpha: SP.rimAlpha, lift: SP.lift });
+      // 逐帧精灵（腐骨兵、铁甲屠夫、影弓手、灰烛司祭、烬翼）。轮廓光和提亮让它们在暗背景里也看得清
+      const o = { scale: this.look.h / SP.standH, flash, alpha, rim: SP.rim, rimAlpha: SP.rimAlpha, lift: SP.lift };
+      SP.sheet.draw(ctx, enemyFrame(this, t), 0, 0, this.facing, o);
+      SP.after?.(ctx, this, t, o); // 素材是干净帧：提灯、余烬这些光由引擎叠上去
     } else {
       drawFighter(ctx, 0, 0, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
     }

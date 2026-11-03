@@ -23,10 +23,12 @@ export function trialDiff(f) {
 
 export const isBossFloor = (f) => f % 5 === 0;
 
+// 第 f 层会出现的敌人：第 4 层起加入烬翼，第 7 层起加入灰烛司祭（素材也按这个载入）
+export const trialTypes = (f) => ['grunt', 'grunt', 'archer', 'brute', ...(f >= 4 ? ['wing'] : []), ...(f >= 7 ? ['priest'] : [])];
+
 // 普通层的波次：人数和精英数随层数增加，第 6 层起两波
 export function trialWaves(f) {
-  // 第 4 层起加入烬翼，第 7 层起加入灰烛司祭
-  const pool = ['grunt', 'grunt', 'archer', 'brute', ...(f >= 4 ? ['wing'] : []), ...(f >= 7 ? ['priest'] : [])];
+  const pool = trialTypes(f);
   const wave = () => {
     const n = Math.min(6, 3 + Math.floor(f / 3)), elites = Math.min(2, Math.floor(f / 4));
     return Array.from({ length: n }, (_, i) => pool[Math.floor(Math.random() * pool.length)] + (i < elites ? '*' : ''));

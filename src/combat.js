@@ -2,6 +2,7 @@
 import { world, toScreen, COLORS } from './config.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
+import { BOSS_SPRITES } from './enemy_sprites.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -99,49 +100,97 @@ export class Projectile {
         }
       }
     } else if (this.kind === 'feather') {
-      // 羽刃：旋转的长条锋利黑羽，边缘带首领的颜色
-      const T = tex(), col = this.color || '#ff4dd2';
+      // 羽刃：旋转的长条锋利黑羽，边缘带首领的颜色。夜鸦的素材（feather_blade）载入了就用素材，否则程序画
+      const T = tex(), col = this.color || '#ff4dd2', BS = BOSS_SPRITES[this.owner?.key]?.sheet, img = BS?.ready && BS.feather;
       ctx.rotate(this.age * 0.5);
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.5;
-      ctx.drawImage(tinted(T.glow, col), -26, -12, 52, 24);
+      ctx.drawImage(tinted(T.glow, col), -30, -13, 60, 26);
       ctx.globalCompositeOperation = 'source-over';
       ctx.globalAlpha = 1;
-      ctx.fillStyle = '#16101c';
-      ctx.beginPath();
-      ctx.moveTo(-22, 0);
-      ctx.quadraticCurveTo(0, -7, 24, 0);
-      ctx.quadraticCurveTo(0, 5, -22, 0);
-      ctx.fill();
-      ctx.strokeStyle = col;
-      ctx.lineWidth = 1.2;
-      ctx.stroke();
+      if (img) {
+        // 素材 256×256，羽刃横放、朝右、居中（长约 215px）→ 游戏里约 54px。先画两道拖在后面的残影，再画一圈首领颜色的描边
+        const W = 64;
+        for (const [da, a] of [[-0.5, 0.22], [-1, 0.1]]) {
+          ctx.save();
+          ctx.rotate(da);
+          ctx.globalAlpha = a;
+          ctx.drawImage(tinted(img, col), -W / 2, -W / 2, W, W);
+          ctx.restore();
+        }
+        ctx.globalAlpha = 0.85;
+        for (const [ox, oy] of [[0, -1.5], [0, 1.5]]) ctx.drawImage(tinted(img, col), -W / 2 + ox, -W / 2 + oy, W, W);
+        ctx.globalAlpha = 1;
+        ctx.drawImage(img, -W / 2, -W / 2, W, W);
+      } else {
+        ctx.fillStyle = '#16101c';
+        ctx.beginPath();
+        ctx.moveTo(-22, 0);
+        ctx.quadraticCurveTo(0, -7, 24, 0);
+        ctx.quadraticCurveTo(0, 5, -22, 0);
+        ctx.fill();
+        ctx.strokeStyle = col;
+        ctx.lineWidth = 1.2;
+        ctx.stroke();
+      }
     } else if (this.kind === 'hook') {
-      // 锁链钩：从首领手里一节节连到钩头
-      const o = this.owner;
+      // 锁链钩：从首领手里一节节连到钩头。铁颚的素材（chain_hook、chain_link）载入了就用素材，否则程序画
+      const o = this.owner, B = BOSS_SPRITES[o?.key], BS = B?.sheet, art = BS?.ready && BS.hook && BS.link;
       if (o) {
-        const [ox, oy] = toScreen(o.x + o.facing * 30, o.y, 60, camX);
-        const dx = (ox - sx) * this.facing, dy = oy - sy, n = Math.max(1, Math.floor(Math.hypot(dx, dy) / 9));
-        ctx.strokeStyle = '#5a504a';
-        ctx.lineWidth = 2.2;
-        for (let i = 0; i < n; i++) {
-          const u = i / n;
-          ctx.beginPath();
-          ctx.ellipse(dx * u, dy * u, 4, 2.6, Math.atan2(dy, dx), 0, Math.PI * 2);
-          ctx.stroke();
+        // 锁链的起点：素材里甩出锁链那几帧（chain_throw 4–7），锁链从画面右边伸出去的位置
+        const k = art ? o.look.h / B.standH : 0;
+        const [ox, oy] = art ? toScreen(o.x + o.facing * B.hand[0] * k, o.y, o.z + B.hand[1] * k, camX) : toScreen(o.x + o.facing * 30, o.y, 60, camX);
+        const tail = art ? -34 : 0; // 钩子尾端（链环连着的那头）在钩头后面
+        const dx = (ox - sx) * this.facing - tail, dy = oy - sy, L = Math.hypot(dx, dy), ang = Math.atan2(dy, dx);
+        if (art && dx < 0) {
+          // 链环交替「正面 / 侧面」，看起来是一节节扣在一起的锁链
+          const step = 10, n = Math.floor(L / step);
+          for (let i = 0; i < n; i++) {
+            const u = (i + 0.5) / n;
+            ctx.save();
+            ctx.translate(tail + dx * u, dy * u);
+            ctx.rotate(ang);
+            ctx.scale(1, i % 2 ? 0.45 : 1);
+            ctx.drawImage(BS.link, -8, -8, 16, 16);
+            ctx.restore();
+          }
+        } else if (!art) {
+          const n = Math.max(1, Math.floor(L / 9));
+          ctx.strokeStyle = '#5a504a';
+          ctx.lineWidth = 2.2;
+          for (let i = 0; i < n; i++) {
+            const u = i / n;
+            ctx.beginPath();
+            ctx.ellipse(dx * u, dy * u, 4, 2.6, ang, 0, Math.PI * 2);
+            ctx.stroke();
+          }
         }
       }
-      ctx.strokeStyle = '#8a7a6a';
-      ctx.lineWidth = 4;
-      ctx.beginPath();
-      ctx.arc(4, 4, 9, -Math.PI * 0.9, Math.PI * 0.6);
-      ctx.stroke();
-      ctx.fillStyle = '#8a7a6a';
-      ctx.beginPath();
-      ctx.moveTo(-6, 10);
-      ctx.lineTo(-2, 16);
-      ctx.lineTo(2, 10);
-      ctx.fill();
+      if (art) {
+        // 钩子素材是竖着挂的（链在上、钩尖朝右）：转成横着飞，链环那头朝后
+        ctx.save();
+        ctx.rotate(-Math.PI / 2);
+        ctx.scale(-1, 1);
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.35;
+        ctx.drawImage(tinted(tex().glow, this.color || '#ff7a2e'), -20, -26, 40, 52);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        ctx.drawImage(BS.hook, -32, -40, 64, 64);
+        ctx.restore();
+      } else {
+        ctx.strokeStyle = '#8a7a6a';
+        ctx.lineWidth = 4;
+        ctx.beginPath();
+        ctx.arc(4, 4, 9, -Math.PI * 0.9, Math.PI * 0.6);
+        ctx.stroke();
+        ctx.fillStyle = '#8a7a6a';
+        ctx.beginPath();
+        ctx.moveTo(-6, 10);
+        ctx.lineTo(-2, 16);
+        ctx.lineTo(2, 10);
+        ctx.fill();
+      }
     } else if (this.kind === 'soul') {
       // 魂火：一团冷色的火球，带拖尾
       const T = tex(), col = this.color || '#6fe38a';
