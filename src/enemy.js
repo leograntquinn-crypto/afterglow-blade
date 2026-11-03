@@ -20,13 +20,13 @@ export const TYPES = {
       hit: { box: { x: 40, w: 70, d: 24, z0: 0, z1: 90 }, dmg: 11, kb: 6, stun: 20, stop: 5, shake: 5 } },
   },
   archer: {
-    name: '影弓手', lvOff: 1, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true, xp: 14, drop: 0.25,
+    name: '影弓手', lvOff: 1, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true, xp: 14, drop: 0.25, brain: 'archer',
     look: { rig: 'archer', h: 84, cloak: '#2a2233', cloth: '#3a3044', wrap: '#4a4054', leather: '#5a4232', boots: '#2a2028', eye: '#c48bff', weapon: { type: 'bow', color: '#8a6a4a' } },
     atk: { range: 330, windup: 38, recover: 30, cd: [110, 170],
       hit: { box: { w: 30, d: 18, z0: -20, z1: 20 }, dmg: 8, kb: 3, stun: 16, stop: 3, shake: 3 } },
   },
   brute: {
-    name: '铁甲屠夫', lvOff: 3, hp: 520, w: 58, h: 112, speed: 1.05, weight: 1.6, armor: 90, xp: 45, drop: 0.7,
+    name: '铁甲屠夫', lvOff: 3, hp: 520, w: 58, h: 112, speed: 1.05, weight: 1.6, armor: 90, xp: 45, drop: 0.7, brain: 'brute',
     look: { rig: 'brute', h: 112, bulk: 1.5, twoHand: true, skin: '#8a6f5e', pants: '#3a2a26', metal: '#6f6a66', leather: '#4a2b22', eye: '#ffb347', weapon: { type: 'axe', len: 58, color: '#a9a29a' } },
     atk: { range: 95, windup: 54, recover: 46, cd: [110, 160], slam: true,
       hit: { dmg: 22, kb: 8, launch: 9, stop: 8, shake: 10, heavy: true } },
@@ -79,6 +79,8 @@ export class Enemy {
     this.atk = T.atk;    // 当前这次出招用的是哪一种攻击
     this.evadeCd = 0;
     this.punishCd = 0; // 两次「惩罚打空」之间的冷却（ai.js）
+    this.guardT = this.guardCd = this.shoveCd = 0; // 屠夫：举斧格挡剩余帧、格挡冷却、甩开冷却（ai.js）
+    this.hitLog = []; // 最近被主角打中的帧（屠夫判断「贪刀」用）
     this.flying = 0;     // 被打飞后的若干帧内，撞到同伴会把同伴也撞倒
     this.pinSet = new Set();
     this.wallReady = false;
@@ -114,6 +116,9 @@ export class Enemy {
     if (this.attackCd > 0) this.attackCd--;
     if (this.evadeCd > 0) this.evadeCd--;
     if (this.punishCd > 0) this.punishCd--;
+    if (this.guardT > 0) this.guardT--;
+    if (this.guardCd > 0) this.guardCd--;
+    if (this.shoveCd > 0) this.shoveCd--;
     if (this.flying > 0) this.flying--;
     if (this.squash > 0) this.squash--;
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
@@ -130,7 +135,8 @@ export class Enemy {
       case 'windup':
         if (ai?.windup) ai.windup(this, game);
         else { this.vx *= 0.7; this.vy = 0; }
-        if (this.st >= this.windup) this.doAttack(game);
+        if (this.T.brain && !this.dummy && !this.isBoss && game.ai) BRAINS[this.T.brain]?.windup?.(this, game); // 屠夫：看你闪避晚半拍砸
+        if (this.st >= this.windup + Math.max(0, this.holdT || 0)) this.doAttack(game);
         break;
       case 'hop':
         if (this.z <= 0 && this.st > 4) this.setState('idle');
@@ -218,13 +224,16 @@ export class Enemy {
 
   startWindup(game, atk = this.T.atk) {
     this.atk = atk;
+    this.aim = null; // 弓手的瞄准线（ai.js 出招时再设）
+    this.holdT = 0; // 屠夫延迟重砸多举的帧数
     this.setState('windup');
     game.attackers.add(this);
     game.ai?.onAttackStart(this);
     this.vx = this.vy = 0;
     this.hitSet.clear();
     if (atk.slam) {
-      game.hazards.push(new Hazard({ x: this.x + this.facing * 95, y: this.y, rx: 115, ry: 44, delay: this.windup, hit: atk.hit, owner: this }));
+      // slamX / slamR：红圈的位置和大小（屠夫的「甩开」是绕在自己身边的一圈）
+      game.hazards.push(new Hazard({ x: this.x + this.facing * (atk.slamX ?? 95), y: this.y, rx: atk.slamR?.[0] ?? 115, ry: atk.slamR?.[1] ?? 44, delay: this.windup, hit: atk.hit, owner: this }));
       sfx('warn');
     }
   }
@@ -235,7 +244,8 @@ export class Enemy {
     if (AI[this.T.ai]) return AI[this.T.ai].doAttack(this, game);
     if (A.speed) { this.vx = this.facing * A.speed; sfx('dash'); return; }
     if (this.T.ranged) {
-      game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit, owner: this }));
+      // vy：弓手预判过的纵深偏移（ai.js，预警时的瞄准线就是这条路线）
+      game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, vy: this.aim?.vy ?? 0, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit, owner: this }));
       sfx('shoot');
     } else if (!A.slam) {
       this.vx = this.facing * 5;
@@ -250,7 +260,7 @@ export class Enemy {
       if (this.st < A.hitAt + A.dur) { this.vx = this.facing * A.speed; if (this.st % 2 === 0) game.fx.dust(this.x, this.y, 1, 0.6); }
       else this.vx *= 0.8;
     } else this.vx *= 0.8;
-    if (!this.T.ranged && !A.slam) {
+    if ((!this.T.ranged || A.kind === 'kick') && !A.slam) { // 弓手的飞踢也是近身判定
       if (this.st === A.hitAt) {
         game.fx.arc(this.x + this.facing * 6, this.y, 50, this.facing, 56, A.speed ? -0.1 : -2.0, A.speed ? 0.1 : 0.9, '#ff6a5a', 10);
         sfx('swing');
@@ -443,6 +453,7 @@ export class Enemy {
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
 
     if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
+    else if (this.guardT > 0 && this.alive) drawAura(ctx, sx, sy, this.h, '#9fd0ff', 1.1 + 0.3 * Math.sin(this.st * 0.5)); // 屠夫举斧格挡：冷色光
     else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
     else if (this.blinkFlash > 0) drawAura(ctx, sx, sy, this.h, AFFIXES.blink.color, 1.4);
     else if (this.enraged && this.alive) drawAura(ctx, sx, sy, this.h, AFFIXES.frenzy.color, 0.9 + 0.3 * Math.sin(t * 0.3));

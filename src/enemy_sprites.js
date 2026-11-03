@@ -127,6 +127,12 @@ function attackFrame(S, anim, e, A) {
 export function enemyFrame(e, t) {
   const SP = ENEMY_SPRITES[e.look.rig], S = SP.sheet;
   if (SP.frames) return SP.frames(S, e, t);
+  // 屠夫举斧格挡：停在举斧的那一帧；弓手的飞踢：蹲 → 腾空踢出 → 落地（ai.js）
+  if (e.guardT > 0 && e.state === 'idle' && S.meta.anims.slam) return S.frame('slam', 1);
+  if (e.atk?.kind === 'kick' && S.meta.anims.hop && (e.state === 'windup' || e.state === 'attack')) {
+    if (e.state === 'windup') return S.frame('hop', 0);
+    return S.frame('hop', e.st < (e.atk.hitAt ?? 0) + (e.atk.dur ?? 5) ? 1 : 3);
+  }
   const c = common(S, e, t);
   if (c) return c;
   if (e.state === 'windup' || e.state === 'attack') {

@@ -31,6 +31,8 @@ const BLINK_HITS = 7; // 迅影：连续挨几下后瞬移
 
 // 打到坚盾上会不会被挡住。返回 true = 挡住了（不扣血），由 game 负责反馈
 export function blocks(e, src, h) {
+  // 铁甲屠夫举斧格挡（ai.js）：正面来的攻击全挡（必杀除外），背后打得到；只持续不到 1 秒
+  if (e.guardT > 0 && e.alive && (e.state === 'idle' || e.state === 'hurt') && e.z <= 0 && Math.sign(src.x - e.x) === e.facing && !h.ult) return true;
   if (!e.aff?.has('shield') || e.guardBrokenT > 0 || !e.alive) return false;
   if (!(e.state === 'idle' || e.state === 'windup' || e.state === 'hurt') || e.z > 0) return false;
   if (Math.sign(src.x - e.x) !== e.facing) return false; // 背后打不到盾
