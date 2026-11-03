@@ -1,4 +1,5 @@
-// 营地界面（HTML）：出征 / 角色与装备 / 技能
+// 营地菜单（HTML）：角色与装备 / 技能 / 委托，在大地图上随时打开（Esc、B 或右上角按钮）；
+// 关卡、训练场、试炼的卡片在地图上走到对应地点时单独弹出（stageCard / trainingCard / trialCard）
 // 菜单类界面用 HTML 比在 Canvas 里画方便得多：自带滚动、点击、文字排版、适配手机。
 // 所有按钮用 data-act 属性标记，统一在 onClick 里处理（事件委托）。
 
@@ -22,11 +23,11 @@ export class Hub {
   constructor(game, root) {
     this.g = game;
     this.root = root;
-    this.tab = 'stages';
+    this.tab = 'hero';
     this.sel = null; // 选中的装备 id
     this.body = root.querySelector('#hub-body');
     this.modal = root.querySelector('#hub-modal');
-    this.toastEl = root.querySelector('#hub-toast');
+    this.toastEl = document.getElementById('hub-toast'); // 在 #hub 外面：地图上也要能弹提示
     root.addEventListener('click', (e) => this.onClick(e));
   }
 
@@ -79,29 +80,37 @@ export class Hub {
     return s.sp > 0 && SKILL_TREE.some((n) => s.skills[n.key] < skillCap(s, n));
   }
 
-  render_stages() {
-    const s = this.save;
-    const tDone = (s.training || []).length;
-    const train = `<article class="stage training">
-        <div class="stage-head"><h3>训练场</h3><span class="rec">${tDone} / ${CHALLENGES.length}</span></div>
+  // 训练场卡片（地图上走到练剑场时弹出）
+  trainingCard() {
+    const s = this.save, tDone = (s.training || []).length;
+    return `<article class="stage training">
+        <div class="stage-head"><h3>练剑场</h3><span class="rec">${tDone} / ${CHALLENGES.length}</span></div>
         <p>两个打不死的木人和 ${CHALLENGES.length} 条挑战：延迟连段、极限闪避、弹刀、受身、撞墙……每个机制做到一次就打勾。</p>
         <p class="meta">第一次完成每条挑战 +40 金币，全部完成再 +400</p>
-        <div class="stage-foot"><span class="first">${tDone >= CHALLENGES.length ? '已出师' : '推荐新手先来'}</span><button class="btn" data-act="train">进入训练</button></div>
+        <div class="stage-foot"><span class="first">${tDone >= CHALLENGES.length ? '已出师' : '推荐新手先来'}</span><button class="btn primary" data-act="train" data-primary>进入训练</button></div>
       </article>`;
-    const trialOpen = !!s.cleared.s1;
-    const trial = `<article class="stage training trial ${trialOpen ? '' : 'locked'}">
+  }
+
+  // 残光试炼卡片（地图上走到试炼碑时弹出）
+  trialCard() {
+    const s = this.save, open = !!s.cleared.s1;
+    return `<article class="stage training trial ${open ? '' : 'locked'}">
         <div class="stage-head"><h3>残光试炼</h3><span class="rec">${s.trialBest ? `纪录 第 ${s.trialBest} 层` : '未挑战'}</span></div>
         <p>一层一个房间，越往上越强、词缀越多，每 5 层一个首领。每过一层选择：继续往上，还是带着奖励离开？</p>
         <p class="meta">每层金币，每个首领层 1 颗刻印石 · 离开拿全部奖励，阵亡只拿一半 · 一层约一分钟</p>
-        <div class="stage-foot"><span class="first">${trialOpen ? '适合碎片时间' : ''}</span>${trialOpen ? '<button class="btn" data-act="trial">进入试炼</button>' : '<span class="lock">通关「墓穴入口」解锁</span>'}</div>
+        <div class="stage-foot"><span class="first">${open ? '适合碎片时间' : ''}</span>${open ? '<button class="btn primary" data-act="trial" data-primary>进入试炼</button>' : '<span class="lock">通关「墓穴入口」解锁</span>'}</div>
       </article>`;
-    return `${this.render_contracts()}<div class="stages">${train}${trial}${STAGES.map((st, i) => {
-      const open = isUnlocked(s, i);
-      const best = s.best[st.id];
-      const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
-      const boss = BOSSES[st.boss];
-      const under = s.lv < st.lv;
-      return `<article class="stage ${open ? '' : 'locked'}">
+  }
+
+  // 关卡卡片（地图上走到关卡入口时弹出）：说明、首领、评价、难度
+  stageCard(i) {
+    const s = this.save, st = STAGES[i];
+    const open = isUnlocked(s, i);
+    const best = s.best[st.id];
+    const kinds = [...new Set(st.pool.flat().map((t) => t.replace('*', '')))].map((t) => TYPES[t].name).join(' · ');
+    const boss = BOSSES[st.boss];
+    const under = s.lv < st.lv;
+    return `<article class="stage ${open ? '' : 'locked'}">
         <div class="stage-head">
           <h3>${st.name}</h3>
           <span class="rec ${under ? 'warn' : ''}">推荐 Lv.${st.lv}</span>
@@ -111,7 +120,7 @@ export class Hub {
         <p class="boss-line">首领 <b style="color:${boss.glow}">${boss.name}</b> <span>${boss.title}</span></p>
         <div class="stage-foot">
           ${best ? `<span class="grade g${best.letter}">${best.letter}</span>` : `<span class="first">首通奖励 ×3</span>`}
-          ${open ? `<button class="btn primary" data-act="go" data-i="${i}" data-d="0">出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}
+          ${open ? `<button class="btn primary" data-act="go" data-i="${i}" data-d="0" data-primary>出征</button>` : `<span class="lock">通关「${STAGES[i - 1].name}」解锁</span>`}
         </div>
         ${s.cleared[st.id] ? `<div class="diffs">${DIFFS.slice(1).map((D, k) => {
           const d = k + 1, ok = diffUnlocked(s, i, d), b = s.best[stageKey(st, d)];
@@ -119,7 +128,6 @@ export class Hub {
             ${D.name}${b ? ` <b class="g${b.letter}">${b.letter}</b>` : ok ? ` <small>Lv.${st.lv + D.lvAdd}</small>` : ' <small>未解锁</small>'}</button>`;
         }).join('')}</div>` : ''}
       </article>`;
-    }).join('')}</div>`;
   }
 
   // 委托：三张目标卡。进度在出征中累计，完成后在这里领取
@@ -335,17 +343,23 @@ export class Hub {
       case 'engraveCancel':
         this.engrave = false;
         return this.renderModal();
-      case 'go':
+      case 'go': {
         sfx('click');
-        this.g.startStage(+el.dataset.i, +(el.dataset.d || 0), true); // 从营地出征：播剧情
+        const i = +el.dataset.i, d = +(el.dataset.d || 0);
+        this.g.launch(() => this.g.startStage(i, d, true)); // 从地图出征：播剧情
         return;
+      }
       case 'trial':
         sfx('click');
-        this.g.startTrial();
+        this.g.launch(() => this.g.startTrial());
         return;
       case 'train':
         sfx('click');
-        this.g.startTraining();
+        this.g.launch(() => this.g.startTraining());
+        return;
+      case 'close-hub':
+        sfx('click');
+        this.g.closeMenu();
         return;
       case 'sel':
         this.sel = el.dataset.id;

@@ -34,7 +34,7 @@
     overscroll-behavior: none;
     -webkit-tap-highlight-color: transparent;
   }
-  body:not([data-scene="hub"]) { touch-action: none; -webkit-user-select: none; user-select: none; }
+  body:not([data-menu]) { touch-action: none; -webkit-user-select: none; user-select: none; }
   #stage { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: var(--void); }
   #game { display: block; outline: none; }
   [hidden] { display: none !important; }
@@ -43,7 +43,9 @@
 
   /* ---------------- 触屏 ---------------- */
   #touch { position: fixed; inset: 0; pointer-events: none; }
-  body:not([data-scene="play"]) #touch { display: none; }
+  body:not([data-scene="play"]):not([data-scene="world"]) #touch, body[data-menu] #touch { display: none; }
+  /* 地图上只要摇杆和「攻」（交互） */
+  body[data-scene="world"] #touch .tbtn:not(.atk) { display: none; }
   #stick {
     position: absolute;
     left: calc(24px + env(safe-area-inset-left, 0px));
@@ -317,6 +319,21 @@
   .sk-act { display: flex; flex-direction: column; align-items: center; gap: 6px; }
   .sk-act small { font-size: 11px; color: var(--mute); text-align: center; max-width: 64px; }
 
+  /* 大地图 */
+  #world-bar {
+    position: fixed; z-index: 4; display: none; gap: 6px; top: max(10px, env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+  }
+  body[data-scene="world"]:not([data-menu]) #world-bar { display: flex; }
+  #world-bar .btn { background: rgba(11, 9, 16, .72); }
+  #site-panel { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(5, 4, 8, .45); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
+  #site-panel[hidden] { display: none; }
+  .sheet.site { position: relative; width: min(420px, 100%); padding: 10px; }
+  .sheet.site .close { position: absolute; right: 10px; top: 8px; z-index: 1; }
+  .sheet.site .stage { box-shadow: none; }
+  .site-hint { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--mute); }
+  @media (pointer: coarse) { .site-hint { display: none; } }
+  .tabs .back { margin-left: auto; font: 15px var(--font-ui); }
+
   /* 装备弹窗 */
   #hub-modal {
     position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(5, 4, 8, .6);
@@ -355,7 +372,7 @@
     display: none; position: fixed; left: 0; right: 0; top: calc(12px + env(safe-area-inset-top, 0px));
     text-align: center; font-size: 14px; color: var(--ember); pointer-events: none;
   }
-  @media (orientation: portrait) and (pointer: coarse) { body:not([data-scene="hub"]) #rotate { display: block; } }
+  @media (orientation: portrait) and (pointer: coarse) { body:not([data-menu]) #rotate { display: block; } }
   @media (prefers-reduced-motion: reduce) { #hub-toast.show { animation-duration: .01s; opacity: 1; } }
 </style>
 
@@ -454,16 +471,33 @@
       <button class="btn ghost mini-text" data-act="story">剧情</button>
       <button class="btn ghost mini-text" data-act="settings">设置</button>
     </header>
-    <nav class="tabs" aria-label="营地">
-      <button data-tab="stages">出征</button>
+    <nav class="tabs" aria-label="菜单">
       <button data-tab="hero">角色</button>
       <button data-tab="skills">技能</button>
+      <button data-tab="contracts">委托</button>
+      <button class="back" data-act="close-hub" aria-label="返回地图">返回地图 ✕</button>
     </nav>
     <main id="hub-body"></main>
   </div>
   <div id="hub-modal" hidden></div>
-  <div id="hub-toast" role="status"></div>
 </div>
+<div id="hub-toast" role="status"></div>
+
+<!-- 大地图：走到地点时弹出的卡片（关卡 / 练剑场 / 试炼），和右上角的菜单按钮 -->
+<div id="site-panel" hidden>
+  <div class="sheet site" role="dialog" aria-label="地点">
+    <button class="close" data-site-close aria-label="关闭">×</button>
+    <div class="site-body"></div>
+    <p class="site-hint">J 出征 · Esc 关闭</p>
+  </div>
+</div>
+<nav id="world-bar" aria-label="地图菜单">
+  <button class="btn ghost mini-text" data-menu="hero">角色</button>
+  <button class="btn ghost mini-text" data-menu="skills">技能</button>
+  <button class="btn ghost mini-text" data-menu="contracts">委托</button>
+  <button class="btn ghost mini-text" data-menu="story">剧情</button>
+  <button class="btn ghost mini-text" data-menu="settings">设置</button>
+</nav>
 
 <p id="rotate">把手机横过来玩，画面会更大</p>
 
