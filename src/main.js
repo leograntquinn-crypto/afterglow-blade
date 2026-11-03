@@ -12,7 +12,8 @@ import { FX } from './fx.js';
 import { Cine } from './cine.js';
 import { GLPost } from './glpost.js';
 import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, storyLogHtml } from './story.js';
-import { World, drawWorldTitle } from './world.js';
+import { World, drawWorldTitle, site } from './world.js';
+import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
@@ -136,10 +137,16 @@ class Game {
       }
       if (a === 'attack' || a === 'start' || a === 'jump') this.advance();
     });
-    canvas.addEventListener('pointerdown', () => {
+    canvas.addEventListener('pointerdown', (e) => {
       canvas.focus();
       initAudio();
       music.start();
+      // 地图上的对话框：点哪里翻页、点选项选中（换算成逻辑坐标）
+      if (this.story.talk) {
+        const r = canvas.getBoundingClientRect();
+        this.story.tapTalk(((e.clientX - r.left) / r.width) * VIEW_W, ((e.clientY - r.top) / r.height) * VIEW_H);
+        return;
+      }
       this.advance();
     });
     this.pauseEl.addEventListener('click', (e) => {
@@ -160,7 +167,7 @@ class Game {
 
   // 营地「回看剧情」
   openStoryLog() {
-    this.storyEl.querySelector('.story-body').innerHTML = storyLogHtml(this.save);
+    this.storyEl.querySelector('.story-body').innerHTML = storyLogHtml(this.save) + heardLogHtml(this.save);
     this.storyEl.hidden = false;
   }
 
@@ -243,7 +250,38 @@ class Game {
     if (this.world.leave) return;
     if (a === 'pause') { sfx('click'); this.openMenu(this.hub.tab); return; }
     if (a === 'bag') { sfx('click'); this.openMenu('hero'); return; }
-    if ((a === 'attack' || a === 'start') && this.world.near) this.openSite(this.world.near.id);
+    const n = this.world.near;
+    if ((a === 'attack' || a === 'start') && n) {
+      if (n.kind === 'npc') this.talkTo(n.id);
+      else if (n.kind === 'read') this.readInscription(n.read);
+      else this.openSite(n.id);
+    }
+  }
+
+  // 和守灯驿的人说话：这个进度的话说完，给几个选项（看委托、看装备、指路……）
+  talkTo(id) {
+    this.world.talkTo(id);
+    sfx('click');
+    this.story.showTalk(talkFor(id, this.save), {
+      choices: CHOICES[id],
+      onChoice: (act) => {
+        if (act === 'contracts' || act === 'hero') this.openMenu(act);
+        else if (act === 'storylog') this.openStoryLog();
+        else if (act === 'guide') {
+          const goal = nextGoal(this.save), s = site(goal);
+          this.world.guide = { id: goal, t: 60 * 20 };
+          this.hub.toast(`阿砾：往箭头那边走，就是「${s.name}」！`, '#a6dc86');
+        }
+      },
+      onEnd: () => { this.world.talking = null; this.store.save(); },
+    });
+  }
+
+  // 路边的刻字
+  readInscription(c) {
+    worldSave(this.save).read[c.id] = true;
+    sfx('click');
+    this.story.showTalk(c.text.map((l) => ['stone', l]), { title: c.title, onEnd: () => this.store.save() });
   }
 
   // 走到地点按攻击键：弹出它的卡片（没解锁的只给提示）
@@ -1512,7 +1550,7 @@ class Game {
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     const { lights } = W.draw(ctx, t);
     for (const l of lights) post.addLight(...l);
-    post.applyLighting(ctx, `rgba(3,3,10,${0.47 - W.litCount() * 0.05})`); // 烽灯点得越多，地图越亮
+    post.applyLighting(ctx, `rgba(3,3,10,${0.47 - W.litCount() * 0.05 - (W.ended() ? 0.08 : 0)})`); // 烽灯点得越多，地图越亮
     W.drawGlow(post.beginGlow(() => {}), t);
     W.drawGlow(ctx, t);
     if (this.quality > 0 && !useGL) post.applyBloom(ctx);
@@ -1526,7 +1564,7 @@ class Game {
       drawVignette(ctx);
       post.applyGrade(ctx, grade, t, this.quality > 1);
     }
-    if (!title && !this.menuOpen && !this.story.active) W.drawPrompt(ctx, t, this.touch);
+    if (!title && !this.menuOpen && !this.story.active && !W.ev) W.drawPrompt(ctx, t, this.touch);
     W.drawOverlay(ctx, t, { title });
     if (title) drawWorldTitle(ctx, this);
     if (this.story.active) this.story.draw(ctx);
