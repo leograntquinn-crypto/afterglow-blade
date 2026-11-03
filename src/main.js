@@ -11,6 +11,7 @@ import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
 import { Cine } from './cine.js';
 import { GLPost } from './glpost.js';
+import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, storyLog, storyLogHtml } from './story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
@@ -49,6 +50,8 @@ class Game {
     this.hub = new Hub(this, document.getElementById('hub'));
     this.pauseEl = document.getElementById('pause');
     // 设置面板：营地顶部和暂停菜单都能打开
+    this.storyEl = document.getElementById('story-log');
+    this.storyEl.addEventListener('click', (e) => { if (e.target.closest('[data-story-close]') || e.target === this.storyEl) this.storyEl.hidden = true; });
     this.setEl = document.getElementById('settings');
     this.setEl.addEventListener('click', (e) => {
       const b = e.target.closest('[data-set]');
@@ -96,6 +99,7 @@ class Game {
       initAudio(); // 浏览器要求：声音必须由用户操作启动
       music.start();
       if (a === 'mute') { this.toggleMusic(); return; }
+      if (this.story.active && this.story.press(a)) return; // 剧情卡 / 台词：翻页、跳过
       if (this.scene === 'play') {
         // 试炼层间选择：J 继续，L 离开（暂停键在选择时不起作用）
         if (this.trialChoice) {
@@ -130,6 +134,12 @@ class Game {
       if (act === 'train-reset' && this.training) { this.training.spawn(); this.setPaused(false); }
     });
     document.getElementById('pause-btn').addEventListener('click', () => this.scene === 'play' && this.setPaused(!this.paused));
+  }
+
+  // 营地「回看剧情」
+  openStoryLog() {
+    this.storyEl.querySelector('.story-body').innerHTML = storyLogHtml(this.save);
+    this.storyEl.hidden = false;
   }
 
   openSettings() {
@@ -168,6 +178,7 @@ class Game {
 
   // 标题 / 结算画面上按键或点击 → 回营地
   advance() {
+    if (this.story.active) { this.story.press('attack'); return; } // 手机上点屏幕也能翻剧情卡
     if (this.scene === 'title') this.openHub();
     else if ((this.scene === 'clear' || this.scene === 'dead') && this.sceneT > 60) this.openHub();
   }
@@ -180,6 +191,7 @@ class Game {
   }
 
   resetWorld() {
+    this.story?.clear();
     this.player = new Player(320, DEPTH / 2, this.stats, this.playerLook());
     this.enemies = [];
     this.projectiles = [];
@@ -192,6 +204,7 @@ class Game {
     this.attackers = new Set();
     this.fx = new FX();
     this.cine = new Cine(); // 技能演出：压暗聚光、集中线
+    this.story = new StoryUI(this); // 剧情：开场卡、战前台词、结局
     this.glpost = new GLPost(); // WebGL 后处理（泛光、扭曲、色差、调色）；不可用时自动退回 Canvas 后处理
     this.blank = document.createElement('canvas'); // 不在战斗里时给 WebGL 的空发光层
     this.blank.width = this.blank.height = 2;
@@ -230,7 +243,8 @@ class Game {
     this.roomsCleared = 0;
   }
 
-  startStage(i, d = 0) {
+  // story：从营地出征时为 true —— 这时才播剧情（开场卡、战前台词、结局）
+  startStage(i, d = 0, story = false) {
     this.training = null;
     this.trial = null;
     this.stageIdx = i;
@@ -255,6 +269,15 @@ class Game {
     const B = BOSSES[this.stage.boss];
     this.banner = { title: this.stage.name, sub: `${this.dungeon.mainLength} 个房间 · 首领「${B.name}」在地图上的「王」处`, t: 0, color: d ? this.D.color : undefined };
     sfx('wave');
+    this.run.story = story;
+    const intro = story && stageIntro(this, i);
+    if (intro) {
+      // 开场卡：卡片结束后才出关卡横幅和第一波敌人
+      const banner = this.banner;
+      this.banner = null;
+      this.story.showCards(intro.pages, { title: intro.title, onEnd: () => { this.banner = { ...banner, t: 0 }; this.input.clearBuffer(); } });
+      this.store.save();
+    }
   }
 
   // ---------------- 残光试炼 ----------------
@@ -472,11 +495,19 @@ class Game {
   }
 
   updateWaves() {
+    if (this.story.blocking) return; // 开场卡期间第一波敌人先等着
     if (this.bossAt != null && this.frame >= this.bossAt) {
       this.bossAt = null;
       this.boss = new Boss(this.stage.boss, world.w - 300, DEPTH / 2, this, this.stage.lv);
       this.boss.facing = -1;
       this.enemies.push(this.boss);
+      // 战前台词：首领站着不出手，说完再开打
+      const lines = this.run.story && bossIntro(this, this.stage.boss);
+      if (lines) {
+        const bo = this.boss;
+        bo.restT = 9999;
+        this.story.showDialog(lines, bo, () => { bo.restT = 30; this.input.clearBuffer(); });
+      }
       this.fx.ring(this.boss.x, this.boss.y, 4, this.boss.B.glow, 20, 10, 30, 5);
       this.fx.shake(10, 30);
     }
@@ -570,6 +601,12 @@ class Game {
     this.endRun();
     this.setScene('clear');
     sfx('clear');
+    // 第一次通关「残光深渊」（任意难度）：播结局和制作名单，盖在结算画面上
+    if (this.run.story && this.stageIdx === STAGES.length - 1 && endingDue(this)) {
+      storyLog(s).ending = true;
+      this.store.save();
+      this.story.showCards(ENDING, { credits: true });
+    }
   }
 
   // ---------------- 成长：经验、金币、装备 ----------------
@@ -1278,6 +1315,7 @@ class Game {
     if (this.paused || this.trialChoice) return; // 暂停、试炼层间选择时世界静止
     this.sceneT++;
     this.fx.lod = [0.45, 0.75, 1][this.quality] ?? 1; // 画质越低，特效粒子越少
+    if (this.story.active) { this.story.update(); this.input.clearBuffer(); } // 剧情期间玩家的按键交给剧情
     this.fx.update();
     this.cine.update();
     this.zoom *= 0.86;
@@ -1528,6 +1566,7 @@ class Game {
     else if (this.scene === 'dead') drawDead(ctx, this);
     else if (this.scene === 'clear') drawClear(ctx, this);
     else if (this.scene === 'hub') this.hub.drawPreview(t);
+    if (this.story.active) this.story.draw(ctx);
   }
 
   // 触屏：把技能冷却直接显示在按钮上（CSS 变量驱动扇形遮罩）
