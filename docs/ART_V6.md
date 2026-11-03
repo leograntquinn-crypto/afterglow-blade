@@ -1,6 +1,8 @@
 # 素材需求 v6：新敌人与两个首领的专属素材
 
 这份文档**只提需求和提示词**，交给 Codex 生成。素材回来以后，我再接入游戏（在那之前游戏里先用占位美术把玩法做好、调好手感）。
+
+> **状态：四套已全部接入（第 6 轮）。** 图集由 `tools/build_sprites.py <包> ashpriest|emberwing|night_raven|iron_jaw` 生成，帧映射在 `src/enemy_sprites.js`。接触帧一律按本文档表格和 `animations.json` 的 0 起索引对齐（羽刃回旋出手 = `feather_throw_04`）。
 玩法设计见 `docs/DESIGN_CONTENT.md`。所有角色都是原创，不照搬任何现有作品的角色、名字或造型。
 
 ---

@@ -4,12 +4,15 @@
 // 素材里每个攻击动画标了预警帧（windup）和接触帧（contact），这里把它们对到游戏的预警时长和出伤帧上。
 import { prepareBossFx } from './fx_art.js';
 import { SpriteSheet } from './sprite.js';
+import { tex, tinted } from './fx_tex.js';
 
 const sheet = (name) => {
   const s = new SpriteSheet('assets/enemies/', name, { avatar: 'avatar' });
   s.load();
   return s;
 };
+// 按关卡载入的敌人（灰烛司祭、烬翼）：先不载入，进关卡时由 prepareEnemySprites 决定
+const lazySheet = (name) => new SpriteSheet('assets/enemies/', name, { avatar: 'avatar' });
 
 // 有素材的敌人（按 look.rig 查）。
 //   standH  素材里站立高度（256 格子），按敌人身高缩放
@@ -21,7 +24,24 @@ export const ENEMY_SPRITES = {
   grunt: { sheet: sheet('grunt'), standH: 165, stride: 1.0, attack: 'slash', lunge: 'lunge', pingpong: ['idle'], rim: '#f0d6b0', rimAlpha: 0.34, lift: 0.3 },
   brute: { sheet: sheet('brute'), standH: 150, stride: 0.86, attack: 'slam', rim: '#ffd9a8', rimAlpha: 0.26, lift: 0.18 },
   archer: { sheet: sheet('archer'), standH: 165, stride: 1.0, attack: 'shoot', rim: '#cdb6ff', rimAlpha: 0.34, lift: 0.22 },
+  // ART_V6。灰烛司祭：三种招式各用一组动画；读护咒时提灯亮起（after）
+  priest: { sheet: lazySheet('ashpriest'), lazy: true, standH: 172, stride: 0.9, attack: (e) => PRIEST_ANIM[e.atk.kind] ?? 'shove', rim: '#d6ccec', rimAlpha: 0.32, lift: 0.26, after: priestGlow },
+  // 烬翼：没有脚，锚点是身体最低点；整套状态映射自己写（frames），身上的余烬微光由引擎画（after）
+  wing: { sheet: lazySheet('emberwing'), lazy: true, standH: 62, frames: wingFrame, rim: '#ffb48a', rimAlpha: 0.3, lift: 0.3, after: wingGlow },
 };
+const PRIEST_ANIM = { ward: 'cast_ward', trap: 'cast_trap', shove: 'shove' };
+
+// 进入关卡 / 试炼层时调用：载入这一关会出现的「按关卡载入」的敌人，释放其他的（回营地时传空列表）
+export function prepareEnemySprites(types) {
+  const need = new Set(types);
+  for (const [k, SP] of Object.entries(ENEMY_SPRITES)) {
+    if (!SP.lazy) continue;
+    if (need.has(k)) SP.sheet.load();
+    else if (SP.sheet.ready || SP.sheet.loading) SP.sheet.release();
+  }
+}
+// 关卡配置里出现过的敌人类型（普通波次 + 精英波次，去掉精英标记 *）
+export const stageEnemyTypes = (st) => [...new Set([...(st.pool ?? []), ...(st.elite ?? [])].flat().map((n) => n.replace('*', '')))];
 
 const loopAt = (S, anim, ms) => {
   const names = S.meta.anims[anim].frames;
@@ -91,7 +111,7 @@ function common(S, e, t) {
 // 攻击动画：预警段 起手 → 预警帧（停住），出招段 接触帧对齐出伤帧，之后收招
 function attackFrame(S, anim, e, A) {
   const meta = S.meta.anims[anim];
-  const wf = meta.windup[0] ?? 2, c0 = meta.contact[0] ?? 3, c1 = meta.contact[meta.contact.length - 1] ?? c0;
+  const wf = meta.windup[meta.windup.length - 1] ?? 2, c0 = meta.contact[0] ?? 3, c1 = meta.contact[meta.contact.length - 1] ?? c0;
   const n = meta.frames.length;
   if (e.state === 'windup') {
     const lead = Math.min(10, e.windup * 0.35); // 前 35%（最多 10 帧）起手，剩下的时间停在预警帧上
@@ -106,10 +126,71 @@ function attackFrame(S, anim, e, A) {
 
 export function enemyFrame(e, t) {
   const SP = ENEMY_SPRITES[e.look.rig], S = SP.sheet;
+  if (SP.frames) return SP.frames(S, e, t);
   const c = common(S, e, t);
   if (c) return c;
-  if (e.state === 'windup' || e.state === 'attack') return attackFrame(S, e.atk.speed && SP.lunge ? SP.lunge : SP.attack, e, e.atk);
+  if (e.state === 'windup' || e.state === 'attack') {
+    const anim = typeof SP.attack === 'function' ? SP.attack(e) : e.atk.speed && SP.lunge ? SP.lunge : SP.attack;
+    // 护咒的读条很长：举灯（0–1）之后在高举的姿势里循环（2–5），被打断就停
+    if (anim === 'cast_ward' && e.state === 'windup') return S.frame(anim, e.st < 5 ? 0 : e.st < 10 ? 1 : 2 + (Math.floor((e.st - 10) / 8) % 4));
+    return attackFrame(S, anim, e, e.atk);
+  }
   return S.frame('idle', 0);
+}
+
+// ---------- 烬翼 ----------
+// 盘旋 = fly 循环；预警 = dive_windup 越来越紧绷；俯冲 = dive（接触帧 1 贯穿整段冲刺）；
+// 被打下来 = fall 翻滚 → grounded 在地上挣扎 → takeoff 按离地高度重新飞起来
+function wingFrame(S, e, t) {
+  const F = (a, i) => S.frame(a, i);
+  const fly = () => F('fly', loopAt(S, 'fly', t * 16.7 + e.id * 211));
+  const lift = () => (e.z < 8 ? F('takeoff', 0) : e.z < 30 ? F('takeoff', 1) : e.z < 55 ? F('takeoff', 2) : e.z < 80 ? F('takeoff', 3) : fly());
+  switch (e.state) {
+    case 'spawn': return fly();
+    case 'idle': return lift();
+    case 'windup': return F('dive_windup', Math.min(3, Math.floor((e.st / Math.max(1, e.windup)) * 4)));
+    case 'attack': {
+      const D = e.atk.dur ?? 16;
+      if (e.st < D) return F('dive', e.st < 3 ? 0 : e.st < D - 3 ? 1 : 2);
+      if (e.st < D + 6) return F('dive', 3);
+      return e.st < D + 16 ? F('takeoff', e.st < D + 11 ? 2 : 3) : lift();
+    }
+    case 'hurt': {
+      const u = e.st / Math.max(1, e.hitstun);
+      return F('hurt', e.st < 3 ? 0 : u < 0.5 ? 1 : u < 0.8 ? 2 : 3);
+    }
+    case 'air': return F('fall', Math.floor(e.st / 4) % 4);
+    case 'down':
+      if (e.st > 34) return F('takeoff', 0);
+      return F('grounded', loopAt(S, 'grounded', e.st * 16.7));
+    case 'dying': return e.z > 0 ? F('fall', Math.floor(e.st / 4) % 4) : F('grounded', 0);
+  }
+  return fly();
+}
+
+// 素材是干净帧，光由引擎画。坐标都是「相对锚点、256 格子」，乘上 scale 换成游戏像素
+// 烬翼：龟裂里的余烬微光，跟着身体
+function wingGlow(ctx, e, t, o) {
+  if (!e.alive) return;
+  const s = o.scale, y = e.state === 'down' || e.z <= 0 ? -10 * s : -22 * s;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = o.alpha * (e.state === 'windup' ? 0.75 : 0.38);
+  ctx.drawImage(tinted(tex().glow, e.look.crack), -36 * s, y - 36 * s, 72 * s, 72 * s);
+  ctx.restore();
+}
+// 灰烛司祭：读护咒时提灯亮起紫光（读条的提示）。提灯位置按帧标注（cast_ward 0–6）
+const LANTERN = [[54, -162], [52, -186], [32, -200], [34, -201], [31, -200], [30, -200], [93, -168]];
+function priestGlow(ctx, e, t, o) {
+  if (!e.alive || e.atk?.kind !== 'ward' || (e.state !== 'windup' && !(e.state === 'attack' && e.st < 8))) return;
+  const name = enemyFrame(e, t), i = +name.slice(-2), L = LANTERN[i];
+  if (!name.startsWith('cast_ward') || !L) return;
+  const s = o.scale, x = L[0] * s * e.facing, y = L[1] * s, r = (e.state === 'attack' ? 60 : 34 + 6 * Math.sin(t * 0.3)) * Math.max(0.6, s * 1.6);
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha = o.alpha * (e.state === 'attack' ? 0.9 : 0.6);
+  ctx.drawImage(tinted(tex().glow, '#b48cff'), x - r, y - r, r * 2, r * 2);
+  ctx.restore();
 }
 
 // ---------- 首领：同一套素材放大 + 染色，招式按状态和武器角度 pa 借用 P0 的帧 ----------
@@ -157,12 +238,16 @@ export function bossFrame(b, t) {
   return BOSS_FRAMES[b.B.base](S, b);
 }
 
-// ---------- 首领专属素材（ART_V4：骸骨统领、祭坛守护者）----------
+// ---------- 首领专属素材（ART_V4：骸骨统领、祭坛守护者；ART_V6：夜鸦、铁颚）----------
 // 只在自己那一关载入、离开就释放（见 prepareBossSprites）。没有专属素材的首领继续借用杂兵素材
 // standH：站立高度（256 格子，含举起的武器）
+// 首领包里的道具图（夜鸦的羽刃、铁颚的钩子和链环）跟着图集一起载入、一起释放，画飞行道具时用（见 combat.js）
 export const BOSS_SPRITES = {
   boneLord: { sheet: new SpriteSheet('assets/bosses/', 'bone_lord', { avatar: 'avatar' }), standH: 180, frames: boneLordFrame },
   warden: { sheet: new SpriteSheet('assets/bosses/', 'altar_warden', { avatar: 'avatar' }), standH: 198, frames: wardenFrame },
+  nightRaven: { sheet: new SpriteSheet('assets/bosses/', 'night_raven', { avatar: 'avatar', feather: 'feather' }), standH: 180, frames: nightRavenFrame },
+  // hand：甩出锁链钩时（chain_throw 4–7）锁链从画面里伸出去的位置（相对锚点、256 格子）
+  ironJaw: { sheet: new SpriteSheet('assets/bosses/', 'iron_jaw', { avatar: 'avatar', hook: 'hook', link: 'link' }), standH: 180, frames: ironJawFrame, hand: [138, 126] },
 };
 
 // 进入关卡时调用：载入这一关首领的图集，释放别的首领
@@ -243,6 +328,107 @@ function wardenFrame(S, b) {
       if (b.tele) return seq(S, 'charge', 0);
       if (Math.abs(b.vx) > 3) return seq(S, 'charge', Math.floor(t / 4) % 4);
       return b.act.d?.stunned ? seq(S, 'stunned', Math.floor(t / 8) % 4) : seq(S, 'idle', 0);
+    case 'channel': return seq(S, 'channel', Math.floor(t / 8) % 4);
+    case 'summon': case 'roar': return seq(S, 'roar', Math.min(3, Math.floor(t / 6)));
+  }
+  return b.tele ? seq(S, 'slam', 3) : seq(S, 'idle', 0);
+}
+
+// 夜鸦：齐射 / 鸦影分身拉弓放箭（shoot 的接触帧 3、7 对齐每一轮放箭），天降向上射（sky_shot 接触帧 2），
+// 瞬移 = 化作黑羽消失（vanish）→ 浮现（appear）→ 挥臂斩，羽刃回旋（feather_throw 接触帧 4 = 出手的那一帧）
+// bowShots：start 开始拉弓，rels 是每一轮放箭的时刻；单数轮用 0–3，双数轮用 4–7
+function bowShots(S, t, start, rels) {
+  for (let i = 0; i < rels.length; i++) {
+    const r = rels[i], from = i ? rels[i - 1] + 5 : start, base = i % 2 ? 4 : 0;
+    if (t < r) return seq(S, 'shoot', base + Math.min(2, Math.floor(((t - from) / Math.max(1, r - from)) * 3)));
+    if (t < r + 5) return seq(S, 'shoot', base + 3);
+  }
+  const last = rels.length - 1;
+  return t < rels[last] + 14 ? seq(S, 'shoot', last % 2 ? 7 : 3) : seq(S, 'idle', 0);
+}
+
+// 首领的 act.t 在每次 tick 之后才 +1，所以画面上「刚执行完的那一帧」是 act.t - 1。
+// 用它来对接触帧：tick(t = D) 扔出羽刃之后的第一次绘制，正好画 feather_throw_04；之前那次绘制还是 03
+function nightRavenFrame(S, b) {
+  const { name } = b.act, t = b.act.t - 1;
+  switch (name) {
+    case 'volley': {
+      const T0 = Math.round(38 / b.spd);
+      return bowShots(S, t, 0, b.phase > 0 ? [T0, T0 * 2 + 10] : [T0]);
+    }
+    case 'ravenSplit': {
+      const D = Math.round(44 / b.spd);
+      if (t < 8) return seq(S, 'split', Math.floor(t / 2)); // 化作黑羽散开
+      return bowShots(S, t, 8, [8 + D, 8 + D + 26]);
+    }
+    case 'rain':
+      // 第 20 帧放出光球 = sky_shot 的接触帧 2
+      return seq(S, 'sky_shot', t < 10 ? 0 : t < 20 ? 1 : t < 28 ? 2 : 3);
+    case 'teleport':
+      if (t < 22) return seq(S, 'vanish', Math.min(3, Math.floor((t / 22) * 4)));
+      if (t < 36) return seq(S, 'appear', Math.min(3, Math.floor(((t - 22) / 14) * 4)));
+      // 第 44 帧出斩 = 挥臂的接触帧
+      return seq(S, 'feather_throw', t < 40 ? 2 : t < 44 ? 3 : t < 50 ? 4 : t < 58 ? 5 : t < 66 ? 6 : 7);
+    case 'featherRang': {
+      // 第 D 帧扔出羽刃。feather_throw 的接触帧是 0 起的第 4 帧（feather_throw_04）：
+      // 预警段 0–3（展开斗篷、手里捏着羽刃），出手那一帧正好切到 04，不会提前一帧
+      const D = Math.round(30 / b.spd);
+      if (t < D) return seq(S, 'feather_throw', Math.min(3, Math.floor((t / D) * 4)));
+      return seq(S, 'feather_throw', t < D + 6 ? 4 : t < D + 16 ? 5 : t < D + 30 ? 6 : 7);
+    }
+    case 'channel': return seq(S, 'channel', Math.floor(t / 9) % 4);
+    case 'summon': case 'roar': return seq(S, 'roar', Math.min(3, Math.floor(t / 6)));
+  }
+  return b.tele ? seq(S, 'shoot', 2) : seq(S, 'idle', 0);
+}
+
+// 铁颚：重砸 / 震地（slam 接触帧 4）、三连斩（每一下都是 slam）、冲锋、撞墙晕眩，
+// 锁链钩（chain_throw 接触帧 4 = 甩出；钩中后 chain_yank 拉回再接 slam 重锤），刑台三震（stomp_triple 接触帧 2、4、6）
+function slamAt(S, t, D) {
+  const lead = Math.min(18, D * 0.5);
+  if (t < D) return seq(S, 'slam', t < lead ? Math.floor((t / lead) * 3) : 3);
+  return seq(S, 'slam', t < D + 6 ? 4 : t < D + 14 ? 5 : t < D + 24 ? 6 : 7);
+}
+
+function ironJawFrame(S, b) {
+  const { name, d } = b.act, t = b.act.t - 1; // 同夜鸦：对齐刚执行完的那一帧
+  switch (name) {
+    case 'slam': return slamAt(S, t, Math.round(48 / b.spd));
+    case 'shockwave': return slamAt(S, t, Math.round(34 / b.spd));
+    case 'combo': {
+      const sw = [24, 46, 68].map((s) => Math.round(s / b.spd));
+      for (const s of sw) {
+        if (t < s) return seq(S, 'slam', t >= s - 8 ? 3 : 2);
+        if (t < s + 6) return seq(S, 'slam', 4);
+        if (t < s + 12) return seq(S, 'slam', 5);
+      }
+      return seq(S, 'slam', t < sw[2] + 22 ? 6 : 7);
+    }
+    case 'charge':
+      if (b.tele) return seq(S, 'charge', 0);
+      if (Math.abs(b.vx) > 3) return seq(S, 'charge', Math.floor(t / 4) % 4);
+      return d?.stunned ? seq(S, 'stunned', Math.floor(t / 8) % 4) : seq(S, 'slam', 7);
+    case 'chainHook': {
+      const D = Math.round(36 / b.spd);
+      if (d.pulledAt != null) {
+        // 钩中：拉回（chain_yank 接触帧 1 = 你被拽到面前），举锤，第 24 帧砸下 = slam 接触帧 4
+        const k = t - d.pulledAt;
+        if (k < 24) return seq(S, 'chain_yank', k < 4 ? 0 : k < 12 ? 1 : k < 18 ? 2 : 3);
+        return seq(S, 'slam', k < 30 ? 4 : k < 40 ? 5 : k < 50 ? 6 : 7);
+      }
+      // 头顶甩钩（1–3 循环转圈），第 D 帧甩出 = chain_throw 接触帧 4，之后拉直锁链；没钩中就收回来
+      if (t < D) return seq(S, 'chain_throw', t < 6 ? 0 : 3 - (Math.floor((D - 1 - t) / 5) % 3)); // 倒着排相位：出手前一帧一定是 03
+      if (t < D + 30) return seq(S, 'chain_throw', t < D + 6 ? 4 : t < D + 12 ? 5 : t < D + 20 ? 6 : 7);
+      return seq(S, 'chain_yank', t < D + 40 ? 0 : 1);
+    }
+    case 'tripleStomp': {
+      // 三下分别在 D、D+16、D+32 落地，对齐接触帧 2、4、6；两下之间是迈步举锤（3、5）
+      const D = Math.round(40 / b.spd);
+      if (t < D) return seq(S, 'stomp_triple', t < D * 0.45 ? 0 : 1);
+      const k = t - D, i = Math.min(2, Math.floor(k / 16)), u = k - i * 16;
+      if (i < 2) return seq(S, 'stomp_triple', u < 8 ? 2 + i * 2 : 3 + i * 2);
+      return seq(S, 'stomp_triple', u < 10 ? 6 : 7);
+    }
     case 'channel': return seq(S, 'channel', Math.floor(t / 8) % 4);
     case 'summon': case 'roar': return seq(S, 'roar', Math.min(3, Math.floor(t / 6)));
   }
