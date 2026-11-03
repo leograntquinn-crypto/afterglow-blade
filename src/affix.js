@@ -10,9 +10,9 @@ import { sfx } from './audio.js';
 
 export const AFFIXES = {
   shield: { name: '坚盾', color: '#8fc4ff', types: ['grunt'], tip: '正面挡住普通攻击。等它出招后的空隙、冲刺绕到背后，或用重击、上挑、弹刀破盾' },
-  frenzy: { name: '狂暴', color: '#ff5a3c', types: ['grunt', 'archer', 'brute'], tip: '血量低于一半后变快' },
+  frenzy: { name: '狂暴', color: '#ff5a3c', types: ['grunt', 'archer', 'brute', 'priest', 'wing'], tip: '血量低于一半后变快' },
   blink: { name: '迅影', color: '#c48bff', types: ['grunt', 'archer'], tip: '被连续打中会瞬移到你身后反击' },
-  volatile: { name: '爆裂', color: '#ffb347', types: ['grunt', 'archer', 'brute'], tip: '死后爆炸；爆炸也会伤到其他敌人' },
+  volatile: { name: '爆裂', color: '#ffb347', types: ['grunt', 'archer', 'brute', 'priest'], tip: '死后爆炸；爆炸也会伤到其他敌人' },
 };
 
 // 按关卡抽词缀：精英第 1 关 1 条、第 3 关起 2 条；第 3 关起普通怪也有小概率带 1 条

@@ -5,6 +5,7 @@ import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
 import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
+import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
 
 export const TYPES = {
   grunt: {
@@ -28,6 +29,8 @@ export const TYPES = {
     atk: { range: 95, windup: 54, recover: 46, cd: [110, 160], slam: true,
       hit: { dmg: 22, kb: 8, launch: 9, stop: 8, shake: 10, heavy: true } },
   },
+  // 灰烛司祭、烬翼：见 enemies_ext.js
+  ...EXT_TYPES,
 };
 
 let nextId = 0;
@@ -112,13 +115,17 @@ export class Enemy {
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
     if (this.brokenT > 0 && --this.brokenT === 0) this.armor = this.maxArmor;
     if (this.blinkFlash > 0) this.blinkFlash--;
+    if (this.ward && --this.ward.t <= 0) this.ward = null; // 咒盾到时间就散了
     updateAffixes(this, game);
+    const ai = AI[this.T.ai];
+    ai?.update?.(this, game);
 
     switch (this.state) {
       case 'spawn': if (this.st >= 36) this.setState('idle'); break;
       case 'idle': this.think(game); break;
       case 'windup':
-        this.vx *= 0.7; this.vy = 0;
+        if (ai?.windup) ai.windup(this, game);
+        else { this.vx *= 0.7; this.vy = 0; }
         if (this.st >= this.windup) this.doAttack(game);
         break;
       case 'hop':
@@ -155,6 +162,7 @@ export class Enemy {
   // 设计原则：敌人要「公平」——出招前有明显预警（红光 + 感叹号），
   // 同一时间最多 2 个敌人进攻（攻击令牌），玩家不会被围殴到无法反应。
   think(game) {
+    if (AI[this.T.ai]) return AI[this.T.ai].think(this, game);
     const p = game.player, T = this.T, A = T.atk;
     const dxp = p.x - this.x, adx = Math.abs(dxp), dyp = p.y - this.y;
     if (p.state === 'dead') { this.vx *= 0.8; this.vy = 0; return; }
@@ -217,6 +225,7 @@ export class Enemy {
   doAttack(game) {
     const A = this.atk;
     this.setState('attack');
+    if (AI[this.T.ai]) return AI[this.T.ai].doAttack(this, game);
     if (A.speed) { this.vx = this.facing * A.speed; sfx('dash'); return; }
     if (this.T.ranged) {
       game.projectiles.push(new Projectile({ x: this.x + this.facing * 30, y: this.y, z: 52, vx: this.facing * 7.5, life: 110, team: 'enemy', kind: 'arrow', hit: A.hit, owner: this }));
@@ -227,6 +236,7 @@ export class Enemy {
   }
 
   updateAttack(game) {
+    if (AI[this.T.ai]) return AI[this.T.ai].updateAttack(this, game);
     const A = this.atk;
     if (A.speed) {
       // 突刺：高速前冲，前冲期间都有判定
@@ -254,13 +264,28 @@ export class Enemy {
   // h.otg：能打到倒地的敌人（追打）
   canBeHit(h) {
     if (!this.alive || this.state === 'spawn' || this.invuln > 0) return false;
-    if (this.state === 'down') return !!h?.otg && this.st < 40 && !this.otgUsed;
+    if (this.state === 'down') return this.T.flyer || (!!h?.otg && this.st < 40 && !this.otgUsed); // 掉在地上的烬翼什么攻击都能打
     return true;
   }
 
   // dmg 已在 game.applyHit 里按攻击力、技能等级、暴击算好
   takeHit(h, dir, dmg) {
     if (!this.canBeHit(h)) return null;
+    // 咒盾：先吸收伤害，盾在的时候不会被打出硬直；重击、破招、必杀对盾造成双倍
+    if (this.ward) {
+      this.ward.hp -= dmg * (h.heavy || h.counterMul || h.ult ? 2 : 1);
+      this.flash = 4;
+      this.squash = 4;
+      if (this.ward.hp > 0) return { warded: true };
+      this.ward = null;
+      this.game.fx.label(this.x, this.y, this.h + 30, '咒盾破碎', '#b48cff', 20);
+      this.game.fx.ring(this.x, this.y, this.h * 0.5, '#b48cff', 14, 10, 18, 5);
+      sfx('break');
+      this.setState('hurt');
+      this.hitstun = 34;
+      this.vx = dir * 3;
+      return { broke: true };
+    }
     this.hp -= dmg;
     if (this.dummy && this.hp <= 0) this.hp = this.maxHp; // 训练木人打不死
     onAffixHit(this, this.game);
@@ -327,7 +352,7 @@ export class Enemy {
   physics(game) {
     this.x += this.vx;
     this.y += this.vy;
-    if (this.z > 0 || this.vz > 0) {
+    if (!this.hover && (this.z > 0 || this.vz > 0)) {
       this.vz -= GRAVITY * (1 + this.juggle * 0.05);
       this.z += this.vz;
       if (this.z <= 0) {
@@ -422,7 +447,10 @@ export class Enemy {
     ctx.scale(1 + q * 0.14, 1 - q * 0.1);
     const flash = this.game.ticks < (this.flashUntil ?? 0);
     const SP = ENEMY_SPRITES[this.look.rig];
-    if (SP?.sheet.ready) {
+    if (AI[this.T.ai] && !SP?.sheet.ready) {
+      // 灰烛司祭 / 烬翼：专属素材到之前用程序画的占位
+      AI[this.T.ai].draw(ctx, this, t, { flash, alpha });
+    } else if (SP?.sheet.ready) {
       // 逐帧精灵（腐骨兵、铁甲屠夫、影弓手）。轮廓光和提亮让它们在暗背景里也看得清
       SP.sheet.draw(ctx, enemyFrame(this, t), 0, 0, this.facing, { scale: this.look.h / SP.standH, flash, alpha, rim: SP.rim, rimAlpha: SP.rimAlpha, lift: SP.lift });
     } else {
@@ -430,6 +458,7 @@ export class Enemy {
     }
     ctx.restore();
 
+    if (this.ward && this.alive) drawWard(ctx, this, sx, sy, t);
     const top = sy - this.h - 14;
     drawAffixes(ctx, this, sx, sy, top);
     ctx.save();
@@ -449,6 +478,13 @@ export class Enemy {
       ctx.font = `18px ${FONT_TITLE}`;
       ctx.fillStyle = COLORS.ember;
       ctx.fillText('破防', sx, top - 14);
+    }
+    // 咒盾条（紫色，叠在血条上方）
+    if (this.ward && this.alive) {
+      ctx.fillStyle = 'rgba(0,0,0,.6)';
+      ctx.fillRect(sx - 25, top - 6, 50, 4);
+      ctx.fillStyle = '#b48cff';
+      ctx.fillRect(sx - 24, top - 5, 48 * Math.max(0, this.ward.hp / this.ward.max), 2);
     }
     // 头顶小血条
     if (this.hp < this.maxHp && this.alive && this.state !== 'spawn') {

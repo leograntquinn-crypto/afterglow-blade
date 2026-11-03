@@ -22,6 +22,7 @@ import { prepareBossSprites } from './enemy_sprites.js';
 import { Loot } from './loot.js';
 import { STAGES, DIFFS, stageKey, grade } from './stages.js';
 import { HIT_TIERS, HIT_FB } from './fx_data.js';
+import { disarmTraps } from './enemies_ext.js';
 import { STYLE_RANKS, STYLE_MAX, SPOILS } from './style.js';
 import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
@@ -439,6 +440,14 @@ class Game {
   }
 
   spawnEnemy(spec) {
+    // 烬翼一出就是一群：普通 3 只、噩梦 4 只、地狱 5 只
+    if (spec.replace('*', '') === 'wing' && !this.spawningGroup) {
+      this.spawningGroup = true;
+      const n = 3 + Math.max(0, DIFFS.indexOf(this.D));
+      for (let i = 0; i < n; i++) this.spawnEnemy(i === 0 ? spec : 'wing');
+      this.spawningGroup = false;
+      return;
+    }
     const elite = spec.endsWith('*');
     this.spawnSide = -this.spawnSide;
     const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
@@ -917,6 +926,7 @@ class Game {
     this.fx.ring(p.x, p.y, 4, '#ffffff', 10, 9, 12, 3);
     this.fx.dust(p.x, p.y, 20, 2.6);
     this.fx.dustburst(p.x, p.y, 0.9);
+    disarmTraps(this, p.x, p.y, 150); // 坠星斩震掉附近的灰烬陷阱
     this.fx.flip('impact_ground', p.x, p.y, 0, { color: p.glow, scale: 0.8 });
     this.fx.crack(p.x, p.y);
     this.fx.shake(10, 18);
@@ -1396,7 +1406,7 @@ class Game {
       post.addLight(...at(p.x, p.y, p.z + 45), 270, 0.95);
       for (const e of this.enemies) {
         if (e.isBoss && e.alive) post.addLight(...at(e.x, e.y, e.h * 0.5), 230, 0.7);
-        else if (e.alive || e.team === 'prop') post.addLight(...at(e.x, e.y, 40), 120, 0.45);
+        else if (e.alive || e.team === 'prop') post.addLight(...at(e.x, e.y, (e.z || 0) + 40), 120, 0.45); // 跟着高度走（飞在空中的烬翼）
       }
       for (const h of this.hazards) post.addLight(...at(h.x, h.y), (h.rx || 140) * 1.5, 0.6);
       for (const pr of this.projectiles) post.addLight(...at(pr.x, pr.y, pr.z + 30), 110, 0.8);
