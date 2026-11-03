@@ -11,6 +11,9 @@ import { BOSSES } from './boss.js';
 import { CHALLENGES } from './training.js';
 import { tex, tinted } from './fx_tex.js';
 import { drawFighter } from './rig.js';
+import { settings } from './settings.js';
+import { sfx } from './audio.js';
+import { NPCS, INSCRIPTIONS, SPEAKERS, worldSave, hasNew, pendingEvents, progress, TALKS, BEACON_LINES, TRIAL_LINES, ENDING_LINES } from './world_story.js';
 
 export const MAP_W = 2400, MAP_H = 1500;
 const EDGE = 80; // 地图四周的枯林带，走不进去
@@ -66,7 +69,7 @@ const roadDist = (x, y) => Math.min(...ROADS.flatMap((r) => r.pts.slice(1).map((
 function scatter() {
   const R = rng(7), out = [];
   const free = (x, y, d) => roadDist(x, y) > d && SITES.every((s) => Math.hypot((x - s.x) / 1.4, y - s.y + (s.footY ? s.y - s.footY : 0)) > (s.id === 's5' ? 380 : 170))
-    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46);
+    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46) && [...NPCS, ...INSCRIPTIONS].every((o) => Math.hypot(o.x - x, o.y - y) > 60);
   const put = (kind, n, d, area = () => [EDGE + 40 + R() * (MAP_W - EDGE * 2 - 80), EDGE + 60 + R() * (MAP_H - EDGE * 2 - 100)]) => {
     for (let k = 0, tries = 0; k < n && tries < n * 40; tries++) {
       const [x, y] = area();
@@ -90,7 +93,8 @@ function scatter() {
       }
     }
   }
-  out.push({ kind: 'sign', x: 1092, y: 1176, v: 0, r: 5 }, { kind: 'sign', x: 700, y: 935, v: 1, r: 5 });
+  // 路边可以读的刻字（路牌 / 刻字石 / 墓碑），也是散件
+  for (const c of INSCRIPTIONS) out.push({ kind: c.kind === 'stone' ? 'stone' : c.kind, x: c.x, y: c.y, v: c.kind === 'grave' ? 1 : 0, r: 7, read: c });
   return out;
 }
 
@@ -146,6 +150,12 @@ function paintLamp(g) {
   ellipse(g, 0, 0, 8, 3, 'rgba(0,0,0,.35)');
   g.strokeStyle = '#2a262e'; g.lineWidth = 3; g.beginPath(); g.moveTo(0, 0); g.lineTo(0, -46); g.lineTo(7, -50); g.stroke();
   poly(g, [[4, -50], [11, -50], [12, -40], [3, -40]], '#1c1a22', RIM, 1);
+}
+function paintStone(g) {
+  ellipse(g, 0, 0, 14, 4, 'rgba(0,0,0,.35)');
+  poly(g, [[-11, 0], [-12, -22], [-6, -30], [6, -31], [12, -22], [11, 0]], '#4a444e', RIM);
+  g.strokeStyle = '#2a2630'; g.lineWidth = 1.2;
+  g.beginPath(); g.moveTo(-6, -20); g.lineTo(6, -20); g.moveTo(-5, -14); g.lineTo(5, -14); g.moveTo(-6, -8); g.lineTo(4, -8); g.stroke();
 }
 function paintSign(g, v) {
   ellipse(g, 0, 0, 9, 3, 'rgba(0,0,0,.35)');
@@ -287,6 +297,12 @@ export class World {
     this.leave = null; // 进关前的收拢黑屏 { t, go }
     this.fadeIn = 0;
     this.titleCam = null; // 封面：镜头从深渊慢慢移到守灯驿
+    this.events = []; // 回到地图时要播的事件（烽灯点亮、试炼碑苏醒、结局尾声……）
+    this.ev = null; // 正在播的事件
+    this.flare = {}; // 刚点亮的东西：id → 点亮后过了几帧（点亮的动画）
+    this.caption = null; // 事件的标题字幕 { text, t }
+    this.guide = null; // 阿砾指路 { id, t }
+    this.talking = null; // 正在和谁说话（那个人转向绯隼、做手势）
   }
 
   get save() { return this.g.save; }
@@ -299,6 +315,7 @@ export class World {
       grave: () => sprite(40, 40, 20, 34, (g) => paintGrave(g, o.v)),
       lamp: () => sprite(30, 60, 10, 56, (g) => paintLamp(g)),
       sign: () => sprite(50, 46, 25, 42, (g) => paintSign(g, o.v)),
+      stone: () => sprite(40, 40, 20, 34, (g) => paintStone(g)),
     })[o.kind]());
   }
 
@@ -308,8 +325,11 @@ export class World {
     if (s.kind === 'trial') return !!this.save.cleared.s1;
     return true;
   }
-  lit(s) { return s.kind === 'stage' && !!this.save.cleared[STAGES[s.stage].id]; }
-  litCount() { return STAGES.filter((st) => this.save.cleared[st.id]).length; }
+  // 烽灯亮不亮看「点亮演出播过没有」（通关以后回到地图才播），这样玩家能看到它亮起来的那一下
+  lit(s) { return s.kind === 'stage' && !!worldSave(this.save).lit[STAGES[s.stage].id]; }
+  litCount() { return STAGES.filter((st) => worldSave(this.save).lit[st.id]).length; }
+  trialAwake() { return !!this.save.cleared.s1 && !!worldSave(this.save).trial; }
+  ended() { return !!worldSave(this.save).ending; }
 
   // 回到地图：站在刚才那个入口前，镜头直接对准
   enter(siteId = this.lastSite) {
@@ -324,6 +344,8 @@ export class World {
     this.prewarm();
     this.snapCam();
     this.near = null;
+    this.ev = null;
+    this.events = pendingEvents(this.save, settings.story !== 'off');
   }
   // 进地图时一次画好所有地标、散件和地面缓存（不然走到新区域时才画，手机上会卡一下）
   prewarm() {
@@ -346,6 +368,7 @@ export class World {
       if (((x - s.x) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1) return true;
     }
     for (const o of this.props) if (o.r && Math.hypot((x - o.x) / 1.3, y - o.y) < o.r) return true;
+    for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9) return true;
     return false;
   }
 
@@ -354,6 +377,9 @@ export class World {
     const h = this.hero;
     this.updateMotes();
     if (this.fadeIn > 0) this.fadeIn--;
+    for (const k in this.flare) this.flare[k]++;
+    if (this.caption && ++this.caption.t > 170) this.caption = null;
+    if (this.guide && (--this.guide.t <= 0 || Math.hypot(h.x - site(this.guide.id).door[0], h.y - site(this.guide.id).door[1]) < 110)) this.guide = null;
     if (this.leave) {
       if (++this.leave.t === 22) this.leave.go();
       return;
@@ -367,6 +393,9 @@ export class World {
       this.cam.y = clamp(fy - VIEW_H * 0.58, 0, MAP_H - VIEW_H);
       return;
     }
+    // 地图事件：镜头移过去、点亮、字幕和对话、镜头回来；期间人不能走
+    if (!this.ev && this.events.length && !frozen && !this.fadeIn) this.startEvent(this.events.shift());
+    if (this.ev) { this.updateEvent(); this.near = null; return; }
     let dx = frozen ? 0 : input.dx, dy = frozen ? 0 : input.dy;
     const m = Math.hypot(dx, dy);
     if (m > 1) { dx /= m; dy /= m; }
@@ -381,15 +410,66 @@ export class World {
     const tx = clamp(h.x - VIEW_W / 2 + h.facing * 30, 0, MAP_W - VIEW_W), ty = clamp(h.y - VIEW_H * 0.58, 0, MAP_H - VIEW_H);
     this.cam.x += (tx - this.cam.x) * 0.1;
     this.cam.y += (ty - this.cam.y) * 0.1;
-    // 站在哪个入口前
-    let best = null, bd = NEAR;
-    for (const s of SITES) {
-      if (s.kind === 'camp') continue;
-      const d = Math.hypot(h.x - s.door[0], (h.y - s.door[1]) * 1.3);
-      if (d < bd) { bd = d; best = s; }
-    }
+    // 站在哪个入口 / 哪个人 / 哪块刻字前（取最近的）
+    let best = null, bd = 1e9;
+    const consider = (o, x, y, r) => { const d = Math.hypot(h.x - x, (h.y - y) * 1.3); if (d < r && d - r < bd) { bd = d - r; best = o; } };
+    for (const s of SITES) if (s.kind !== 'camp') consider(s, s.door[0], s.door[1], NEAR);
+    for (const n of NPCS) consider({ kind: 'npc', id: n.id, npc: n, door: [n.x, n.y] }, n.x, n.y + 10, 46);
+    for (const c of INSCRIPTIONS) consider({ kind: 'read', id: c.id, read: c, door: [c.x, c.y] }, c.x, c.y + 8, 42);
     this.near = best;
   }
+
+  // ---------- 地图事件 ----------
+  startEvent(e) {
+    const camp = site('camp');
+    const focus = { greet: [this.hero.x, this.hero.y], beacon: e.site && site(e.site).beacon, trial: [site('trial').x, site('trial').y - 60], ending: [camp.x, camp.y - 120] }[e.kind];
+    this.ev = { e, t: 0, phase: 'pan', focus };
+  }
+  updateEvent() {
+    const ev = this.ev, e = ev.e, w = worldSave(this.save), g = this.g, storyOn = settings.story !== 'off';
+    ev.t++;
+    const look = (x, y, k) => {
+      this.cam.x += (clamp(x - VIEW_W / 2, 0, MAP_W - VIEW_W) - this.cam.x) * k;
+      this.cam.y += (clamp(y - VIEW_H * 0.5, 0, MAP_H - VIEW_H) - this.cam.y) * k;
+    };
+    if (ev.phase === 'pan') {
+      look(...ev.focus, 0.07);
+      if (ev.t < (e.kind === 'greet' ? 10 : 55)) return;
+      ev.phase = 'act'; ev.t = 0;
+      if (e.kind === 'greet') {
+        w.greeted = true;
+        w.heard['zhupo:0'] = true;
+        this.talking = 'zhupo';
+        ev.phase = 'talk';
+        g.story.showTalk(TALKS.zhupo[0], { onEnd: () => { this.talking = null; ev.phase = 'back'; ev.t = 0; } });
+        return;
+      }
+      if (e.kind === 'beacon') { w.lit[STAGES[e.stage].id] = true; this.flare[e.site] = 0; this.caption = { text: `${STAGES[e.stage].name}的烽灯，亮了`, t: 0 }; }
+      if (e.kind === 'trial') { w.trial = true; this.flare.trial = 0; this.caption = { text: '试炼碑醒了', t: 0 }; }
+      if (e.kind === 'ending') { w.ending = true; this.flare.camp = 0; this.caption = { text: '长明灯塔，重新亮了', t: 0 }; }
+      sfx(e.kind === 'ending' ? 'roar' : 'chest');
+      g.store.save();
+      return;
+    }
+    if (ev.phase === 'act') {
+      look(...ev.focus, 0.07);
+      if (ev.t < 70) return;
+      const lines = { beacon: BEACON_LINES[e.stage], trial: TRIAL_LINES, ending: ENDING_LINES }[e.kind];
+      if (storyOn && lines) {
+        ev.phase = 'talk';
+        if (e.kind === 'ending') for (const n of NPCS) w.heard[`${n.id}:end`] = true; // 尾声里已经说过了
+        g.story.showTalk(lines, { onEnd: () => { ev.phase = 'back'; ev.t = 0; } });
+      } else { ev.phase = 'back'; ev.t = 0; }
+      return;
+    }
+    if (ev.phase === 'talk') { look(...ev.focus, 0.07); return; }
+    // 镜头回到人身上
+    look(this.hero.x, this.hero.y - VIEW_H * 0.08, 0.1);
+    if (ev.t > 36) { this.ev = null; g.store.save(); }
+  }
+
+  // 和守灯驿的人说话、读刻字：由 main.js 调用（对话框和选项在 story.js）
+  talkTo(id) { this.talking = id; worldSave(this.save).heard[`${id}:${progress(this.save)}`] = true; }
 
   // 进关：画面收拢变黑，然后执行 go
   launch(go) {
@@ -401,6 +481,12 @@ export class World {
     const t = this.g.ticks;
     // 深渊往上冒的光点，点亮的烽灯的火星
     if (t % 3 === 0) this.motes.push({ x: 1200 + (Math.random() - 0.5) * 600, y: 220 + (Math.random() - 0.5) * 160, z: 0, vz: 0.3 + Math.random() * 0.5, life: 160, max: 160, c: '#b49aff' });
+    // 刚点亮的那一下：往上喷一阵火星
+    for (const [k, f] of Object.entries(this.flare)) {
+      if (f > 30) continue;
+      const s = site(k), [x, y, z, c] = k === 'camp' ? [s.x, s.y, 190, '#ffd27a'] : k === 'trial' ? [s.x, s.y, 110, '#7ff3ff'] : [s.beacon[0], s.beacon[1], 112, '#ffb45a'];
+      for (let i = 0; i < 3; i++) this.motes.push({ x: x + (Math.random() - 0.5) * 30, y, z: z + (Math.random() - 0.5) * 20, vz: 0.8 + Math.random() * 2, life: 70, max: 70, c });
+    }
     for (const s of SITES) if (this.lit(s) && t % 9 === 0) this.motes.push({ x: s.beacon[0] + (Math.random() - 0.5) * 8, y: s.beacon[1], z: 112, vz: 0.6 + Math.random() * 0.5, life: 60, max: 60, c: '#ffb45a' });
     for (const m of this.motes) { m.z += m.vz; m.x += Math.sin((t + m.y) * 0.03) * 0.3; m.life--; }
     this.motes = this.motes.filter((m) => m.life > 0);
@@ -478,6 +564,7 @@ export class World {
       if (st.beacon && vis(st.beacon[0], st.beacon[1], 160)) list.push({ y: st.beacon[1], d: () => this.blit(ctx, this.art_('beacon'), ...scr(st.beacon[0], st.beacon[1])) });
     }
     const h = this.hero;
+    for (const n of NPCS) if (vis(n.x, n.y, 80)) list.push({ y: n.y, d: () => this.drawNpc(ctx, n, ...scr(n.x, n.y), t) });
     list.push({ y: h.y, d: () => this.drawHero(ctx, ...scr(h.x, h.y), t) });
     list.sort((a, b) => a.y - b.y);
     for (const o of list) o.d();
@@ -495,22 +582,31 @@ export class World {
     // 光源
     const lit = this.litCount();
     const camp = site('camp');
-    lights.push([...scr(camp.x, camp.y - 120), 300 + lit * 40, 0.7 + lit * 0.06]);
-    glows.push({ x: camp.x, y: camp.y, z: 190, r: 10 + lit * 2, c: '#ffd27a', a: 0.6 + lit * 0.08 });
+    // 长明灯塔：烽灯越多越亮；结局以后全亮（点亮那一下有一阵闪光）
+    const full = this.ended(), cf = this.flare.camp;
+    const burst = (f) => (f == null ? 0 : Math.max(0, 1 - f / 50));
+    lights.push([...scr(camp.x, camp.y - 120), full ? 560 : 300 + lit * 40, full ? 1 : 0.7 + lit * 0.06]);
+    glows.push({ x: camp.x, y: camp.y, z: 190, r: (full ? 22 : 10 + lit * 2) * (1 + burst(cf) * 2.5), c: '#ffd27a', a: full ? 1 : 0.6 + lit * 0.08 });
     lights.push([...scr(1200, 210), 380, 0.42]); // 深渊往上透的光
     for (const st of SITES) {
       if (this.lit(st)) {
-        lights.push([...scr(st.beacon[0], st.beacon[1], 90), 300, 1]);
-        glows.push({ x: st.beacon[0], y: st.beacon[1], z: 112, r: 16, c: '#ffb45a', a: 1, flicker: true });
+        // 刚点亮：火苗从小到大、先闪一下，光慢慢铺开
+        const f = this.flare[st.id], grow = f == null ? 1 : Math.min(1, f / 40);
+        lights.push([...scr(st.beacon[0], st.beacon[1], 90), 300 * (0.3 + 0.7 * grow), 1]);
+        glows.push({ x: st.beacon[0], y: st.beacon[1], z: 112, r: 16 * (0.4 + 0.6 * grow) * (1 + burst(f) * 2), c: '#ffb45a', a: 1, flicker: true });
       }
       if (st.kind === 'stage' && this.unlocked(st)) lights.push([...scr(st.door[0], st.door[1] - 30), 150, 0.5]);
-      if (st.kind === 'trial' && this.unlocked(st)) {
-        lights.push([...scr(st.x, st.y, 110), 150, 0.5]);
-        glows.push({ x: st.x, y: st.y, z: 110, r: 9, c: '#7ff3ff', a: 0.55 + 0.2 * Math.sin(t * 0.05), rune: true });
+      if (st.kind === 'trial' && this.trialAwake()) {
+        const f = this.flare.trial, grow = f == null ? 1 : Math.min(1, f / 60);
+        lights.push([...scr(st.x, st.y, 110), 150 * (0.3 + 0.7 * grow), 0.5 + burst(f) * 0.5]);
+        glows.push({ x: st.x, y: st.y, z: 110, r: 9 * (1 + burst(f) * 2), c: '#7ff3ff', a: (0.55 + 0.2 * Math.sin(t * 0.05)) * grow, rune: true });
       }
       if (st.kind === 'training') lights.push([...scr(st.x, st.y - 40), 120, 0.35]);
     }
     lights.push([...scr(h.x, h.y, 30), 210, 1]);
+    // 阿砾罐子里的一点残光
+    const ali = NPCS.find((n) => n.id === 'ali');
+    if (!this.ended()) glows.push({ x: ali.x + 7, y: ali.y, z: 18, r: 3, c: '#d8f0ff', a: 0.7 + 0.3 * Math.sin(t * 0.09) });
     this.frameLights = lights;
     this.frameGlows = glows;
     this.frameScr = scr;
@@ -557,6 +653,52 @@ export class World {
     return S.frame('idle', Math.floor(t / 9) % n);
   }
 
+  // 守灯驿的人（占位：程序画的小人，素材回来后换成逐帧精灵）。说话时转向绯隼、手上有动作；有没听过的话，头上一个「!」
+  drawNpc(ctx, n, x, y, t) {
+    const L = n.look, H = n.h, talk = this.talking === n.id, near = Math.hypot(this.hero.x - n.x, this.hero.y - n.y) < 140;
+    const face = near || talk ? Math.sign(this.hero.x - n.x) || 1 : n.id === 'moheng' ? -1 : 1;
+    const bob = Math.sin(t * 0.05 + n.x) * 0.8, gest = talk ? Math.sin(t * 0.25) * 0.5 + 0.5 : 0;
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.fillStyle = 'rgba(0,0,0,.45)';
+    ctx.beginPath(); ctx.ellipse(0, 0, H * 0.22, 4, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.scale(face, 1);
+    const top = -H + bob, w = H * 0.2;
+    // 腿 / 袍子下摆
+    poly(ctx, [[-w * 1.1, 0], [w * 1.1, 0], [w * 0.8, top + H * 0.45], [-w * 0.8, top + H * 0.45]], L.robe, RIM, 1);
+    // 斗篷
+    poly(ctx, [[-w * 1.35, -H * 0.12], [w * 0.5, -H * 0.1], [w * 0.9, top + H * 0.3], [0, top + H * 0.18], [-w * 0.9, top + H * 0.3]], L.cloak, RIM, 1);
+    // 头、头发
+    const hy = top + H * 0.12;
+    ctx.fillStyle = L.skin; ctx.beginPath(); ctx.arc(w * 0.25, hy, H * 0.1, 0, Math.PI * 2); ctx.fill();
+    ctx.fillStyle = L.hair; ctx.beginPath(); ctx.arc(w * 0.1, hy - H * 0.03, H * 0.1, Math.PI * 0.95, Math.PI * 2.1); ctx.fill();
+    // 手和道具
+    const hx = w * 1.1, hand = top + H * 0.42 - gest * H * 0.12;
+    ctx.strokeStyle = L.prop === 'arm' ? '#3a3a44' : L.skin; ctx.lineWidth = L.prop === 'arm' ? 4 : 2.5;
+    ctx.beginPath(); ctx.moveTo(w * 0.4, top + H * 0.3); ctx.lineTo(hx, hand); ctx.stroke();
+    if (L.prop === 'pole') {
+      ctx.strokeStyle = '#4a3a2a'; ctx.lineWidth = 2;
+      ctx.beginPath(); ctx.moveTo(hx + 2, 0); ctx.lineTo(hx + 2, top - H * 0.1); ctx.lineTo(hx + 7, top - H * 0.06); ctx.stroke();
+      poly(ctx, [[hx + 5, top - H * 0.06], [hx + 10, top - H * 0.06], [hx + 10, top + H * 0.02], [hx + 5, top + H * 0.02]], '#1c1a22', RIM, 1);
+    } else if (L.prop === 'arm') {
+      ctx.fillStyle = '#4a4a54'; ctx.beginPath(); ctx.arc(hx, hand, 3.5, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#5a4030'; ctx.fillRect(-w * 0.7, top + H * 0.36, w * 1.4, H * 0.4); // 围裙
+    } else if (L.prop === 'jar') {
+      ctx.fillStyle = 'rgba(160,190,210,.5)'; ctx.fillRect(hx - 2, hand - 4, 6, 7);
+      ctx.fillStyle = '#6a5a3a'; ctx.fillRect(-w * 1.3, top + H * 0.3, w * 0.8, H * 0.3); // 背着的地图包
+    }
+    ctx.restore();
+    // 「!」：有新的话
+    if (!talk && hasNew(n.id, this.save) && !this.ev) {
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `600 ${18 + Math.sin(t * 0.15) * 1.5}px ${FONT_NUM}`;
+      ctx.lineWidth = 3; ctx.strokeStyle = '#1a1206'; ctx.fillStyle = '#ffd65a';
+      ctx.strokeText('!', x, y - H - 14); ctx.fillText('!', x, y - H - 14);
+      ctx.restore();
+    }
+  }
+
   drawHero(ctx, x, y, t) {
     const h = this.hero;
     ctx.fillStyle = 'rgba(0,0,0,.45)';
@@ -573,10 +715,10 @@ export class World {
   // 地点提示（画在最上层）：名字、推荐等级 / 解锁条件、按键
   drawPrompt(ctx, t, touch) {
     const s = this.near;
-    if (!s || this.leave) return;
+    if (!s || this.leave || (this.caption && this.caption.t < 140)) return; // 事件字幕还在时先不出提示
     const [x, y] = this.frameScr(s.door[0], s.door[1], 0);
     const info = this.siteInfo(s);
-    const top = y - 116;
+    const top = y - (s.kind === 'npc' ? s.npc.h + 58 : s.kind === 'read' ? 84 : 116);
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -595,13 +737,16 @@ export class World {
       ctx.globalAlpha = 0.6 + 0.4 * Math.sin(t * 0.12);
       ctx.font = `600 13px ${FONT_UI}`;
       ctx.fillStyle = COLORS.blade;
-      ctx.fillText(touch ? '点「攻」进入' : '按 J 进入', x, top + 38);
+      const verb = info.verb ?? '进入';
+      ctx.fillText(touch ? `点「攻」${verb}` : `按 J ${verb}`, x, top + 38);
     }
     ctx.restore();
   }
 
   siteInfo(s) {
     const sv = this.save;
+    if (s.kind === 'npc') return { name: SPEAKERS[s.id].name, sub: { zhupo: '守灯驿最老的守灯人', moheng: '铁匠 · 从前的守灯人', ali: '捡废墟的孩子' }[s.id], verb: '交谈' };
+    if (s.kind === 'read') return { name: s.read.title, sub: worldSave(sv).read[s.id] ? '读过了' : '上面刻着字', verb: '阅读' };
     if (s.kind === 'stage') {
       const st = STAGES[s.stage], open = this.unlocked(s);
       if (!open) return { name: st.name, sub: `通关「${STAGES[s.stage - 1].name}」解锁`, locked: true };
@@ -627,6 +772,31 @@ export class World {
       ctx.font = `500 16px ${FONT_NUM}`;
       ctx.fillStyle = '#c9c0dc';
       ctx.fillText(`LV.${this.save.lv}   烽灯 ${this.litCount()} / ${STAGES.length}`, 20, 44);
+      ctx.restore();
+    }
+    // 阿砾指路：人身边一个箭头指向下一个地方
+    if (this.guide && !title) {
+      const g = site(this.guide.id), [hx, hy] = this.frameScr(this.hero.x, this.hero.y, 30);
+      const ang = Math.atan2(g.door[1] - this.hero.y, g.door[0] - this.hero.x), r = 46;
+      ctx.save();
+      ctx.globalAlpha = Math.min(1, this.guide.t / 30) * (0.7 + 0.3 * Math.sin(t * 0.12));
+      ctx.translate(hx + Math.cos(ang) * r, hy + Math.sin(ang) * r * 0.8);
+      ctx.rotate(ang);
+      ctx.fillStyle = '#a6dc86';
+      ctx.beginPath(); ctx.moveTo(12, 0); ctx.lineTo(-6, -8); ctx.lineTo(-2, 0); ctx.lineTo(-6, 8); ctx.closePath(); ctx.fill();
+      ctx.restore();
+    }
+    // 事件字幕
+    if (this.caption) {
+      const c = this.caption, a = Math.min(1, c.t / 20, (170 - c.t) / 30);
+      ctx.save();
+      ctx.globalAlpha = Math.max(0, a);
+      const band = ctx.createLinearGradient(0, 0, VIEW_W, 0);
+      band.addColorStop(0, 'rgba(8,6,12,0)'); band.addColorStop(0.5, 'rgba(8,6,12,.75)'); band.addColorStop(1, 'rgba(8,6,12,0)');
+      ctx.fillStyle = band; ctx.fillRect(0, 96, VIEW_W, 64);
+      ctx.font = `32px ${FONT_TITLE}`; ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.shadowColor = 'rgba(255,190,110,.6)'; ctx.shadowBlur = 18;
+      ctx.fillStyle = '#f3dfa6'; ctx.fillText(c.text, VIEW_W / 2, 128);
       ctx.restore();
     }
     let a = this.fadeIn / 24;
