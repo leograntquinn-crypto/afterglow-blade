@@ -4,12 +4,13 @@
 // 画的时候统一换算成逻辑像素：逻辑像素 / 图集像素 = 0.5 / scale。
 // 地图打开时载入，进关时释放（关卡里用不到），回到地图再载入。
 // 地面：四张无缝贴图当平铺图案，按区域混合，再画道路和贴花。整张地图 2 倍清晰度太大（2400×1500 → 57MB），
-// 所以切成 480×480 的区块，只画镜头附近的，最多缓存 9 块（最久没用的先丢）。
+// 所以切成 480×480 的区块，只画镜头附近的，最多缓存 12 块（最久没用的先丢）。
+// 画一块要几十毫秒：每帧最多画一块，还没画好的先用荒原贴图临时铺上；空闲的帧按镜头要去的方向提前画下一块。
 import { MOBILE, SpriteSheet } from './sprite.js';
 
 const BASE = 'assets/world/';
 const TERRAINS = ['moor', 'ash', 'road', 'grave'];
-const CHUNK = 480, CHUNK_MAX = 9;
+const CHUNK = 480, CHUNK_MAX = 12;
 
 function loadImage(src) {
   return new Promise((resolve) => {
@@ -93,36 +94,55 @@ export const WORLD_ART = {
   },
 
   // ---------- 地面区块 ----------
-  // paint(g)：在逻辑坐标里画整张地图的地面（只会画到这一块的范围里）；key 变了（进度变化、道路打通）就全部重画
-  ground(ctx, camX, camY, viewW, viewH, k, key, paint) {
+  // paint(g, x0, y0, size)：在逻辑坐标里画地面（只会画到这一块的范围里）；key 变了（道路打通）就全部重画。
+  // ahead：镜头接下来要去的位置 [x, y]（走路的方向 / 事件里镜头要移过去的地方），空闲时提前画那里的区块
+  ground(ctx, camX, camY, viewW, viewH, k, key, paint, ahead = null) {
     if (this.groundKey !== key || this.chunkK !== k) {
       for (const c of this.chunks.values()) c.width = c.height = 0;
       this.chunks.clear();
       this.groundKey = key;
       this.chunkK = k;
     }
-    const x0 = Math.floor(camX / CHUNK), x1 = Math.floor((camX + viewW - 1) / CHUNK);
-    const y0 = Math.floor(camY / CHUNK), y1 = Math.floor((camY + viewH - 1) / CHUNK);
+    const range = (x, y) => [Math.floor(x / CHUNK), Math.floor((x + viewW - 1) / CHUNK), Math.floor(y / CHUNK), Math.floor((y + viewH - 1) / CHUNK)];
+    const make = (cx, cy) => {
+      const c = mk(CHUNK * k, CHUNK * k), g = c.getContext('2d');
+      g.setTransform(k, 0, 0, k, -cx * CHUNK * k, -cy * CHUNK * k);
+      paint(g, cx * CHUNK, cy * CHUNK, CHUNK);
+      this.chunks.set(`${cx},${cy}`, c);
+      while (this.chunks.size > CHUNK_MAX) {
+        const [old, oc] = this.chunks.entries().next().value;
+        this.chunks.delete(old);
+        oc.width = oc.height = 0;
+      }
+      return c;
+    };
+    let painted = 0, fallback = null;
+    const [x0, x1, y0, y1] = range(camX, camY);
     for (let cy = y0; cy <= y1; cy++) {
       for (let cx = x0; cx <= x1; cx++) {
         const id = `${cx},${cy}`;
         let c = this.chunks.get(id);
         if (c) { this.chunks.delete(id); this.chunks.set(id, c); } // 挪到最新
-        else {
-          c = mk(CHUNK * k, CHUNK * k);
-          const g = c.getContext('2d');
-          g.setTransform(k, 0, 0, k, -cx * CHUNK * k, -cy * CHUNK * k);
-          paint(g, cx * CHUNK, cy * CHUNK, CHUNK);
-          this.chunks.set(id, c);
-          while (this.chunks.size > CHUNK_MAX) {
-            const [old, oc] = this.chunks.entries().next().value;
-            this.chunks.delete(old);
-            oc.width = oc.height = 0;
-          }
-        }
-        ctx.drawImage(c, cx * CHUNK - camX, cy * CHUNK - camY, CHUNK, CHUNK);
+        else if (!painted++) c = make(cx, cy);
+        if (c) { ctx.drawImage(c, cx * CHUNK - camX, cy * CHUNK - camY, CHUNK, CHUNK); continue; }
+        // 这一帧来不及画：先铺荒原（下一帧补上细节）
+        if (!fallback) { fallback = ctx.createPattern(this.terrain.moor, 'repeat'); fallback.setTransform(new DOMMatrix().translate(-camX, -camY).scale(this.tk)); }
+        ctx.fillStyle = fallback;
+        ctx.fillRect(cx * CHUNK - camX, cy * CHUNK - camY, CHUNK, CHUNK);
       }
     }
+    // 空闲：提前画镜头要去的地方（离那里最近的一块）
+    if (!painted && ahead) {
+      const [a0, a1, b0, b1] = range(ahead[0], ahead[1]);
+      let best = null, bd = 1e9;
+      for (let cy = b0; cy <= b1; cy++) for (let cx = a0; cx <= a1; cx++) {
+        if (this.chunks.has(`${cx},${cy}`) || cx < 0 || cy < 0) continue;
+        const d = Math.hypot(cx * CHUNK + CHUNK / 2 - (ahead[0] + viewW / 2), cy * CHUNK + CHUNK / 2 - (ahead[1] + viewH / 2));
+        if (d < bd) { bd = d; best = [cx, cy]; }
+      }
+      if (best) make(...best);
+    }
+    return painted;
   },
 
   // 地面贴图做成平铺图案（逻辑坐标下的大小）

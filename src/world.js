@@ -553,10 +553,12 @@ export class World {
     // 刚点亮的那一下：往上喷一阵火星
     for (const [k, f] of Object.entries(this.flare)) {
       if (f > 30) continue;
-      const s = site(k), [x, y, z, c] = k === 'camp' ? [s.x, s.y, 190, '#ffd27a'] : k === 'trial' ? [s.x, s.y, 110, '#7ff3ff'] : [s.beacon[0], s.beacon[1], 112, '#ffb45a'];
+      const G = WORLD_ART.ready ? GEO.art : GEO.placeholder; // 火星从光的位置喷出（素材和占位的高度不同）
+      const s = site(k), [x, y, z, c] = k === 'camp' ? [s.x, s.y, G.lantern, '#ffd27a'] : k === 'trial' ? [s.x, s.y, G.trialZ, '#7ff3ff'] : [s.beacon[0], s.beacon[1], G.flame, '#ffb45a'];
       for (let i = 0; i < 3; i++) this.motes.push({ x: x + (Math.random() - 0.5) * 30, y, z: z + (Math.random() - 0.5) * 20, vz: 0.8 + Math.random() * 2, life: 70, max: 70, c });
     }
-    for (const s of SITES) if (this.lit(s) && t % 9 === 0) this.motes.push({ x: s.beacon[0] + (Math.random() - 0.5) * 8, y: s.beacon[1], z: 112, vz: 0.6 + Math.random() * 0.5, life: 60, max: 60, c: '#ffb45a' });
+    const fz = (WORLD_ART.ready ? GEO.art : GEO.placeholder).flame;
+    for (const s of SITES) if (this.lit(s) && t % 9 === 0) this.motes.push({ x: s.beacon[0] + (Math.random() - 0.5) * 8, y: s.beacon[1], z: fz, vz: 0.6 + Math.random() * 0.5, life: 60, max: 60, c: '#ffb45a' });
     for (const m of this.motes) { m.z += m.vz; m.x += Math.sin((t + m.y) * 0.03) * 0.3; m.life--; }
     this.motes = this.motes.filter((m) => m.life > 0);
   }
@@ -687,7 +689,12 @@ export class World {
       // 地面：按区块缓存（桌面最多 2 倍清晰度，手机 1 倍）
       const k = MOBILE ? 1 : Math.min(2, Math.max(1, Math.round(this.g.scale * 2) / 2));
       this.groundKey = this.groundKeyNow(); // 道路随进度打通：版本变了，地面区块全部重画
-      A.ground(ctx, cx, cy, VIEW_W, VIEW_H, k, this.groundKey, (g, x0, y0, size) => this.paintGround(g, x0, y0, size, k));
+      // 镜头接下来要去的地方：事件里是事件的焦点，平时按镜头移动的方向往前看约半秒
+      const lc = (this.lastCam ??= { x: cx, y: cy });
+      const ahead = this.ev ? [clamp(this.ev.focus[0] - VIEW_W / 2, 0, MAP_W - VIEW_W), clamp(this.ev.focus[1] - VIEW_H / 2, 0, MAP_H - VIEW_H)]
+        : [clamp(cx + (cx - lc.x) * 30, 0, MAP_W - VIEW_W), clamp(cy + (cy - lc.y) * 30, 0, MAP_H - VIEW_H)];
+      lc.x = cx; lc.y = cy;
+      A.ground(ctx, cx, cy, VIEW_W, VIEW_H, k, this.groundKey, (g, x0, y0, size) => this.paintGround(g, x0, y0, size, k), ahead);
     } else {
       const G = this.ground(), k = this.groundK;
       ctx.drawImage(G, cx * k, cy * k, VIEW_W * k, VIEW_H * k, 0, 0, VIEW_W, VIEW_H);
