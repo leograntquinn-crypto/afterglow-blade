@@ -3,7 +3,7 @@
 python3 -I tools/build_sprites.py <素材包根目录> <目标> [追加的素材包 ...]
 
 目标：hero（绯隼，追加 feisun_skills_v3 合进同一张图集）/ grunt / brute / archer / ashpriest / emberwing（杂兵）/
-      bone_lord / altar_warden / night_raven / iron_jaw（首领）/ props_s / props_l（小道具、大道具，来自同一个 env_props_v1 包）
+      bone_lord / altar_warden / night_raven / iron_jaw（首领）/ npc_zhupo / npc_moheng / npc_ali（守灯驿的人）/ props_s / props_l（小道具、大道具，来自同一个 env_props_v1 包）
 
 素材包都是 feisun.spritepack.v1 格式（单帧 PNG + animations.json），已经是原地动画，不再做对齐修正。
 每个目标输出两套图集：
@@ -44,6 +44,8 @@ TARGETS = {
     "night_raven": {"out": "bosses", "name": "night_raven", "cell": 256, "steady": {"walk": 0.75}, "art": {**AVATAR, "feather_blade.png": ("feather", None)}},
     "iron_jaw": {"out": "bosses", "name": "iron_jaw", "cell": 256, "steady": {"walk": 0.75},
                  "art": {**AVATAR, "chain_hook.png": ("hook", None), "chain_link.png": ("link", None)}},
+    # ART_V7：守灯驿的三个人（大地图上用，地图打开时载入）。portrait 是对话框里的胸像立绘（768 → 512）
+    **{f"npc_{n}": {"out": "world", "name": f"npc_{n}", "cell": 256, "art": {**AVATAR, "portrait.png": ("portrait", (512, 512))}} for n in ("zhupo", "moheng", "ali")},
     # 道具包里两种画布：小道具 256（锚点 128,232），大道具 512（锚点 256,448），分成两张图集
     "props_s": {"out": "props", "name": "props_s", "cell": 128, "only": ["urn_a", "urn_b", "shards", "chest", "sconce", "banner"]},
     "props_l": {"out": "props", "name": "props_l", "cell": 256, "only": ["shrine", "shrine_dry", "gate"]},

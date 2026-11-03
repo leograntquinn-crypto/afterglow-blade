@@ -10,6 +10,7 @@ import { MOBILE } from './sprite.js';
 import { STAGES } from './stages.js';
 import { heroSprite } from './sprite.js';
 import { SPEAKERS } from './world_story.js';
+import { WORLD_ART } from './world_art.js';
 
 export const PREMISE = [
   '百年前，地表的太阳熄灭了，人们管这叫「长夜」。',
@@ -202,7 +203,7 @@ export class StoryUI {
     ctx.restore();
   }
 
-  // 地图上的对话框：屏幕下方一条，左边头像（素材回来前是一个字的徽记），名字、逐字出现的台词，右边选项
+  // 地图上的对话框：屏幕下方一条，左边立绘（刻字用一个字的徽记），名字、逐字出现的台词，右边选项
   drawTalk(ctx) {
     const tk = this.talk, [who, text] = tk.lines[tk.i], S = SPEAKERS[who] ?? SPEAKERS.stone;
     const W = Math.min(820, VIEW_W - 40), H = 118, x = (VIEW_W - W) / 2, y = VIEW_H - H - 22;
@@ -212,7 +213,19 @@ export class StoryUI {
     ctx.strokeStyle = 'rgba(233,207,142,.35)';
     ctx.lineWidth = 1;
     ctx.beginPath(); ctx.roundRect(x, y, W, H, 10); ctx.fill(); ctx.stroke();
-    // 头像
+    // 立绘：守灯驿的人用素材里的胸像，绯隼用全身立绘的上半身；站在对话框左边、探出框外
+    const npc = WORLD_ART.npcs[who], pimg = npc?.ready && npc.portrait;
+    const hero = who === 'hero' && heroSprite.ready && heroSprite.full;
+    if (pimg || hero) {
+      const P = 196, px = x + 4, py = y + H - P;
+      if (pimg) ctx.drawImage(pimg, px, py, P, P);
+      else { const F = heroSprite.full, sw = F.width * 0.62, sh = sw; ctx.drawImage(F, F.width * 0.16, F.height * 0.02, sw, sh, px, py, P, P); }
+      const tx = x + 206;
+      this.drawTalkText(ctx, tk, who, S, text, tx, x, y, W, H);
+      ctx.restore();
+      return;
+    }
+    // 头像徽记（刻字，或者立绘还没载好）
     const ax = x + 62, ay = y + H / 2, R = 40;
     ctx.save();
     ctx.beginPath(); ctx.arc(ax, ay, R, 0, Math.PI * 2); ctx.clip();
@@ -227,8 +240,14 @@ export class StoryUI {
     ctx.restore();
     ctx.strokeStyle = S.color; ctx.lineWidth = 1.5;
     ctx.beginPath(); ctx.arc(ax, ay, R, 0, Math.PI * 2); ctx.stroke();
+    this.drawTalkText(ctx, tk, who, S, text, x + 122, x, y, W, H);
+    ctx.restore();
+  }
+
+  // 对话框里的名字、逐字台词和选项（tx：文字从哪里开始）
+  drawTalkText(ctx, tk, who, S, text, tx, x, y, W, H) {
     // 名字和台词（按宽度折行）
-    const tx = x + 122, choosing = this.talkChoosing(tk), tw = W - 140 - (choosing ? 170 : 0);
+    const choosing = this.talkChoosing(tk), tw = W - (tx - x) - 18 - (choosing ? 170 : 0);
     ctx.textAlign = 'left'; ctx.textBaseline = 'top';
     ctx.font = `20px ${FONT_TITLE}`; ctx.fillStyle = S.color;
     ctx.fillText(tk.title && who === 'stone' ? tk.title : S.name, tx, y + 14);
@@ -258,7 +277,6 @@ export class StoryUI {
       ctx.font = `13px ${FONT_UI}`; ctx.fillStyle = '#c9c0dc'; ctx.textAlign = 'right'; ctx.textBaseline = 'bottom';
       ctx.fillText(MOBILE ? '轻点继续 ▾' : 'J 继续 ▾', x + W - 16, y + H - 10);
     }
-    ctx.restore();
   }
 
   drawDialog(ctx) {

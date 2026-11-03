@@ -8,7 +8,7 @@ import { STAGES } from './stages.js';
 import { storyLog } from './story.js';
 
 // ---------------- 说话的人 ----------------
-// glyph / color：立绘素材（ART_V7）回来之前，对话框里用一个字的徽记代替头像
+// glyph / color：对话框里的徽记（刻字用；守灯驿的人和绯隼有立绘，立绘没载好时也用徽记）
 export const SPEAKERS = {
   zhupo: { name: '烛婆', glyph: '烛', color: '#8fa6e0' },
   moheng: { name: '墨衡', glyph: '墨', color: '#e0a070' },
@@ -18,11 +18,11 @@ export const SPEAKERS = {
 };
 
 // ---------------- 守灯驿的三个人 ----------------
-// x, y：站的位置（守灯驿门口两侧）；h：站立高度；look：占位人形的颜色
+// x, y：站的位置（守灯驿门口两侧）；h：站立高度（逻辑像素，和素材一致）；look：素材没载好时占位人形的颜色
 export const NPCS = [
-  { id: 'zhupo', x: 1128, y: 1198, h: 50, look: { cloak: '#2e3a5c', robe: '#4a4a52', skin: '#d8c4b0', hair: '#d8d4dc', prop: 'pole' } },
-  { id: 'moheng', x: 1296, y: 1190, h: 60, look: { cloak: '#4a3626', robe: '#3a3430', skin: '#c49a7a', hair: '#1e1a1a', prop: 'arm' } },
-  { id: 'ali', x: 1262, y: 1246, h: 40, look: { cloak: '#5a4a32', robe: '#3e3a2e', skin: '#e0c0a0', hair: '#6a4a2a', prop: 'jar' } },
+  { id: 'zhupo', x: 1128, y: 1198, h: 56, look: { cloak: '#2e3a5c', robe: '#4a4a52', skin: '#d8c4b0', hair: '#d8d4dc', prop: 'pole' } },
+  { id: 'moheng', x: 1296, y: 1190, h: 56, look: { cloak: '#4a3626', robe: '#3a3430', skin: '#c49a7a', hair: '#1e1a1a', prop: 'arm' } },
+  { id: 'ali', x: 1262, y: 1246, h: 42, look: { cloak: '#5a4a32', robe: '#3e3a2e', skin: '#e0c0a0', hair: '#6a4a2a', prop: 'jar' } },
 ];
 
 const Z = 'zhupo', M = 'moheng', A = 'ali', H = 'hero';
