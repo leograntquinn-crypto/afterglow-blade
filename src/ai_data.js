@@ -72,3 +72,49 @@ export const DIRECTOR = {
   // 连段保护：连段 combo 下以上、最近 recent 帧内还打中过人 → 别的敌人不开始新的进攻；最长 max 帧
   comboGuard: { combo: 3, recent: 42, max: 180 },
 };
+
+// ---------------- 第 3 轮：佯攻、读习惯、司祭和烬翼的配合 ----------------
+
+// 佯攻（腐骨兵、铁甲屠夫、烬翼）：抬手 → 露出破绽（「?」、武器抖动、光变成琥珀色）→ 收招，紧接着真打一下。
+// 预警的前半段和真打一样（骗先手闪避 / 弹刀），露出破绽的那 reveal 帧看得出来；佯攻本身不伤人
+export const FEINT = {
+  chance: [0.08, 0.15, 0.22], // 每次出招有多大概率是佯攻（普通难度少用）；读到你爱闪避 / 弹刀时最多再 ×1.3
+  cd: 420, // 同一个敌人两次佯攻至少隔多久
+  global: [360, 260, 200], // 全场两次佯攻至少隔多久（频率上限）
+  cancelAt: 0.62, // 预警进行到这里收招
+  reveal: 12, // 收招前多少帧露出破绽
+  follow: 14, // 收招后多久接真的一下
+};
+
+// 读习惯（玩家模型）：整场统计你的打法，随时间慢慢忘掉；某个习惯明显时，相关参数最多变 30%，第一次时给提示
+//   min：至少看到这么多次才开始判断；base：比例高过这个才算习惯；span：从 base 到「完全是习惯」的跨度
+export const HABITS = {
+  cap: 0.3, // 影响上限
+  show: 0.5, // 习惯程度到这里时提示一次
+  decayEvery: 600, // 每 10 秒把统计打 85 折（慢慢忘掉旧习惯）
+  decay: 0.85,
+  dodge: { min: 6, base: 0.35, span: 0.5, toast: '敌人开始提防你的闪避 —— 小心假动作' },
+  parry: { min: 6, base: 0.1, span: 0.3, toast: '敌人开始提防你的弹刀 —— 小心假动作' },
+  greed: { min: 5, base: 0.3, span: 0.5, toast: '铁甲屠夫开始提防你贪刀 —— 会更早把你甩开' },
+  whiff: { min: 10, base: 0.3, span: 0.4, toast: '腐骨兵开始盯你的空挥' },
+};
+
+Object.assign(AI_PROFILES, {
+  // 灰烛司祭（enemies_ext.js 的 AI 用这里的参数）
+  priest: {
+    reaction: [18, 14, 10],
+    protect: 120, // 你最近这么多帧内打过的同伴，优先给它加盾
+    // 读条前确认身前有同伴挡着（同伴在司祭和你之间、比司祭靠前至少 margin、纵深差 within 以内、离司祭 reach 以内）；没有就先躲到同伴身后 behind 远
+    screen: { within: 60, reach: 280, behind: 75, margin: 24 },
+    // 陷阱下在你常闪避的落点：至少记下 min 次闪避才用，偏移最多 maxX / maxY
+    trap: { min: 3, maxX: 120, maxY: 60 },
+  },
+  // 烬翼（enemies_ext.js）
+  wing: {
+    reaction: [18, 14, 10],
+    // 轮流俯冲：一只假冲（「?」、只冲一半、不伤人）引你闪避，同伴在它预警进行到 pair 时开始真冲
+    pair: 0.55,
+    scatter: { near: 190, away: 140 }, // 你起跳时，离你 near 以内的烬翼往外散开 away
+    land: { window: 26, cd: 50 }, // 你落地后 window 帧内、冷却剩不到 cd 的烬翼马上俯冲
+  },
+});

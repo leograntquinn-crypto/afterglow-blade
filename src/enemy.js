@@ -6,7 +6,8 @@ import { sfx } from './audio.js';
 import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
 import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
 import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
-import { BRAINS } from './ai.js';
+import { BRAINS, feintRevealed } from './ai.js';
+import { FEINT } from './ai_data.js';
 
 export const TYPES = {
   grunt: {
@@ -119,6 +120,7 @@ export class Enemy {
     if (this.guardT > 0) this.guardT--;
     if (this.guardCd > 0) this.guardCd--;
     if (this.shoveCd > 0) this.shoveCd--;
+    if (this.feintCd > 0) this.feintCd--;
     if (this.flying > 0) this.flying--;
     if (this.squash > 0) this.squash--;
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
@@ -136,6 +138,14 @@ export class Enemy {
         if (ai?.windup) ai.windup(this, game);
         else { this.vx *= 0.7; this.vy = 0; }
         if (this.T.brain && !this.dummy && !this.isBoss && game.ai) BRAINS[this.T.brain]?.windup?.(this, game); // 屠夫：看你闪避晚半拍砸
+        // 佯攻：预警进行到 cancelAt 就收招（不伤人），紧接着真打一下（烬翼的假冲另算，见 enemies_ext.js）
+        if (this.atk.feint && !this.atk.noCancel && this.st >= Math.round(this.windup * FEINT.cancelAt)) {
+          this.setState('idle');
+          this.attackCd = FEINT.follow;
+          game.fx.label(this.x, this.y, this.h + 30, '虚晃', '#ffb347', 16);
+          if (this.ai) { this.ai.intent = 'press'; this.ai.t = 0; } // 收招后坚持「压上」一小段，紧接着真打
+          break;
+        }
         if (this.st >= this.windup + Math.max(0, this.holdT || 0)) this.doAttack(game);
         break;
       case 'hop':
@@ -233,7 +243,7 @@ export class Enemy {
     this.hitSet.clear();
     if (atk.slam) {
       // slamX / slamR：红圈的位置和大小（屠夫的「甩开」是绕在自己身边的一圈）
-      game.hazards.push(new Hazard({ x: this.x + this.facing * (atk.slamX ?? 95), y: this.y, rx: atk.slamR?.[0] ?? 115, ry: atk.slamR?.[1] ?? 44, delay: this.windup, hit: atk.hit, owner: this }));
+      game.hazards.push(new Hazard({ x: this.x + this.facing * (atk.slamX ?? 95), y: this.y, rx: atk.slamR?.[0] ?? 115, ry: atk.slamR?.[1] ?? 44, delay: this.windup, hit: atk.hit, owner: this, feint: !!atk.feint }));
       sfx('warn');
     }
   }
@@ -452,7 +462,9 @@ export class Enemy {
     if (this.state === 'dying' && this.z <= 0) alpha = Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
 
-    if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
+    const feint = feintRevealed(this); // 佯攻露出破绽：光变成琥珀色、「!」变成「?」、武器抖动
+    if (feint) { drawAura(ctx, sx, sy, this.h, '#ffb347', 0.9 + 0.5 * Math.sin(this.st * 1.3)); sx += Math.sin(this.st * 2.1) * 1.6; }
+    else if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
     else if (this.guardT > 0 && this.alive) drawAura(ctx, sx, sy, this.h, '#9fd0ff', 1.1 + 0.3 * Math.sin(this.st * 0.5)); // 屠夫举斧格挡：冷色光
     else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
     else if (this.blinkFlash > 0) drawAura(ctx, sx, sy, this.h, AFFIXES.blink.color, 1.4);
@@ -490,9 +502,10 @@ export class Enemy {
       ctx.font = `600 ${30 * s}px ${FONT_NUM}`;
       ctx.lineWidth = 4;
       ctx.strokeStyle = '#1a0606';
-      ctx.strokeText('!', sx, top - 14);
-      ctx.fillStyle = '#ff3b3b';
-      ctx.fillText('!', sx, top - 14);
+      const mark = feint ? '?' : '!';
+      ctx.strokeText(mark, sx, top - 14);
+      ctx.fillStyle = feint ? '#ffb347' : '#ff3b3b';
+      ctx.fillText(mark, sx, top - 14);
     }
     if (this.brokenT > 0 && this.alive) {
       ctx.font = `18px ${FONT_TITLE}`;
