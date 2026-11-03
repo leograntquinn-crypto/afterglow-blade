@@ -1,8 +1,8 @@
 // 大地图「守灯原」：可以走的地图，走到关卡入口按攻击键进关。设计见 docs/DESIGN_WORLD.md。
 //
 // 俯视 3/4 视角，地图逻辑尺寸 MAP_W × MAP_H，镜头跟着人走。人物用现有的侧面逐帧精灵（缩小）。
-// 素材（docs/ART_V7.md）回来之前，地面、道路、地标、散件都是程序画的占位：
-//   地面和道路画进一张缓存画布（进度变化时重画），地标和散件各自缓存成小画布，按锚点的 y 排序遮挡。
+// 素材（docs/ART_V7.md，见 world_art.js）载入后按锚点画；素材没载好时用程序画的占位：
+//   地面和道路画进一张缓存画布（进度变化时重画），地标和散件各自缓存成小画布。两种都按锚点的 y 排序遮挡。
 // 光：长明灯塔、点亮的烽灯、深渊、试炼碑、人物身上的光，交给现有的光照 / 后处理管线。
 import { VIEW_W, VIEW_H, FONT_TITLE, FONT_UI, FONT_NUM, COLORS, clamp } from './config.js';
 import { heroSprite, MOBILE } from './sprite.js';
@@ -13,6 +13,7 @@ import { tex, tinted } from './fx_tex.js';
 import { drawFighter } from './rig.js';
 import { settings } from './settings.js';
 import { sfx } from './audio.js';
+import { WORLD_ART } from './world_art.js';
 import { NPCS, INSCRIPTIONS, SPEAKERS, worldSave, hasNew, pendingEvents, progress, TALKS, BEACON_LINES, TRIAL_LINES, ENDING_LINES } from './world_story.js';
 
 export const MAP_W = 2400, MAP_H = 1500;
@@ -20,31 +21,33 @@ const EDGE = 80; // 地图四周的枯林带，走不进去
 const HERO_H = 58; // 地图上人物的站立高度（战斗里约 96）
 const SPEED = 2.4; // 每帧走多少（逻辑像素）
 const NEAR = 64; // 离入口多近算「站在入口前」
+const MAP_SCALE = (0.54 * HERO_H) / 96; // 地图上人物精灵的缩放（绯隼和守灯驿的人都用这个）
 
 // ---------------- 地点 ----------------
 // x, y：锚点（底部中心）；foot：底座椭圆的半径 [rx, ry]，挡路；door：站在哪里算入口前（默认锚点正前方）
+// fdy：底座椭圆中心在锚点上方多少（按素材里建筑的位置量的）；地标的地面圆台可以走，建筑本身挡路
 export const SITES = [
-  { id: 'camp', kind: 'camp', name: '守灯驿', x: 1200, y: 1150, foot: [150, 52], door: [1200, 1200] },
-  { id: 's1', kind: 'stage', stage: 0, x: 640, y: 850, foot: [118, 44], beacon: [500, 880] },
-  { id: 's2', kind: 'stage', stage: 1, x: 1000, y: 600, foot: [120, 48], beacon: [1130, 620] },
-  { id: 's3', kind: 'stage', stage: 2, x: 1760, y: 850, foot: [126, 48], beacon: [1900, 880] },
-  { id: 's4', kind: 'stage', stage: 3, x: 1910, y: 470, foot: [136, 52], beacon: [1760, 500] },
+  { id: 'camp', kind: 'camp', name: '守灯驿', x: 1200, y: 1150, foot: [150, 60], fdy: -72, door: [1200, 1200] },
+  { id: 's1', kind: 'stage', stage: 0, x: 640, y: 850, foot: [92, 46], fdy: -76, beacon: [500, 880] },
+  { id: 's2', kind: 'stage', stage: 1, x: 1000, y: 600, foot: [124, 98], fdy: -146, beacon: [1150, 620] },
+  { id: 's3', kind: 'stage', stage: 2, x: 1760, y: 850, foot: [118, 88], fdy: -134, beacon: [1910, 880] },
+  { id: 's4', kind: 'stage', stage: 3, x: 1910, y: 470, foot: [108, 92], fdy: -142, beacon: [1760, 500] },
   // 深渊：底座是整个深渊，入口在断桥伸出去的地方
-  { id: 's5', kind: 'stage', stage: 4, x: 1200, y: 330, foot: [360, 130], footY: 200, beacon: [1440, 380] },
-  { id: 'trial', kind: 'trial', name: '残光试炼', x: 780, y: 1180, foot: [46, 22] },
+  { id: 's5', kind: 'stage', stage: 4, x: 1200, y: 360, foot: [224, 130], fdy: -184, beacon: [1460, 400] },
+  { id: 'trial', kind: 'trial', name: '残光试炼', x: 780, y: 1180, foot: [70, 40], fdy: -75 },
   { id: 'training', kind: 'training', name: '练剑场', x: 1590, y: 1210, foot: [0, 0], door: [1590, 1250] },
-].map((s) => ({ ...s, name: s.name ?? STAGES[s.stage].name, door: s.door ?? [s.x, s.y + 38] }));
+].map((s) => ({ ...s, name: s.name ?? STAGES[s.stage].name, door: s.door ?? [s.x, s.y + 24] }));
 export const site = (id) => SITES.find((s) => s.id === id);
 
 // 道路：守灯驿 → ① → ② → ③ → ④ → ⑤，另外两条小路通练剑场和试炼碑。open：这一段什么时候算「通了」
 const ROADS = [
-  { pts: [[1200, 1205], [1040, 1150], [860, 1030], [660, 895]], open: () => true },
+  { pts: [[1200, 1205], [1040, 1150], [860, 1030], [650, 880]], open: () => true },
   { pts: [[1200, 1205], [1390, 1230], [1590, 1255]], open: () => true },
   { pts: [[1200, 1205], [1000, 1235], [780, 1220]], open: () => true },
-  { pts: [[660, 895], [700, 760], [850, 660], [1000, 645]], open: (s) => isUnlocked(s, 1) },
-  { pts: [[1000, 645], [1250, 710], [1500, 810], [1760, 895]], open: (s) => isUnlocked(s, 2) },
-  { pts: [[1760, 895], [1880, 720], [1910, 515]], open: (s) => isUnlocked(s, 3) },
-  { pts: [[1910, 515], [1700, 430], [1450, 385], [1200, 375]], open: (s) => isUnlocked(s, 4) },
+  { pts: [[650, 880], [700, 760], [850, 660], [1000, 630]], open: (s) => isUnlocked(s, 1) },
+  { pts: [[1000, 630], [1250, 710], [1500, 810], [1760, 880]], open: (s) => isUnlocked(s, 2) },
+  { pts: [[1760, 880], [1880, 720], [1910, 500]], open: (s) => isUnlocked(s, 3) },
+  { pts: [[1910, 515], [1700, 440], [1450, 410], [1200, 392]], open: (s) => isUnlocked(s, 4) },
 ];
 
 // 固定随机数：每次打开地图，树和石头都在同一个地方
@@ -65,21 +68,39 @@ function segDist(px, py, [ax, ay], [bx, by]) {
 const roadDist = (x, y) => Math.min(...ROADS.flatMap((r) => r.pts.slice(1).map((p, i) => segDist(x, y, r.pts[i], p))));
 
 // ---------------- 散件（固定随机摆放）----------------
+// 挡路的范围：r 圆（横向略宽），或者 rx / ry 椭圆（墙、拱这种宽的）；没写 = 不挡路
+const PROP_BLOCK = {
+  tree: { r: 12 }, rock: { r: 14 }, grave: { r: 8 }, stump: { r: 8 }, menhir: { r: 10 }, shrine: { r: 12 },
+  wall: { rx: 58, ry: 12 }, arch: { rx: 66, ry: 12 }, crates: { rx: 40, ry: 14 }, cart: { rx: 50, ry: 16 },
+};
+// 素材里的 id：kind + 变体
+const PROP_ART = { tree: ['tree_a', 'tree_b', 'tree_c'], rock: ['boulder', 'rocks', 'slab'], grave: ['grave_a', 'grave_b', 'grave_cross'], lamp: ['lamp'], sign: ['signpost'], stone: ['milestone'] };
+const propArtId = (o) => PROP_ART[o.kind]?.[o.v % PROP_ART[o.kind].length] ?? o.kind;
 // kind：tree 枯树 / rock 石头 / grave 墓碑 / lamp 路灯 / sign 路牌；r：挡路的半径（0 = 不挡）
 function scatter() {
   const R = rng(7), out = [];
-  const free = (x, y, d) => roadDist(x, y) > d && SITES.every((s) => Math.hypot((x - s.x) / 1.4, y - s.y + (s.footY ? s.y - s.footY : 0)) > (s.id === 's5' ? 380 : 170))
-    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46) && [...NPCS, ...INSCRIPTIONS].every((o) => Math.hypot(o.x - x, o.y - y) > 60);
+  const free = (x, y, d) => roadDist(x, y) > d && SITES.every((s) => Math.hypot((x - s.x) / 1.4, y - s.y - (s.fdy ?? 0) * 0.6) > (s.id === 's5' ? 330 : 180))
+    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46) && INSCRIPTIONS.every((o) => Math.hypot(o.x - x, o.y - y) > 60)
+    && NPCS.every((o) => Math.hypot(o.x - x, o.y - y) > 120) && SITES.every((s) => Math.hypot(x - s.door[0], y - s.door[1]) > 150); // 入口前、守灯驿门口留空
   const put = (kind, n, d, area = () => [EDGE + 40 + R() * (MAP_W - EDGE * 2 - 80), EDGE + 60 + R() * (MAP_H - EDGE * 2 - 100)]) => {
     for (let k = 0, tries = 0; k < n && tries < n * 40; tries++) {
       const [x, y] = area();
       if (!free(x, y, d)) continue;
-      out.push({ kind, x, y, v: (R() * 3) | 0, r: kind === 'tree' ? 12 : kind === 'rock' ? 14 : kind === 'grave' ? 8 : 0 });
+      out.push({ kind, x, y, v: (R() * 3) | 0, ...PROP_BLOCK[kind] });
       k++;
     }
   };
-  put('tree', 46, 60);
+  put('tree', 26, 90);
   put('rock', 30, 46);
+  // 素材里的散件更多样：灌木、芦苇（不挡路）、树桩、立石、倒下的路灯、残墙、石拱、路祠
+  put('bush', 34, 34);
+  put('reeds', 22, 34);
+  put('stump', 10, 46);
+  put('menhir', 6, 60);
+  put('lamp_fallen', 5, 46);
+  put('wall', 5, 80);
+  put('arch', 3, 90);
+  put('shrine', 3, 50);
   // 墓园：①附近的墓碑
   put('grave', 16, 40, () => { const a = R() * Math.PI * 2, d = 120 + R() * 140; return [640 + Math.cos(a) * d * 1.4, 860 + Math.sin(a) * d * 0.7]; });
   // 路灯：沿主路每隔一段，立在路边
@@ -93,8 +114,10 @@ function scatter() {
       }
     }
   }
+  // 守灯驿门外的箱子和旧车
+  out.push({ kind: 'crates', x: 1050, y: 1132, v: 0, ...PROP_BLOCK.crates }, { kind: 'cart', x: 1400, y: 1300, v: 0, ...PROP_BLOCK.cart });
   // 路边可以读的刻字（路牌 / 刻字石 / 墓碑），也是散件
-  for (const c of INSCRIPTIONS) out.push({ kind: c.kind === 'stone' ? 'stone' : c.kind, x: c.x, y: c.y, v: c.kind === 'grave' ? 1 : 0, r: 7, read: c });
+  for (const c of INSCRIPTIONS) out.push({ kind: c.kind === 'stone' ? 'stone' : c.kind, x: c.x, y: c.y, v: c.kind === 'grave' ? 0 : 0, r: 7, read: c });
   return out;
 }
 
@@ -281,6 +304,43 @@ const LANDMARK = {
   }),
 };
 const SITE_ART = { camp: 'camp', s1: 'crypt', s2: 'ossuary', s3: 'gallows', s4: 'altar', s5: 'abyss', training: 'training', trial: 'trial' };
+// 烽灯素材画得很高（原尺寸 7 个人高），按一半画；封印按 0.4 倍盖在入口上
+const BEACON_S = 0.44, SEAL_S = 0.4;
+// 引擎画的光在素材里的位置（锚点上方多少逻辑像素）：长明灯塔的灯笼、烽灯的火盆、试炼碑、深渊中心
+const GEO = {
+  placeholder: { lantern: 190, flame: 112, trialZ: 110, trialDx: 0, rune: [20, 26, 12], abyss: [1200, 210] },
+  art: { lantern: 316, flame: 156, trialZ: 160, trialDx: -2, rune: [-30, 24, 20], abyss: [1195, 176] },
+};
+// 地图边缘：上下两排、左右两列（锚点在地图外面一点，只露出里侧）
+const EDGES = (() => {
+  const out = [], top = ['dead_forest_a', 'rocky_ridge', 'dead_forest_b'], bot = ['reeds_thorns', 'dead_forest_a', 'reeds_thorns', 'dead_forest_b'], side = ['cliff', 'ruined_wall', 'dead_forest_b', 'rocky_ridge'];
+  for (let x = 120, i = 0; x < MAP_W; x += 400, i++) out.push({ id: top[i % 3], x, y: 92, flip: i % 2 ? -1 : 1 });
+  for (let x = 0, i = 0; x < MAP_W + 200; x += 420, i++) out.push({ id: bot[i % 4], x, y: MAP_H + 175, flip: i % 2 ? 1 : -1 });
+  for (let y = 300, i = 0; y < MAP_H + 100; y += 260, i++) {
+    out.push({ id: side[i % 4], x: -175, y, flip: 1 });
+    out.push({ id: side[(i + 2) % 4], x: MAP_W + 175, y, flip: -1 });
+  }
+  return out;
+})();
+// 地面贴花（只在有素材时画进地面区块）：按区域挑种类，固定随机
+const DECALS = (() => {
+  const R = rng(17), out = [];
+  const near = (x, y, cx, cy, r) => Math.hypot(x - cx, y - cy) < r;
+  for (let i = 0; i < 300; i++) {
+    const x = EDGE + R() * (MAP_W - EDGE * 2), y = EDGE + 40 + R() * (MAP_H - EDGE * 2 - 40);
+    if (SITES.some((s) => Math.hypot((x - s.x) / 1.3, y - s.y - (s.fdy ?? 0)) < (s.id === 's5' ? 260 : 120))) continue;
+    const onRoad = roadDist(x, y) < 22;
+    let pool = ['dead_grass', 'dead_grass', 'stones_three', 'puddle', 'thorn_ring', 'dry_leaves', 'tracks', 'dark_moss', 'trampled_dirt', 'crack'];
+    if (near(x, y, 640, 830, 330)) pool = ['bones', 'dark_moss', 'dry_leaves', 'dead_grass', 'clay_pot'];
+    else if (near(x, y, 1910, 450, 380) || near(x, y, 1200, 220, 560)) pool = ['ash_patch', 'crack', 'rubble', 'stones_three'];
+    if (onRoad) pool = ['broken_cobbles', 'tracks', 'puddle'];
+    if (R() < 0.04) pool = ['broken_sword', 'buried_lantern', 'clay_pot'];
+    out.push({ id: pool[(R() * pool.length) | 0], x, y, flip: R() < 0.5 ? -1 : 1 });
+  }
+  return out;
+})();
+// 地面混合的区域：墓园土（①）、灰烬地（④⑤）、守灯驿和练剑场门口踩出来的泥地
+const ZONES = [['grave', 640, 830, 330, 1], ['ash', 1910, 450, 380, 1], ['ash', 1200, 210, 600, 1], ['road', 1200, 1180, 190, 0.55], ['road', 1590, 1240, 150, 0.4]];
 
 // ---------------- 地图场景 ----------------
 export class World {
@@ -303,11 +363,14 @@ export class World {
     this.caption = null; // 事件的标题字幕 { text, t }
     this.guide = null; // 阿砾指路 { id, t }
     this.talking = null; // 正在和谁说话（那个人转向绯隼、做手势）
+    WORLD_ART.load(); // 封面就在地图上，开机就载入
   }
 
   get save() { return this.g.save; }
   art_(k) { return (this.art[k] ??= LANDMARK[k]()); }
   propArt(o) {
+    const kind = ['tree', 'rock', 'grave', 'lamp', 'sign', 'stone'].includes(o.kind) ? o.kind : 'rock'; // 占位只有这几种画法
+    o = { ...o, kind };
     const key = o.kind + o.v;
     return (this.art[key] ??= ({
       tree: () => sprite(120, 150, 60, 140, (g) => paintTree(g, o.v)),
@@ -341,6 +404,8 @@ export class World {
     this.hero.moving = 0;
     this.leave = null;
     this.fadeIn = 24;
+    this.artWait = 120; // 素材还在载入：最多黑屏 2 秒等它（回地图时重新解码），超时就先用占位
+    WORLD_ART.load();
     this.prewarm();
     this.snapCam();
     this.near = null;
@@ -364,10 +429,13 @@ export class World {
     for (const s of SITES) {
       const [rx, ry] = s.foot;
       if (!rx) continue;
-      const cy = s.footY ?? s.y - ry;
+      const cy = s.y + s.fdy;
       if (((x - s.x) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1) return true;
     }
-    for (const o of this.props) if (o.r && Math.hypot((x - o.x) / 1.3, y - o.y) < o.r) return true;
+    for (const o of this.props) {
+      if (o.r && Math.hypot((x - o.x) / 1.3, y - o.y) < o.r) return true;
+      if (o.rx && ((x - o.x) / o.rx) ** 2 + ((y - o.y) / o.ry) ** 2 < 1) return true;
+    }
     for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9) return true;
     return false;
   }
@@ -376,7 +444,8 @@ export class World {
   update(input, { title = false, frozen = false } = {}) {
     const h = this.hero;
     this.updateMotes();
-    if (this.fadeIn > 0) this.fadeIn--;
+    if (this.artWait > 0 && WORLD_ART.loading && !WORLD_ART.ready) { this.artWait--; this.fadeIn = 24; }
+    else if (this.fadeIn > 0) this.fadeIn--;
     for (const k in this.flare) this.flare[k]++;
     if (this.caption && ++this.caption.t > 170) this.caption = null;
     if (this.guide && (--this.guide.t <= 0 || Math.hypot(h.x - site(this.guide.id).door[0], h.y - site(this.guide.id).door[1]) < 110)) this.guide = null;
@@ -545,38 +614,115 @@ export class World {
     return c;
   }
 
+  groundKeyNow() { return STAGES.map((st, i) => +isUnlocked(this.save, i)).join(''); }
+
+  // 入口的位置：有素材时用素材标的入口点（门口 / 台阶口），没有就用站位点
+  entrance(st) {
+    if (WORLD_ART.ready && WORLD_ART.land.has(SITE_ART[st.id])) { const [dx, dy] = WORLD_ART.land.entrance(SITE_ART[st.id]); return [st.x + dx, st.y + dy]; }
+    return [st.door[0], st.door[1] - 18];
+  }
+
+  // 一块地面（逻辑坐标 x0, y0 起、size 见方）：荒原打底 → 区域混合 → 道路 → 贴花
+  paintGround(g, x0, y0, size, k) {
+    const A = WORLD_ART, T = (this.tmp ??= document.createElement('canvas'));
+    if (T.width !== Math.ceil(size * k)) { T.width = T.height = Math.ceil(size * k); }
+    const tg = T.getContext('2d');
+    const m = g.getTransform();
+    // 在临时画布上画一层（同样的坐标），再按透明度叠到地面上
+    const layer = (paint, alpha = 1) => {
+      tg.setTransform(1, 0, 0, 1, 0, 0);
+      tg.globalCompositeOperation = 'source-over';
+      tg.clearRect(0, 0, T.width, T.height);
+      tg.setTransform(m);
+      paint(tg);
+      g.save();
+      g.setTransform(1, 0, 0, 1, 0, 0);
+      g.globalAlpha = alpha;
+      g.drawImage(T, 0, 0);
+      g.restore();
+    };
+    g.fillStyle = A.pattern(g, 'moor');
+    g.fillRect(x0, y0, size, size);
+    const inChunk = (x, y, r) => x + r > x0 && x - r < x0 + size && y + r > y0 && y - r < y0 + size;
+    for (const [t, x, y, r, alpha] of ZONES) {
+      if (!inChunk(x, y, r)) continue;
+      layer((c) => {
+        c.fillStyle = A.pattern(c, t);
+        c.fillRect(x0, y0, size, size);
+        c.globalCompositeOperation = 'destination-in';
+        const gr = c.createRadialGradient(x, y, r * 0.35, x, y, r);
+        gr.addColorStop(0, 'rgba(0,0,0,1)'); gr.addColorStop(1, 'rgba(0,0,0,0)');
+        c.fillStyle = gr;
+        c.fillRect(x0, y0, size, size);
+      }, alpha);
+    }
+    // 道路：通了的段是石路（边上压一道暗边），没通的段只剩一点痕迹
+    for (const r of ROADS) {
+      if (!r.pts.some(([x, y]) => inChunk(x, y, 400))) continue;
+      const open = r.open(this.save);
+      const path = (c) => { c.beginPath(); r.pts.forEach(([x, y], i) => (i ? c.lineTo(x, y) : c.moveTo(x, y))); };
+      g.lineJoin = g.lineCap = 'round';
+      if (open) { path(g); g.strokeStyle = 'rgba(8,6,10,.35)'; g.lineWidth = 52; g.stroke(); }
+      layer((c) => {
+        c.lineJoin = c.lineCap = 'round';
+        path(c); c.strokeStyle = 'rgba(0,0,0,.5)'; c.lineWidth = open ? 48 : 30; c.stroke();
+        path(c); c.strokeStyle = '#000'; c.lineWidth = open ? 38 : 20; c.stroke();
+        c.globalCompositeOperation = 'source-in';
+        c.fillStyle = A.pattern(c, 'road');
+        c.fillRect(x0, y0, size, size);
+      }, open ? 1 : 0.3);
+    }
+    for (const d of DECALS) if (inChunk(d.x, d.y, 80)) A.props.draw(g, d.id, d.x, d.y, 1, d.flip);
+  }
+
   // ---------- 绘制 ----------
   // 返回这一帧的光源（屏幕坐标）和发光物，交给 main.js 的光照 / 泛光
   draw(ctx, t) {
     const cx = Math.round(this.cam.x), cy = Math.round(this.cam.y), s = this.save;
-    const G = this.ground(), k = this.groundK;
-    ctx.drawImage(G, cx * k, cy * k, VIEW_W * k, VIEW_H * k, 0, 0, VIEW_W, VIEW_H);
+    const art = WORLD_ART.ready, A = WORLD_ART;
     const lights = [], glows = [];
     const scr = (x, y, z = 0) => [x - cx, y - cy - z];
     const vis = (x, y, m) => x > cx - m && x < cx + VIEW_W + m && y > cy - m && y < cy + VIEW_H + m * 1.6;
-
-    // 要按 y 排序的东西
-    const list = [];
-    for (const o of this.props) if (vis(o.x, o.y, 120)) list.push({ y: o.y, d: () => this.blit(ctx, this.propArt(o), ...scr(o.x, o.y)) });
-    for (const st of SITES) {
-      const a = this.art_(SITE_ART[st.id]);
-      if (vis(st.x, st.y, 420)) list.push({ y: st.y, d: () => this.blit(ctx, a, ...scr(st.x, st.y)) });
-      if (st.beacon && vis(st.beacon[0], st.beacon[1], 160)) list.push({ y: st.beacon[1], d: () => this.blit(ctx, this.art_('beacon'), ...scr(st.beacon[0], st.beacon[1])) });
+    if (art) {
+      // 地面：按区块缓存（桌面最多 2 倍清晰度，手机 1 倍）
+      const k = MOBILE ? 1 : Math.min(2, Math.max(1, Math.round(this.g.scale * 2) / 2));
+      this.groundKey = this.groundKeyNow(); // 道路随进度打通：版本变了，地面区块全部重画
+      A.ground(ctx, cx, cy, VIEW_W, VIEW_H, k, this.groundKey, (g, x0, y0, size) => this.paintGround(g, x0, y0, size, k));
+    } else {
+      const G = this.ground(), k = this.groundK;
+      ctx.drawImage(G, cx * k, cy * k, VIEW_W * k, VIEW_H * k, 0, 0, VIEW_W, VIEW_H);
     }
+
+    // 要按 y 排序的东西（锚点的 y 越大越靠前）
+    const list = [];
+    const P = A.props, L = A.land;
+    for (const o of this.props) {
+      if (!vis(o.x, o.y, art ? 220 : 120)) continue;
+      if (art && P.has(propArtId(o))) list.push({ y: o.y, d: () => P.draw(ctx, propArtId(o), ...scr(o.x, o.y), 1, o.x % 2 ? -1 : 1) });
+      else list.push({ y: o.y, d: () => this.blit(ctx, this.propArt(o), ...scr(o.x, o.y)) });
+    }
+    for (const st of SITES) {
+      if (vis(st.x, st.y, 460)) list.push({ y: st.y, d: () => (art ? L.draw(ctx, SITE_ART[st.id], ...scr(st.x, st.y)) : this.blit(ctx, this.art_(SITE_ART[st.id]), ...scr(st.x, st.y))) });
+      if (st.beacon && vis(st.beacon[0], st.beacon[1], 220)) list.push({ y: st.beacon[1], d: () => (art ? L.draw(ctx, 'beacon', ...scr(st.beacon[0], st.beacon[1]), BEACON_S) : this.blit(ctx, this.art_('beacon'), ...scr(st.beacon[0], st.beacon[1]))) });
+    }
+    // 地图四周的枯林、断崖（只在有素材时画；走不到那里，只是挡住地图外面）
+    if (art) for (const e of EDGES) if (vis(e.x, e.y, 560)) list.push({ y: e.y, d: () => P.draw(ctx, e.id, ...scr(e.x, e.y), 1, e.flip) });
     const h = this.hero;
     for (const n of NPCS) if (vis(n.x, n.y, 80)) list.push({ y: n.y, d: () => this.drawNpc(ctx, n, ...scr(n.x, n.y), t) });
     list.push({ y: h.y, d: () => this.drawHero(ctx, ...scr(h.x, h.y), t) });
     list.sort((a, b) => a.y - b.y);
     for (const o of list) o.d();
 
-    // 没解锁的入口：锁链封印 + 一团暗雾
+    // 没解锁的入口：锁链封印（盖在入口上）+ 一团暗雾
     for (const st of SITES) {
       if (this.unlocked(st) || !vis(st.x, st.y, 300)) continue;
-      const [x, y] = scr(st.door[0], st.door[1] - 18);
+      const [ex, ey] = this.entrance(st);
+      const [x, y] = scr(ex, ey - 22);
       const fog = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 90);
       fog.addColorStop(0, 'rgba(8,6,12,.75)'); fog.addColorStop(1, 'rgba(8,6,12,0)');
       ctx.fillStyle = fog; ctx.fillRect(x - 90, y - 100, 180, 180);
-      this.blit(ctx, this.art_('seal'), x, y + 8);
+      if (art) L.draw(ctx, 'seal', x, y, SEAL_S);
+      else this.blit(ctx, this.art_('seal'), x, y + 30);
     }
 
     // 光源
@@ -585,21 +731,22 @@ export class World {
     // 长明灯塔：烽灯越多越亮；结局以后全亮（点亮那一下有一阵闪光）
     const full = this.ended(), cf = this.flare.camp;
     const burst = (f) => (f == null ? 0 : Math.max(0, 1 - f / 50));
+    const G = art ? GEO.art : GEO.placeholder;
     lights.push([...scr(camp.x, camp.y - 120), full ? 560 : 300 + lit * 40, full ? 1 : 0.7 + lit * 0.06]);
-    glows.push({ x: camp.x, y: camp.y, z: 190, r: (full ? 22 : 10 + lit * 2) * (1 + burst(cf) * 2.5), c: '#ffd27a', a: full ? 1 : 0.6 + lit * 0.08 });
-    lights.push([...scr(1200, 210), 380, 0.42]); // 深渊往上透的光
+    glows.push({ x: camp.x, y: camp.y, z: G.lantern, r: (full ? 22 : 10 + lit * 2) * (1 + burst(cf) * 2.5), c: '#ffd27a', a: full ? 1 : 0.6 + lit * 0.08 });
+    lights.push([...scr(...G.abyss), 380, 0.42]); // 深渊往上透的光
     for (const st of SITES) {
       if (this.lit(st)) {
         // 刚点亮：火苗从小到大、先闪一下，光慢慢铺开
         const f = this.flare[st.id], grow = f == null ? 1 : Math.min(1, f / 40);
-        lights.push([...scr(st.beacon[0], st.beacon[1], 90), 300 * (0.3 + 0.7 * grow), 1]);
-        glows.push({ x: st.beacon[0], y: st.beacon[1], z: 112, r: 16 * (0.4 + 0.6 * grow) * (1 + burst(f) * 2), c: '#ffb45a', a: 1, flicker: true });
+        lights.push([...scr(st.beacon[0], st.beacon[1], G.flame * 0.8), 300 * (0.3 + 0.7 * grow), 1]);
+        glows.push({ x: st.beacon[0], y: st.beacon[1], z: G.flame, r: 16 * (0.4 + 0.6 * grow) * (1 + burst(f) * 2), c: '#ffb45a', a: 1, flicker: true });
       }
-      if (st.kind === 'stage' && this.unlocked(st)) lights.push([...scr(st.door[0], st.door[1] - 30), 150, 0.5]);
+      if (st.kind === 'stage' && this.unlocked(st)) { const [ex, ey] = this.entrance(st); lights.push([...scr(ex, ey - 30), 150, 0.5]); }
       if (st.kind === 'trial' && this.trialAwake()) {
         const f = this.flare.trial, grow = f == null ? 1 : Math.min(1, f / 60);
-        lights.push([...scr(st.x, st.y, 110), 150 * (0.3 + 0.7 * grow), 0.5 + burst(f) * 0.5]);
-        glows.push({ x: st.x, y: st.y, z: 110, r: 9 * (1 + burst(f) * 2), c: '#7ff3ff', a: (0.55 + 0.2 * Math.sin(t * 0.05)) * grow, rune: true });
+        lights.push([...scr(st.x, st.y, G.trialZ), 150 * (0.3 + 0.7 * grow), 0.5 + burst(f) * 0.5]);
+        glows.push({ x: st.x + G.trialDx, y: st.y, z: G.trialZ, r: 9 * (1 + burst(f) * 2), c: '#7ff3ff', a: (0.55 + 0.2 * Math.sin(t * 0.05)) * grow, rune: G.rune });
       }
       if (st.kind === 'training') lights.push([...scr(st.x, st.y - 40), 120, 0.35]);
     }
@@ -629,7 +776,8 @@ export class World {
         ctx.globalAlpha = g.a * 0.8;
         ctx.strokeStyle = '#7ff3ff';
         ctx.lineWidth = 1.2;
-        for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(x, y + 20 + k * 26, 12 - k, 3.5, 0, 0, Math.PI); ctx.stroke(); }
+        const [r0, step, w] = g.rune;
+        for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(x, y + r0 + k * step, w - k, 3.5, 0, 0, Math.PI); ctx.stroke(); }
       }
     }
     for (const m of this.motes) {
@@ -657,6 +805,15 @@ export class World {
   drawNpc(ctx, n, x, y, t) {
     const L = n.look, H = n.h, talk = this.talking === n.id, near = Math.hypot(this.hero.x - n.x, this.hero.y - n.y) < 140;
     const face = near || talk ? Math.sign(this.hero.x - n.x) || 1 : n.id === 'moheng' ? -1 : 1;
+    const S = WORLD_ART.npcs[n.id];
+    if (S?.ready) {
+      // 逐帧素材：说话时播 talk，平时 idle；和绯隼同一个缩放（地图上的人都按同一把尺子）
+      ctx.fillStyle = 'rgba(0,0,0,.45)';
+      ctx.beginPath(); ctx.ellipse(x, y, H * 0.24, 4, 0, 0, Math.PI * 2); ctx.fill();
+      S.draw(ctx, S.frame(talk ? 'talk' : 'idle', Math.floor((t * 16.7 + n.x * 3) / 167) % 4), x, y, face, { scale: MAP_SCALE, rim: '#9fd8ff', rimAlpha: 0.22 });
+      this.drawBang(ctx, n, x, y, t, talk);
+      return;
+    }
     const bob = Math.sin(t * 0.05 + n.x) * 0.8, gest = talk ? Math.sin(t * 0.25) * 0.5 + 0.5 : 0;
     ctx.save();
     ctx.translate(x, y);
@@ -688,7 +845,12 @@ export class World {
       ctx.fillStyle = '#6a5a3a'; ctx.fillRect(-w * 1.3, top + H * 0.3, w * 0.8, H * 0.3); // 背着的地图包
     }
     ctx.restore();
-    // 「!」：有新的话
+    this.drawBang(ctx, n, x, y, t, talk);
+  }
+
+  // 「!」：有新的话
+  drawBang(ctx, n, x, y, t, talk) {
+    const H = n.h;
     if (!talk && hasNew(n.id, this.save) && !this.ev) {
       ctx.save();
       ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
@@ -704,7 +866,7 @@ export class World {
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.beginPath(); ctx.ellipse(x, y, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
     if (heroSprite.ready) {
-      heroSprite.draw(ctx, this.heroFrame(t), x, y, h.facing, { scale: (0.54 * HERO_H) / 96, rim: '#9fd8ff', rimAlpha: 0.3 });
+      heroSprite.draw(ctx, this.heroFrame(t), x, y, h.facing, { scale: MAP_SCALE, rim: '#9fd8ff', rimAlpha: 0.3 });
     } else {
       ctx.save(); ctx.translate(x, y); ctx.scale(0.6, 0.6);
       drawFighter(ctx, 0, 0, this.g.playerLook(), { crouch: 0.05, angle: 1.1, walk: h.moving ? h.phase * 0.7 : 0, lean: 2 }, { facing: h.facing, t });

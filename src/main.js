@@ -13,6 +13,7 @@ import { Cine } from './cine.js';
 import { GLPost } from './glpost.js';
 import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, storyLogHtml } from './story.js';
 import { World, drawWorldTitle, site } from './world.js';
+import { WORLD_ART } from './world_art.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
@@ -381,6 +382,7 @@ class Game {
 
   // story：从营地出征时为 true —— 这时才播剧情（开场卡、战前台词、结局）
   startStage(i, d = 0, story = false) {
+    WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.training = null;
     this.trial = null;
     this.stageIdx = i;
@@ -419,6 +421,7 @@ class Game {
 
   // ---------------- 残光试炼 ----------------
   startTrial() {
+    WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.training = null;
     this.trial = { floor: 0, cleared: 0, pool: { gold: 0, stones: 0 } };
     this.stage = trialStage(1);
@@ -503,6 +506,7 @@ class Game {
 
   // 训练场：一个没有门的长房间 + 两个打不死的木人（右边那个靠墙，练撞墙反弹）
   startTraining() {
+    WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.trial = null;
     this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
     this.stageIdx = 0;
