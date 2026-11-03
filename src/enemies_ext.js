@@ -82,7 +82,9 @@ const priest = {
       sfx('witch');
     } else if (A.kind === 'trap') {
       const p = game.player;
-      game.hazards.push(new Trap({ x: clamp(p.x, 40, world.w - 40), y: p.y, owner: e }));
+      const trap = new Trap({ x: clamp(p.x, 40, world.w - 40), y: p.y, owner: e });
+      trap.arm = Math.round(40 * (game.D?.windup ?? 1)); // 难度越高点亮越快
+      game.hazards.push(trap);
       e.traps = (e.traps ?? 0) + 1;
       game.fx.dust(e.x + e.facing * 30, e.y, 4, 0.6);
       sfx('warn');
@@ -112,7 +114,7 @@ const priest = {
 
 // 护咒能套给谁：附近还没有咒盾的活着的同伴（不含首领和别的司祭）
 function wardTargets(e, game) {
-  const R = e.T.ward.range;
+  const R = e.T.ward.range * (1 + 0.15 * Math.max(0, (game.D?.attackers ?? 0) + (game.D?.affix ?? 0) - 1)); // 噩梦 / 地狱：护咒范围更大
   return game.enemies
     .filter((o) => o !== e && o.alive && o.team !== 'prop' && !o.isBoss && o.T?.ai !== 'priest' && !o.ward && o.state !== 'spawn' && Math.abs(o.x - e.x) < R && Math.abs(o.y - e.y) < 120)
     .sort((a, b) => Math.abs(a.x - e.x) - Math.abs(b.x - e.x))
