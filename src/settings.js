@@ -5,8 +5,9 @@
 //   numbers 伤害数字：all 全部 / crit 只显示暴击和自己受到的伤害 / off 关
 //   sfx / music  音效、音乐音量 0~1
 //   touch   触屏按钮大小：0.85 小 / 1 中 / 1.2 大
+//   story   剧情卡和战前台词：always 每次 / first 只看第一次 / off 关
 const KEY = 'afterglow-settings';
-export const DEFAULTS = { shake: 1, flash: true, zoom: true, numbers: 'all', sfx: 1, music: 1, touch: 1 };
+export const DEFAULTS = { shake: 1, flash: true, zoom: true, numbers: 'all', sfx: 1, music: 1, touch: 1, story: 'first' };
 
 function load() {
   try {
@@ -41,6 +42,7 @@ export const OPTIONS = [
   { k: 'sfx', name: '音效音量', opts: [[0, '静音'], [0.4, '低'], [0.7, '中'], [1, '高']] },
   { k: 'music', name: '音乐音量', opts: [[0, '静音'], [0.4, '低'], [0.7, '中'], [1, '高']] },
   { k: 'touch', name: '触屏按钮大小', hint: '只影响手机 / 平板', opts: [[0.85, '小'], [1, '中'], [1.2, '大']] },
+  { k: 'story', name: '剧情', hint: '每关的开场卡和首领战前台词；营地里随时可以「回看剧情」', opts: [['off', '关'], ['first', '只看第一次'], ['always', '每次']] },
 ];
 
 export function renderSettings() {

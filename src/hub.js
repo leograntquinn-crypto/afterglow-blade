@@ -313,6 +313,10 @@ export class Hub {
         sfx('click');
         this.g.openSettings();
         return;
+      case 'story':
+        sfx('click');
+        this.g.openStoryLog();
+        return;
       case 'claim': {
         const r = claimContract(s, el.dataset.id);
         if (!r) return;
@@ -333,7 +337,7 @@ export class Hub {
         return this.renderModal();
       case 'go':
         sfx('click');
-        this.g.startStage(+el.dataset.i, +(el.dataset.d || 0));
+        this.g.startStage(+el.dataset.i, +(el.dataset.d || 0), true); // 从营地出征：播剧情
         return;
       case 'trial':
         sfx('click');
