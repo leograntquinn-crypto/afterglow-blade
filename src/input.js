@@ -17,6 +17,7 @@ const KEYMAP = {
   Escape: 'pause',
   KeyM: 'mute',
   KeyB: 'bag', // 地图上直接打开角色面板
+  F3: 'aiDebug', // 开发用：敌人意图的调试叠加层
   KeyT: 'trainToggle', KeyR: 'trainReset', // 只在训练场里有用
   Enter: 'start',
 };

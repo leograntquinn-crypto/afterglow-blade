@@ -13,6 +13,7 @@ import { Cine } from './cine.js';
 import { GLPost } from './glpost.js';
 import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, storyLogHtml } from './story.js';
 import { World, drawWorldTitle, site } from './world.js';
+import { AI } from './ai.js';
 import { WORLD_ART } from './world_art.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
@@ -94,6 +95,7 @@ class Game {
       if (act === 'trial-go') this.trialContinue();
       if (act === 'trial-leave') this.endTrial(false);
     });
+    this.aiDebug = typeof location !== 'undefined' && /[?&]ai=1/.test(location.search); // 地址加 ?ai=1 打开敌人意图调试层
     this.post = new Post();
     this.quality = 2;
     this.zoom = 0; // 镜头推近量，重击时短暂变大
@@ -122,6 +124,7 @@ class Game {
       initAudio(); // 浏览器要求：声音必须由用户操作启动
       music.start();
       if (a === 'mute') { this.toggleMusic(); return; }
+      if (a === 'aiDebug') { this.aiDebug = !this.aiDebug; return; }
       if (this.story.active && this.story.press(a)) return; // 剧情卡 / 台词：翻页、跳过
       if (this.scene === 'world') { this.worldPress(a); return; }
       if (this.scene === 'play') {
@@ -339,6 +342,7 @@ class Game {
     this.loots = [];
     this.toasts = [];
     this.attackers = new Set();
+    this.ai = new AI(this); // 敌人智能：感知层 + 战场导演（ai.js）
     this.fx = new FX();
     this.cine = new Cine(); // 技能演出：压暗聚光、集中线
     this.story = new StoryUI(this); // 剧情：开场卡、战前台词、结局
@@ -1372,6 +1376,7 @@ class Game {
       this.comboDmg += dmg;
       this.comboT = 110;
       this.comboPop = 8;
+      this.ai?.onPlayerHit(target);
       this.maxCombo = Math.max(this.maxCombo, this.combo);
       this.focus = target;
       if (r.broke) {
@@ -1505,6 +1510,7 @@ class Game {
     if (this.witch > 0) this.witch--;
 
     this.player.update(this);
+    if (enemyTick) this.ai.tick(); // 记下主角这一帧的样子、导演分工（敌人看到的是 N 帧以前的这份）
     for (const e of this.enemies) if (enemyTick || e.team === 'prop') e.update(this);
     this.training?.update();
     this.separate();
@@ -1657,6 +1663,7 @@ class Game {
       ctx.save();
       view(ctx);
       this.fx.drawTexts(ctx, camX);
+      this.ai.drawCues(ctx, camX, t); // 背后来袭的方向提示
       ctx.restore();
     }
 
@@ -1738,6 +1745,7 @@ class Game {
 
     if (this.scene === 'play') {
       drawHUD(ctx, this);
+      if (this.aiDebug) this.ai.drawDebug(ctx, camX); // F3：敌人意图的调试叠加层
       if (this.touch) this.updateTouchCooldowns();
     }
     else if (this.scene === 'dead') drawDead(ctx, this);
