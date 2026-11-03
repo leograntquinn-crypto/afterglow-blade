@@ -194,9 +194,15 @@ function boneLordFrame(S, b) {
       { const u = (pa + 2.3) / 3.5; // -2.3 → 1.2
         if (u >= 1) b.swing = 'cleave-done';
         return seq(S, 'cleave', u <= 0 ? 2 : u < 0.4 ? 3 : u < 1 ? 4 : 5); }
-    case 'slam': case 'shockwave': {
-      // 跳劈 / 震地：预警段蓄势（最后 8 帧腾空），出手瞬间砸地
-      const D = Math.round((name === 'slam' ? 48 : 34) / b.spd);
+    case 'rendChase': {
+      // 裂地追斩：巨剑拖地蓄势，然后一路斩出去
+      const D = Math.round(30 / b.spd);
+      if (t < D) return seq(S, 'cleave', t < 8 ? 1 : 2);
+      return seq(S, 'cleave', t < D + 10 ? 4 : t < D + 40 ? 5 : 6);
+    }
+    case 'slam': case 'shockwave': case 'boneCage': {
+      // 跳劈 / 震地 / 骨牢：预警段蓄势（最后 8 帧腾空），出手瞬间砸地
+      const D = Math.round((name === 'slam' ? 48 : name === 'boneCage' ? 44 : 34) / b.spd);
       if (t < D - 8) return seq(S, 'leap_slam', t < 6 ? 1 : 2);
       if (t < D) return seq(S, 'leap_slam', t < D - 4 ? 3 : 4);
       return seq(S, 'leap_slam', t < D + 6 ? 5 : t < D + 16 ? 6 : 7);
@@ -225,7 +231,14 @@ function wardenFrame(S, b) {
       if (t < D) return seq(S, 'stomp', t < 6 ? 0 : 1);
       return seq(S, 'stomp', t < D + 8 ? 2 : 3);
     }
-    case 'rain': return b.tele ? seq(S, 'invoke', t < 6 ? 0 : 1) : seq(S, 'invoke', t < 30 ? 2 : 3);
+    case 'rain': case 'soulBraziers': return b.tele ? seq(S, 'invoke', t < 6 ? 0 : 1) : seq(S, 'invoke', t < 30 ? 2 : 3);
+    case 'judgment': {
+      // 审判长戟：举戟蓄势，两次横扫
+      const D = Math.round(40 / b.spd);
+      if (t < D) return seq(S, 'slam', t < 6 ? 1 : t < 12 ? 2 : 3);
+      const k = (t - D) % 18;
+      return seq(S, 'slam', k < 5 ? 4 : k < 12 ? 5 : 6);
+    }
     case 'charge':
       if (b.tele) return seq(S, 'charge', 0);
       if (Math.abs(b.vx) > 3) return seq(S, 'charge', Math.floor(t / 4) % 4);

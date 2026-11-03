@@ -13,6 +13,7 @@ import { drawFighter, drawAura } from './rig.js';
 import { heroSprite, shadowFrame } from './sprite.js';
 import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sprites.js';
 import { sfx } from './audio.js';
+import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -78,6 +79,11 @@ export const BOSSES = {
     ],
   },
 };
+
+// 每个首领的专属招式追加到各阶段的招式表（见 boss_moves.js）
+for (const [key, list] of Object.entries(SIGNATURE_PHASES)) {
+  BOSSES[key].phases.forEach((ph, i) => { ph.attacks = { ...ph.attacks, ...(list[i] || {}) }; });
+}
 
 // 把首领配置变成 Enemy 能用的「类型」
 function bossType(B) {
@@ -341,6 +347,7 @@ const ATTACKS = {
     },
   },
 };
+Object.assign(ATTACKS, SIGNATURE); // 五个首领各 2 个专属招式
 
 // ---------------- Boss ----------------
 export class Boss extends Enemy {
@@ -360,7 +367,7 @@ export class Boss extends Enemy {
   get spd() { return (1 + this.phase * 0.18) * (this.game.D?.bossSpd ?? 1); } // 阶段越高、难度越高，出招越快
 
   setState(s) {
-    if (s !== 'attack') { this.act = null; this.tele = false; this.fade = 1; }
+    if (s !== 'attack') { this.act = null; this.tele = false; this.fade = 1; this.split = null; } // 被打断时分身也散了
     super.setState(s);
   }
 
@@ -453,18 +460,29 @@ export class Boss extends Enemy {
     if (this.tele) drawAura(ctx, sx, sy, this.h, '#ff2a2a', (1.3 + 0.5 * Math.sin(t * 0.6)) * alpha);
     else if (this.alive) drawAura(ctx, sx, sy, this.h, this.armor > 0 ? this.B.glow : COLORS.ember, (0.8 + 0.25 * Math.sin(t * 0.1) + this.phase * 0.3) * alpha);
     const flash = this.game.ticks < (this.flashUntil ?? 0);
-    if (this.B === BOSSES.afterimage && heroSprite.ready) {
-      // 残影：和主角同一套动画，盖一层暗紫色，外圈紫色轮廓光
-      heroSprite.draw(ctx, shadowFrame(this, t), sx, sy, this.facing, { alpha, flash, overlay: '#12061f', overlayAlpha: 0.74, rim: '#9a5cff', rimAlpha: 0.5 });
-    } else if (BOSS_SPRITES[this.key]?.sheet.ready) {
-      // 骸骨统领 / 祭坛守护者：专属逐帧素材，外圈用首领的颜色做轮廓光
-      const BS = BOSS_SPRITES[this.key];
-      BS.sheet.draw(ctx, bossOwnFrame(this, t), sx, sy, this.facing, { scale: this.look.h / BS.standH, alpha, flash, rim: this.B.glow, rimAlpha: 0.32 });
-    } else if (ENEMY_SPRITES[this.B.base]?.sheet.ready) {
-      // 夜鸦 / 铁颚（以及专属素材还没载入完的首领）：对应杂兵的逐帧动画放大，压暗一点，外圈用首领的颜色做轮廓光
-      ENEMY_SPRITES[this.B.base].sheet.draw(ctx, bossFrame(this, t), sx, sy, this.facing, { scale: this.look.h / ENEMY_SPRITES[this.B.base].standH, alpha, flash, overlay: '#2a0805', overlayAlpha: 0.32, rim: this.B.glow, rimAlpha: 0.45 });
-    } else {
-      drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
+    const drawBody = (sx, sy, alpha) => {
+      if (this.B === BOSSES.afterimage && heroSprite.ready) {
+        // 残影：和主角同一套动画，盖一层暗紫色，外圈紫色轮廓光
+        heroSprite.draw(ctx, shadowFrame(this, t), sx, sy, this.facing, { alpha, flash, overlay: '#12061f', overlayAlpha: 0.74, rim: '#9a5cff', rimAlpha: 0.5 });
+      } else if (BOSS_SPRITES[this.key]?.sheet.ready) {
+        // 骸骨统领 / 祭坛守护者：专属逐帧素材，外圈用首领的颜色做轮廓光
+        const BS = BOSS_SPRITES[this.key];
+        BS.sheet.draw(ctx, bossOwnFrame(this, t), sx, sy, this.facing, { scale: this.look.h / BS.standH, alpha, flash, rim: this.B.glow, rimAlpha: 0.32 });
+      } else if (ENEMY_SPRITES[this.B.base]?.sheet.ready) {
+        // 夜鸦 / 铁颚（以及专属素材还没载入完的首领）：对应杂兵的逐帧动画放大，压暗一点，外圈用首领的颜色做轮廓光
+        ENEMY_SPRITES[this.B.base].sheet.draw(ctx, bossFrame(this, t), sx, sy, this.facing, { scale: this.look.h / ENEMY_SPRITES[this.B.base].standH, alpha, flash, overlay: '#2a0805', overlayAlpha: 0.32, rim: this.B.glow, rimAlpha: 0.45 });
+      } else {
+        drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
+      }
+    };
+    drawBody(sx, sy, alpha);
+    // 鸦影分身：另外两个身影（没有脚下的影子 —— 这是分辨真身的线索）
+    if (this.split) {
+      const k = Math.min(1, this.split.t / 10) * 0.85;
+      for (const sp of this.split.spots) {
+        const [dx, dy] = toScreen(sp.x, sp.y, this.z, camX);
+        drawBody(dx, dy, alpha * k);
+      }
     }
     const top = sy - this.h - 18;
     ctx.save();

@@ -503,6 +503,7 @@ export class Player {
     if (inp.dx && !m.air) this.facing = Math.sign(inp.dx);
     this.move = m;
     this.mf = 0;
+    if (m.skill) game.lastSkill = name; // 残影的「镜像」复制你最后用过的技能
     this.landed = false;
     this.hitSets = m.hits.map(() => new Set());
     const chained = this.state === 'attack';

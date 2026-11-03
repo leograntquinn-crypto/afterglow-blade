@@ -35,18 +35,32 @@ export class Projectile {
     this.facing = Math.sign(this.vx) || 1;
     this.hitSet = new Set(); // 穿透型道具：每个目标只打一次
     this.age = 0;
+    this.dir0 = this.facing; // 回旋镖：出手时的方向
   }
   update(game) {
     this.x += this.vx;
     this.age++;
+    // 回旋镖（夜鸦的羽刃）：一直往回减速，掉头之后回程还能再打中一次
+    if (this.boomerang) {
+      this.vx -= this.dir0 * this.boomerang;
+      this.facing = Math.sign(this.vx) || this.facing;
+      if (!this.returned && Math.sign(this.vx) === -this.dir0) { this.returned = true; this.hitSet.clear(); }
+    }
     if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; return; }
     const h = this.hit;
     const box = { cx: this.x, hw: h.box.w / 2, cy: this.y, d: h.box.d, z0: this.z + h.box.z0, z1: this.z + h.box.z1 };
     const targets = this.team === 'player' ? game.enemies : [game.player];
     for (const t of targets) {
       if (this.hitSet.has(t) || !overlaps(box, t)) continue;
+      // 假箭（鸦影分身的分身射的）：打中只闪一下，不伤人
+      if (this.fake) {
+        game.fx.spark(this.x, this.y, this.z, this.facing, 4, '#9a7aa8');
+        this.dead = true;
+        return;
+      }
       if (game.applyHit(this, t, h, this.facing)) {
         this.hitSet.add(t);
+        this.onHit?.(game, t);
         if (!this.pierce) { this.dead = true; return; }
       }
     }
@@ -84,6 +98,60 @@ export class Projectile {
           crescent(ctx, off + 3 * sc, -50 * sc, 20 * sc, 54 * sc, 3.5 * sc);
         }
       }
+    } else if (this.kind === 'feather') {
+      // 羽刃：旋转的长条锋利黑羽，边缘带首领的颜色
+      const T = tex(), col = this.color || '#ff4dd2';
+      ctx.rotate(this.age * 0.5);
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.5;
+      ctx.drawImage(tinted(T.glow, col), -26, -12, 52, 24);
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      ctx.fillStyle = '#16101c';
+      ctx.beginPath();
+      ctx.moveTo(-22, 0);
+      ctx.quadraticCurveTo(0, -7, 24, 0);
+      ctx.quadraticCurveTo(0, 5, -22, 0);
+      ctx.fill();
+      ctx.strokeStyle = col;
+      ctx.lineWidth = 1.2;
+      ctx.stroke();
+    } else if (this.kind === 'hook') {
+      // 锁链钩：从首领手里一节节连到钩头
+      const o = this.owner;
+      if (o) {
+        const [ox, oy] = toScreen(o.x + o.facing * 30, o.y, 60, camX);
+        const dx = (ox - sx) * this.facing, dy = oy - sy, n = Math.max(1, Math.floor(Math.hypot(dx, dy) / 9));
+        ctx.strokeStyle = '#5a504a';
+        ctx.lineWidth = 2.2;
+        for (let i = 0; i < n; i++) {
+          const u = i / n;
+          ctx.beginPath();
+          ctx.ellipse(dx * u, dy * u, 4, 2.6, Math.atan2(dy, dx), 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      }
+      ctx.strokeStyle = '#8a7a6a';
+      ctx.lineWidth = 4;
+      ctx.beginPath();
+      ctx.arc(4, 4, 9, -Math.PI * 0.9, Math.PI * 0.6);
+      ctx.stroke();
+      ctx.fillStyle = '#8a7a6a';
+      ctx.beginPath();
+      ctx.moveTo(-6, 10);
+      ctx.lineTo(-2, 16);
+      ctx.lineTo(2, 10);
+      ctx.fill();
+    } else if (this.kind === 'soul') {
+      // 魂火：一团冷色的火球，带拖尾
+      const T = tex(), col = this.color || '#6fe38a';
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.6;
+      ctx.drawImage(tinted(T.glow, col), -26, -20, 52, 40);
+      ctx.globalAlpha = 0.35;
+      ctx.drawImage(tinted(T.glow, col), -54, -12, 44, 24);
+      ctx.globalAlpha = 1;
+      ctx.drawImage(tinted(T.core, col), -9, -9, 18, 18);
     } else if (this.kind === 'arrow') {
       ctx.strokeStyle = 'rgba(255,90,70,.35)';
       ctx.lineWidth = 6;
