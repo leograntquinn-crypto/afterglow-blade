@@ -6,10 +6,12 @@ import { sfx } from './audio.js';
 import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
 import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
 import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
+import { BRAINS } from './ai.js';
 
 export const TYPES = {
   grunt: {
-    name: '腐骨兵', lvOff: 0, hp: 140, w: 36, h: 82, speed: 1.7, weight: 1, armor: 0, xp: 12, drop: 0.22,
+    // brain：用 ai.js 的哪个大脑（踩线、惩罚打空、包抄；性格数据见 ai_data.js）
+    name: '腐骨兵', lvOff: 0, hp: 140, w: 36, h: 82, speed: 1.7, weight: 1, armor: 0, xp: 12, drop: 0.22, brain: 'grunt',
     look: { rig: 'grunt', h: 82, bone: '#e2d7c0', cloth: '#3d2f28', armor: '#5a3d2e', eye: '#ff5a3c', weapon: { type: 'sword', len: 44, color: '#8d8178' } },
     atk: { range: 62, windup: 26, hitAt: 4, recover: 34, cd: [70, 130],
       hit: { box: { x: 46, w: 76, d: 26, z0: 0, z1: 90 }, dmg: 9, kb: 4, stun: 18, stop: 4, shake: 4 } },
@@ -76,6 +78,7 @@ export class Enemy {
     this.deadT = 0;
     this.atk = T.atk;    // 当前这次出招用的是哪一种攻击
     this.evadeCd = 0;
+    this.punishCd = 0; // 两次「惩罚打空」之间的冷却（ai.js）
     this.flying = 0;     // 被打飞后的若干帧内，撞到同伴会把同伴也撞倒
     this.pinSet = new Set();
     this.wallReady = false;
@@ -110,6 +113,7 @@ export class Enemy {
     if (this.invuln > 0) this.invuln--;
     if (this.attackCd > 0) this.attackCd--;
     if (this.evadeCd > 0) this.evadeCd--;
+    if (this.punishCd > 0) this.punishCd--;
     if (this.flying > 0) this.flying--;
     if (this.squash > 0) this.squash--;
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.006) : this.hp;
@@ -180,6 +184,8 @@ export class Enemy {
       if (this.vx) this.walk += 0.25;
       return;
     }
+    // 有大脑的敌人（腐骨兵）：感知 + 意图打分 + 导演分工（ai.js）。训练木人和首领不用
+    if (this.T.brain && BRAINS[this.T.brain] && !this.dummy && !this.isBoss && game.ai) { BRAINS[this.T.brain].think(this, game); return; }
 
     let tx, ty = p.y;
     if (T.ranged) tx = adx < 200 ? this.x - this.facing * 80 : p.x - this.facing * 300;
@@ -203,7 +209,7 @@ export class Enemy {
     }
     const cap = game.maxAttackers ?? 2;
     const inRange = T.ranged ? adx > 120 && adx < 520 : adx <= A.range + 8;
-    if (this.attackCd <= 0 && Math.abs(dyp) < 18 && game.attackers.size < cap) {
+    if (this.attackCd <= 0 && Math.abs(dyp) < 18 && game.attackers.size < cap && (game.ai?.mayAttack(this) ?? true)) { // 连段保护期间先别插进来
       const L = T.lunge;
       if (L && adx > L.minRange && adx < L.range && Math.random() < 0.03) return this.startWindup(game, L);
       if (inRange) this.startWindup(game);
@@ -214,6 +220,7 @@ export class Enemy {
     this.atk = atk;
     this.setState('windup');
     game.attackers.add(this);
+    game.ai?.onAttackStart(this);
     this.vx = this.vy = 0;
     this.hitSet.clear();
     if (atk.slam) {
