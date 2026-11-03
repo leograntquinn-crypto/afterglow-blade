@@ -11,7 +11,8 @@ import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
 import { Cine } from './cine.js';
 import { GLPost } from './glpost.js';
-import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, storyLog, storyLogHtml } from './story.js';
+import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, storyLogHtml } from './story.js';
+import { World, drawWorldTitle } from './world.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
 import { AFFIXES, rollAffixes, blocks, breakGuard, onAffixDeath } from './affix.js';
@@ -37,7 +38,7 @@ import { drawDoors, drawVignette, drawShadow } from './draw.js';
 import { THEMES, drawScenery, drawFog, drawForeground } from './scenery.js';
 import { Post } from './post.js';
 import { music } from './music.js';
-import { drawHUD, drawTitle, drawDead, drawClear } from './hud.js';
+import { drawHUD, drawDead, drawClear } from './hud.js';
 
 class Game {
   constructor(canvas) {
@@ -48,6 +49,26 @@ class Game {
     this.store = new SaveStore();
     this.stats = computeStats(this.save);
     this.hub = new Hub(this, document.getElementById('hub'));
+    // 大地图：地点卡片（关卡 / 练剑场 / 试炼）和右上角的菜单按钮
+    this.world = new World(this);
+    this.world.lastSite = this.save.worldSite ?? 'camp';
+    this.siteEl = document.getElementById('site-panel');
+    this.siteEl.addEventListener('click', (e) => {
+      // 手机上点「攻」打开面板时，同一下点击会落到刚出现的面板背景上：刚打开的 0.4 秒内不响应背景点击
+      if (e.target === this.siteEl && performance.now() - this.siteAt < 400) return;
+      if (e.target.closest('[data-site-close]') || e.target === this.siteEl) return this.closeSite();
+      this.hub.onClick(e); // 卡片里的按钮（出征、难度、进入训练 / 试炼）和营地菜单用同一套处理
+    });
+    document.getElementById('world-bar').addEventListener('click', (e) => {
+      const m = e.target.closest('[data-menu]')?.dataset.menu;
+      if (!m || this.scene !== 'world') return;
+      initAudio();
+      music.start();
+      sfx('click');
+      if (m === 'settings') this.openSettings();
+      else if (m === 'story') this.openStoryLog();
+      else this.openMenu(m);
+    });
     this.pauseEl = document.getElementById('pause');
     // 设置面板：营地顶部和暂停菜单都能打开
     this.storyEl = document.getElementById('story-log');
@@ -91,15 +112,16 @@ class Game {
       apply();
       this.refreshStats();
       this.player.look = this.playerLook();
-      if (this.scene === 'hub') this.hub.render();
+      if (!this.hub.root.hidden) this.hub.render();
       return true;
-    }).then(() => { if (this.scene === 'hub') this.hub.render(); });
+    }).then(() => { if (!this.hub.root.hidden) this.hub.render(); });
 
     this.input.onPress((a) => {
       initAudio(); // 浏览器要求：声音必须由用户操作启动
       music.start();
       if (a === 'mute') { this.toggleMusic(); return; }
       if (this.story.active && this.story.press(a)) return; // 剧情卡 / 台词：翻页、跳过
+      if (this.scene === 'world') { this.worldPress(a); return; }
       if (this.scene === 'play') {
         // 试炼层间选择：J 继续，L 离开（暂停键在选择时不起作用）
         if (this.trialChoice) {
@@ -163,7 +185,8 @@ class Game {
 
   toggleMusic() {
     const muted = music.toggleMute();
-    if (this.scene === 'hub') this.hub.render();
+    if (!this.hub.root.hidden) this.hub.render();
+    else if (this.scene === 'world') this.hub.toast(muted ? '音乐已关闭（M 键开关）' : '音乐已开启');
     else this.toast(muted ? '音乐已关闭（M 键开关）' : '音乐已开启', COLORS.ink);
   }
 
@@ -179,16 +202,90 @@ class Game {
   // 标题 / 结算画面上按键或点击 → 回营地
   advance() {
     if (this.story.active) { this.story.press('attack'); return; } // 手机上点屏幕也能翻剧情卡
-    if (this.scene === 'title') this.openHub();
+    if (this.scene === 'title') this.startWorld();
     else if ((this.scene === 'clear' || this.scene === 'dead') && this.sceneT > 60) this.openHub();
   }
 
-  openHub() {
-    prepareBossSprites(null); // 回营地释放首领图集
+  // 封面 → 地图。第一次玩先播「前提」卡（长夜、残光、守灯人），再开始走
+  startWorld() {
+    this.openHub();
+    const log = storyLog(this.save);
+    if (settings.story !== 'off' && !log.premise) {
+      log.premise = true;
+      this.story.showCards([PREMISE.slice(0, 3), PREMISE.slice(3)], { title: '长夜' });
+      this.store.save();
+    }
+  }
+
+  // 回到大地图（名字沿用「营地」）：释放关卡用的图集，站在刚才那个入口前
+  openHub(siteId) {
+    prepareBossSprites(null); // 回地图释放首领图集
     prepareEnemySprites([]); // 和按关卡载入的敌人图集
-    this.setScene('hub');
+    this.setScene('world');
     this.resetWorld();
+    this.hub.hide();
+    this.closeMenu();
+    this.closeSite();
+    this.world.enter(siteId);
+  }
+
+  // ---------- 大地图：按键、地点卡片、菜单 ----------
+  get menuOpen() { return !this.hub.root.hidden || !this.siteEl.hidden || !this.setEl.hidden || !this.storyEl.hidden; }
+
+  worldPress(a) {
+    if (!this.setEl.hidden || !this.storyEl.hidden) { if (a === 'pause') { this.setEl.hidden = true; this.storyEl.hidden = true; } return; }
+    if (!this.hub.root.hidden) { if (a === 'pause' || (a === 'bag' && this.hub.tab === 'hero')) this.closeMenu(); return; }
+    if (!this.siteEl.hidden) {
+      if (a === 'pause') this.closeSite();
+      if (a === 'attack' || a === 'start') this.siteEl.querySelector('[data-primary]:not([disabled])')?.click();
+      return;
+    }
+    if (this.world.leave) return;
+    if (a === 'pause') { sfx('click'); this.openMenu(this.hub.tab); return; }
+    if (a === 'bag') { sfx('click'); this.openMenu('hero'); return; }
+    if ((a === 'attack' || a === 'start') && this.world.near) this.openSite(this.world.near.id);
+  }
+
+  // 走到地点按攻击键：弹出它的卡片（没解锁的只给提示）
+  openSite(id) {
+    let html = '';
+    if (id === 'training') html = this.hub.trainingCard();
+    else if (id === 'trial') html = this.hub.trialCard();
+    else if (/^s\d$/.test(id)) html = this.hub.stageCard(+id.slice(1) - 1);
+    if (!html) return;
+    this.world.lastSite = id; // 打完回来站在这个入口前
+    this.save.worldSite = id;
+    sfx('click');
+    this.siteEl.querySelector('.site-body').innerHTML = html;
+    this.siteEl.hidden = false;
+    this.siteAt = performance.now();
+    document.body.dataset.menu = '1'; // 面板打开时收起摇杆和地图菜单按钮
+    this.input.clearBuffer();
+  }
+  closeSite() {
+    if (!this.siteEl) return;
+    this.siteEl.hidden = true;
+    if (this.hub.root.hidden) delete document.body.dataset.menu;
+  }
+
+  openMenu(tab) {
+    this.closeSite();
+    this.hub.tab = tab || 'hero';
     this.hub.show();
+    document.body.dataset.menu = '1';
+  }
+  closeMenu() {
+    this.hub.hide();
+    delete document.body.dataset.menu;
+  }
+
+  // 从地图进关 / 训练 / 试炼：画面往人身上收拢变黑，再切过去。不在地图上（测试直接调用）就马上执行
+  launch(go) {
+    this.closeSite();
+    this.closeMenu();
+    if (this.scene !== 'world') return go();
+    this.store.save();
+    this.world.launch(go);
   }
 
   resetWorld() {
@@ -1314,7 +1411,7 @@ class Game {
   update() {
     this.ticks++;
     music.setMode(this.scene === 'play' ? (this.boss?.alive ? 'boss' : this.enemies.some((e) => e.alive) ? 'battle' : 'calm')
-      : this.scene === 'title' || this.scene === 'hub' ? this.scene : 'calm');
+      : this.scene === 'title' ? 'title' : this.scene === 'world' ? 'hub' : 'calm');
     if (this.paused || this.trialChoice) return; // 暂停、试炼层间选择时世界静止
     this.sceneT++;
     this.fx.lod = [0.45, 0.75, 1][this.quality] ?? 1; // 画质越低，特效粒子越少
@@ -1328,6 +1425,10 @@ class Game {
     if (this.banner && ++this.banner.t > 130) this.banner = null;
     for (const t of this.toasts) t.life--;
     this.toasts = this.toasts.filter((t) => t.life > 0);
+    if (this.scene === 'world' || this.scene === 'title') {
+      this.world.update(this.input, { title: this.scene === 'title', frozen: this.menuOpen || this.story.active });
+      return;
+    }
     if (this.scene !== 'play') return;
 
     // 顿帧期间世界静止（特效和震屏照常）
@@ -1404,7 +1505,36 @@ class Game {
   }
 
   // ---------------- 绘制 ----------------
+  // 大地图（和封面）：地图 → 光照 → 发光物 → 后处理 → 提示和标题
+  renderWorld() {
+    const ctx = this.ctx, t = this.ticks, post = this.post, W = this.world, title = this.scene === 'title';
+    const useGL = this.glpost.ok && this.quality > 0, grade = '#3a3a6a';
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    const { lights } = W.draw(ctx, t);
+    for (const l of lights) post.addLight(...l);
+    post.applyLighting(ctx, `rgba(3,3,10,${0.47 - W.litCount() * 0.05})`); // 烽灯点得越多，地图越亮
+    W.drawGlow(post.beginGlow(() => {}), t);
+    W.drawGlow(ctx, t);
+    if (this.quality > 0 && !useGL) post.applyBloom(ctx);
+    if (useGL) {
+      if (!this.glpost.apply(ctx, this.canvas, post.glow, { quality: this.quality, grade, shocks: [], chroma: 0, chromaC: [0.5, 0.5], time: t })) {
+        drawVignette(ctx);
+        post.applyGrade(ctx, grade, t, this.quality > 1);
+      }
+      ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    } else {
+      drawVignette(ctx);
+      post.applyGrade(ctx, grade, t, this.quality > 1);
+    }
+    if (!title && !this.menuOpen && !this.story.active) W.drawPrompt(ctx, t, this.touch);
+    W.drawOverlay(ctx, t, { title });
+    if (title) drawWorldTitle(ctx, this);
+    if (this.story.active) this.story.draw(ctx);
+    if (!this.hub.root.hidden) this.hub.drawPreview(t);
+  }
+
   render() {
+    if (this.scene === 'world' || this.scene === 'title') return this.renderWorld();
     const ctx = this.ctx, camX = this.camX, t = this.ticks, post = this.post;
     const themeName = this.stage && (this.scene === 'play' || this.scene === 'clear' || this.scene === 'dead') ? this.stage.theme : 'crypt';
     const th = THEMES[themeName];
@@ -1565,10 +1695,8 @@ class Game {
       drawHUD(ctx, this);
       if (this.touch) this.updateTouchCooldowns();
     }
-    else if (this.scene === 'title') drawTitle(ctx, this);
     else if (this.scene === 'dead') drawDead(ctx, this);
     else if (this.scene === 'clear') drawClear(ctx, this);
-    else if (this.scene === 'hub') this.hub.drawPreview(t);
     if (this.story.active) this.story.draw(ctx);
   }
 

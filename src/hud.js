@@ -1,7 +1,7 @@
 // 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
 import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './config.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
-import { SKILL_TREE, xpToNext, MAX_LV, power } from './progression.js';
+import { SKILL_TREE, xpToNext, MAX_LV } from './progression.js';
 import { RARITY, itemTitle } from './items.js';
 import { ROOM_INFO } from './dungeon.js';
 import { STYLE_RANKS, STYLE_MAX } from './style.js';
@@ -549,113 +549,6 @@ function prompt(ctx, game, text, y) {
 }
 
 // ---------------- 标题画面 ----------------
-const titleEmbers = Array.from({ length: 50 }, (_, i) => ({ x: Math.random() * VIEW_W, y: Math.random() * VIEW_H, v: 0.4 + Math.random() * 1.2, ph: i }));
-
-export function drawTitle(ctx, game) {
-  const t = game.ticks;
-  ctx.save();
-  // 右侧压暗，让标题更清楚
-  const side = ctx.createLinearGradient(VIEW_W * 0.35, 0, VIEW_W, 0);
-  side.addColorStop(0, 'rgba(6,4,10,0)');
-  side.addColorStop(1, 'rgba(6,4,10,.82)');
-  ctx.fillStyle = side;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-
-  // 主角立绘：放大的游戏模型，背后一圈剑光
-  const hx = 290, hy = 470;
-  const halo = ctx.createRadialGradient(hx, hy - 150, 10, hx, hy - 150, 260);
-  halo.addColorStop(0, 'rgba(127,243,255,.22)');
-  halo.addColorStop(1, 'rgba(127,243,255,0)');
-  ctx.fillStyle = halo;
-  ctx.fillRect(hx - 280, hy - 420, 560, 560);
-  ctx.fillStyle = 'rgba(0,0,0,.55)';
-  ctx.beginPath();
-  ctx.ellipse(hx, hy, 120, 16, 0, 0, Math.PI * 2);
-  ctx.fill();
-  ctx.save();
-  if (heroSprite.ready && heroSprite.full) {
-    // 立绘：缓慢上下浮动
-    const H = 500, W = H * (heroSprite.full.width / heroSprite.full.height);
-    ctx.drawImage(heroSprite.full, hx - W * 0.5, hy - H + 18 + Math.sin(t * 0.03) * 4, W, H);
-  } else {
-    ctx.translate(hx, hy);
-    ctx.scale(3.3, 3.3);
-    drawFighter(ctx, 0, 0, game.playerLook(), { crouch: 0.22 + Math.sin(t * 0.04) * 0.02, angle: 2.55, lean: 6, walk: 0.7, backAngle: 1.1 }, { facing: 1, t: t * 1.6 });
-  }
-  ctx.restore();
-
-  // 火星
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  for (const e of titleEmbers) {
-    e.y -= e.v;
-    e.x += Math.sin(t * 0.02 + e.ph) * 0.5;
-    if (e.y < -5) { e.y = VIEW_H + 5; e.x = Math.random() * VIEW_W; }
-    ctx.globalAlpha = 0.4 + 0.4 * Math.sin(t * 0.08 + e.ph);
-    ctx.fillStyle = e.ph % 3 ? '#ffb347' : '#7ff3ff';
-    ctx.fillRect(e.x, e.y, 2, 2);
-  }
-  ctx.restore();
-
-  // 标题
-  const lx = 690;
-  ctx.textAlign = 'center';
-  ctx.textBaseline = 'middle';
-  // 墨迹笔触衬底
-  ctx.fillStyle = 'rgba(120,20,30,.55)';
-  ctx.beginPath();
-  ctx.moveTo(lx - 230, 196);
-  ctx.quadraticCurveTo(lx - 40, 178, lx + 240, 186);
-  ctx.lineTo(lx + 210, 204);
-  ctx.quadraticCurveTo(lx - 30, 200, lx - 220, 214);
-  ctx.closePath();
-  ctx.fill();
-  ctx.font = `110px ${FONT_TITLE}`;
-  ctx.shadowColor = 'rgba(127,243,255,.55)';
-  ctx.shadowBlur = 30;
-  const tg = ctx.createLinearGradient(0, 100, 0, 210);
-  tg.addColorStop(0, '#ffffff');
-  tg.addColorStop(0.6, '#e9e2d6');
-  tg.addColorStop(1, '#9d93a8');
-  ctx.fillStyle = tg;
-  ctx.fillText('残光之刃', lx, 150);
-  ctx.shadowBlur = 0;
-  ctx.font = `500 21px ${FONT_NUM}`;
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '9px';
-  ctx.fillStyle = GOLD_HI;
-  ctx.fillText('AFTERGLOW BLADE', lx + 4, 240);
-  if ('letterSpacing' in ctx) ctx.letterSpacing = '0px';
-  ctx.font = `15px ${FONT_UI}`;
-  ctx.fillStyle = 'rgba(233,226,214,.7)';
-  ctx.fillText('坠入墓穴深处，用剑光斩开一条归路', lx, 280);
-
-  // 开始提示
-  const a = 0.55 + 0.45 * Math.sin(t * 0.07);
-  const line = ctx.createLinearGradient(lx - 150, 0, lx + 150, 0);
-  line.addColorStop(0, 'rgba(233,207,142,0)');
-  line.addColorStop(0.5, `rgba(233,207,142,${a})`);
-  line.addColorStop(1, 'rgba(233,207,142,0)');
-  ctx.fillStyle = line;
-  ctx.fillRect(lx - 150, 362, 300, 1);
-  ctx.fillRect(lx - 150, 398, 300, 1);
-  ctx.globalAlpha = a;
-  ctx.font = `20px ${FONT_TITLE}`;
-  ctx.fillStyle = COLORS.ink;
-  ctx.fillText(game.touch ? '点 击 进 入' : '按 J 或点击进入', lx, 381);
-  ctx.globalAlpha = 1;
-
-  const s = game.save;
-  ctx.font = `13px ${FONT_UI}`;
-  ctx.fillStyle = '#8f859a';
-  if (s.runs > 0) ctx.fillText(`Lv.${s.lv} · 战力 ${power(game.stats).toLocaleString()} · 已出征 ${s.runs} 次`, lx, 430);
-  if (!game.touch) ctx.fillText('WASD 移动 · J 攻击 · K 跳跃 · L 闪避 · U I O P 技能 · M 音乐', lx, 500);
-  ctx.textAlign = 'right';
-  ctx.font = `500 14px ${FONT_NUM}`;
-  ctx.fillStyle = 'rgba(157,147,168,.6)';
-  ctx.fillText('v0.6', VIEW_W - 16, VIEW_H - 14);
-  ctx.restore();
-}
-
 // 结算里的奖励列表
 function drawRewards(ctx, game, x, y, t) {
   const r = game.run;

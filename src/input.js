@@ -16,6 +16,7 @@ const KEYMAP = {
   KeyH: 'ult',
   Escape: 'pause',
   KeyM: 'mute',
+  KeyB: 'bag', // 地图上直接打开角色面板
   KeyT: 'trainToggle', KeyR: 'trainReset', // 只在训练场里有用
   Enter: 'start',
 };
