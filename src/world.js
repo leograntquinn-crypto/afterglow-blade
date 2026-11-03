@@ -321,8 +321,15 @@ export class World {
     this.hero.moving = 0;
     this.leave = null;
     this.fadeIn = 24;
+    this.prewarm();
     this.snapCam();
     this.near = null;
+  }
+  // 进地图时一次画好所有地标、散件和地面缓存（不然走到新区域时才画，手机上会卡一下）
+  prewarm() {
+    for (const k of Object.keys(LANDMARK)) this.art_(k);
+    for (const o of this.props) this.propArt(o);
+    this.ground();
   }
   snapCam() {
     this.cam.x = clamp(this.hero.x - VIEW_W / 2, 0, MAP_W - VIEW_W);
