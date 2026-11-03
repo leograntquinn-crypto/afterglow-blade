@@ -54,12 +54,14 @@ export class AI {
     if (m) for (const h of m.hits) activeEnd = Math.max(activeEnd, h.at + h.dur);
     const attacking = p.state === 'attack' && !!m;
     this.hist[this.f % HIST] = {
-      f: this.f, x: p.x, y: p.y, z: p.z, vx: p.vx, facing: p.facing, state: p.state,
+      f: this.f, x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, facing: p.facing, state: p.state,
       move: m?.id ?? null, mf: p.mf, moveStart: attacking ? this.f - p.mf : -1,
       attacking,
       recovering: attacking && p.mf >= activeEnd,
       // 挥空：地面普攻（不是技能、不是空中招）的有效帧已经过了，一个敌人都没打中
       whiff: attacking && !m.skill && !m.air && m.hits.length > 0 && p.mf >= activeEnd && !p.landed,
+      // 重击 / 技能正在打过来（还没过有效帧）
+      heavy: attacking && (m.heavy || m.skill) && p.mf < activeEnd,
       dodging: p.state === 'dash' || p.state === 'airdash',
       charging: p.state === 'charge',
       air: p.z > 0,
@@ -79,7 +81,8 @@ export class AI {
 
   // ---------- 战场导演 ----------
   brained() {
-    return this.g.enemies.filter((e) => e.alive && !e.dummy && !e.isBoss && e.T.brain && AI_PROFILES[e.T.brain] && e.state !== 'spawn');
+    // 只有参与分工的大脑（腐骨兵）：屠夫、弓手有自己的站位逻辑
+    return this.g.enemies.filter((e) => e.alive && !e.dummy && !e.isBoss && e.T.brain && AI_PROFILES[e.T.brain]?.roles && e.state !== 'spawn');
   }
 
   // 前锋：离主角最近的；包抄：第二近的，去主角另一侧（另一侧太窄就不包抄）；其余外圈。
@@ -110,7 +113,10 @@ export class AI {
   pressBoost(e) { return this.role(e) === 'front' && this.f - this.lastAttackF > DIRECTOR.pressAfter[this.level()]; }
 
   onAttackStart() { this.lastAttackF = this.f; }
-  onPlayerHit(target) { this.lastHit = { e: target, f: this.f }; }
+  onPlayerHit(target) {
+    this.lastHit = { e: target, f: this.f };
+    if (target.hitLog) { target.hitLog.push(this.f); if (target.hitLog.length > 12) target.hitLog.shift(); } // 屠夫判断「贪刀」
+  }
 
   // ---------- 连段保护 ----------
   updateGuard() {
@@ -134,7 +140,8 @@ export class AI {
       if (!e.alive || e.team === 'prop') continue;
       const [x, y] = toScreen(e.x, e.y, e.z + e.h + 46, camX);
       const ai = e.ai, brain = e.T.brain && AI_PROFILES[e.T.brain] && !e.dummy && !e.isBoss;
-      const txt = brain ? `${{ front: '前锋', flank: '包抄', ring: '外圈' }[this.role(e)]} · ${INTENT_NAME[ai?.intent] ?? '—'}${e.punishCd > 0 ? ' · 惩罚冷却' : ''}` : '原有逻辑';
+      const roleTxt = AI_PROFILES[e.T.brain]?.roles ? `${{ front: '前锋', flank: '包抄', ring: '外圈' }[this.role(e)]} · ` : '';
+      const txt = brain ? `${roleTxt}${INTENT_NAME[ai?.intent] ?? '—'}${e.punishCd > 0 ? ' · 惩罚冷却' : ''}${e.guardT > 0 ? ' · 格挡' : ''}` : '原有逻辑';
       const w = ctx.measureText(txt).width + 12;
       ctx.fillStyle = 'rgba(0,0,0,.65)';
       ctx.fillRect(x - w / 2, y - 9, w, 18);
@@ -159,6 +166,19 @@ export class AI {
   drawCues(ctx, camX, t) {
     const g = this.g, p = g.player;
     if (p.state === 'dead') return null;
+    // 弓手的瞄准线：预警时画出箭的真实路线（预判过的），看线躲
+    for (const e of g.enemies) {
+      if (!e.alive || e.state !== 'windup' || !e.aim) continue;
+      const [x0, y0] = toScreen(e.x + e.facing * 30, e.y, 52, camX), [x1, y1] = toScreen(e.x + e.facing * (30 + e.aim.len), e.y + e.aim.vy * (e.aim.len / e.aim.vx), 52, camX);
+      const u = Math.min(1, e.st / Math.max(1, e.windup));
+      ctx.save();
+      ctx.globalAlpha = 0.25 + 0.45 * u;
+      ctx.strokeStyle = '#ff4a3a';
+      ctx.lineWidth = 1 + u * 1.5;
+      ctx.setLineDash([10, 6]);
+      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
+      ctx.restore();
+    }
     let behind = null;
     for (const e of g.enemies) {
       if (!e.alive || e.isBoss || e.state !== 'windup' || Math.abs(e.x - p.x) > 320) continue;
@@ -187,7 +207,27 @@ export class AI {
   }
 }
 
-export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚' };
+export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚', corner: '逼墙角', shove: '甩开', kite: '拉开', cover: '掩体', lane: '找射线', kick: '侧闪踢' };
+
+const onScreen = (e, game, m) => e.x > game.camX + m && e.x < game.camX + VIEW_W - m;
+// 走向目标点（纵深方向慢一点，和原来一样）
+function steer(e, tx, ty, k = 1) {
+  const mx = clamp(tx, 30, world.w - 30) - e.x, my = clamp(ty, 8, DEPTH - 8) - e.y, spd = e.T.speed * e.spdMul * k;
+  e.vx = Math.abs(mx) > 6 ? Math.sign(mx) * Math.min(spd, Math.abs(mx)) : 0;
+  e.vy = Math.abs(my) > 4 ? Math.sign(my) * Math.min(spd * 0.7, Math.abs(my)) : 0;
+  if (e.vx || e.vy) e.walk += 0.2 * spd;
+}
+// 意图打分：sc 里分数最高的（加一点随机），选中的至少坚持 commit 帧
+function pick(e, A, P, sc) {
+  const ai = e.ai;
+  ai.t++;
+  if (--ai.next > 0 || ai.t < P.commit) return ai.intent;
+  ai.next = P.think;
+  let best = ai.intent, bv = -1;
+  for (const k in sc) { const v = sc[k] + A.rand() * P.noise; if (v > bv) { bv = v; best = k; } }
+  if (best !== ai.intent) { ai.intent = best; ai.t = 0; }
+  return best;
+}
 
 // ---------------- 大脑：腐骨兵 ----------------
 // 返回 true 表示已经处理（开始出招）；移动速度写在 e.vx / e.vy
@@ -273,6 +313,150 @@ export const BRAINS = {
         if (rdx <= atk.range + 8) { e.startWindup(game); return true; }
       }
       return true;
+    },
+  },
+
+  // ---------------- 铁甲屠夫 ----------------
+  brute: {
+    think(e, game) {
+      const A = game.ai, P = AI_PROFILES.brute, T = e.T, atk = T.atk, lvl = A.level(), s = A.see(e);
+      if (!s) return;
+      const ai = (e.ai ??= { intent: 'corner', t: 0, next: 0 });
+      const dx = s.x - e.x, adx = Math.abs(dx), dy = s.y - e.y, side = Math.sign(e.x - s.x) || -e.facing;
+      const token = game.attackers.size < (game.maxAttackers ?? 2), may = A.mayAttack(e), vis = onScreen(e, game, P.onScreen);
+      const facingMe = Math.sign(dx) === -s.facing;
+      // 1. 正面格挡：看到你面向它蓄力、或者重击 / 技能正朝它打过来
+      if (e.guardT <= 0 && e.guardCd <= 0 && facingMe && adx < P.guard.range && Math.abs(dy) < 40 && (s.charging || s.heavy)) {
+        e.guardT = P.guard.time;
+        e.guardCd = P.guard.cd[lvl];
+        game.fx.label(e.x, e.y, e.h + 30, '举斧格挡', '#9fd0ff', 18);
+      }
+      if (e.guardT > 0) { e.vx *= 0.6; e.vy *= 0.6; ai.intent = 'guard'; return true; } // 格挡时站稳不动
+      // 2. 甩开贪刀：最近被你连打了好几下、你还贴着它
+      const hits = (e.hitLog ?? []).filter((f) => A.f - f < P.shove.window).length;
+      if (hits >= P.shove.hits[lvl] && adx < P.shove.near && e.shoveCd <= 0 && token && may && vis) {
+        e.shoveCd = P.shove.cd[lvl];
+        e.hitLog = [];
+        ai.intent = 'shove';
+        e.startWindup(game, { slam: true, slamX: 0, slamR: P.shove.r, windup: P.shove.windup, recover: P.shove.recover, cd: [60, 90], hit: P.shove.hit, shove: true });
+        game.fx.label(e.x, e.y, e.h + 30, '甩开', '#ff7a4a', 22);
+        return true;
+      }
+      // 3. 逼墙角：你离墙近 → 从开阔的那一侧逼过去（你后面就是墙）
+      const wall = s.x < world.w / 2 ? -1 : 1, wallDist = wall < 0 ? s.x : world.w - s.x;
+      let want = side;
+      if (wallDist < P.corner.wallDist) want = -wall;
+      ai.intent = want !== side ? 'corner' : 'press';
+      let tx = s.x + want * atk.range * 0.8, ty = s.y;
+      if (want !== side) {
+        // 绕边：先往纵深让开（不穿过你），让开了再横着绕过去
+        const detour = clamp(s.y + (e.y >= s.y ? 1 : -1) * P.corner.depth, 8, DEPTH - 8);
+        ty = detour;
+        if (Math.abs(e.y - detour) > 12 && adx < 160) tx = e.x;
+      }
+      steer(e, tx, ty);
+      // 4. 重砸：和原来一样（冷却、令牌、同一纵深、在距离内），只在画面内出手
+      const p = game.player;
+      if (e.attackCd <= 0 && token && may && vis && Math.abs(p.y - e.y) < 18 && Math.abs(p.x - e.x) <= atk.range + 8) { e.startWindup(game); return true; }
+      return true;
+    },
+    // 预警期间：重砸预警过半时看到你在闪避 → 斧头多举一会儿再砸（红圈位置不变，只是晚一点炸）
+    windup(e, game) {
+      const A = game.ai, P = AI_PROFILES.brute, lvl = A.level();
+      if (e.atk !== e.T.atk || e.holdT || e.st < e.windup * 0.4) return;
+      const s = A.see(e);
+      if (!s?.dodging) return;
+      if (A.rand() >= P.delay.chance[lvl]) { e.holdT = -1; return; } // 这一次不骗（每次预警只判断一次）
+      e.holdT = P.delay.extra[lvl];
+      for (const h of game.hazards) if (h.owner === e && h.t < h.delay) h.delay += e.holdT;
+      e.ai && (e.ai.intent = 'delay');
+    },
+  },
+
+  // ---------------- 影弓手 ----------------
+  archer: {
+    think(e, game) {
+      const A = game.ai, P = AI_PROFILES.archer, T = e.T, lvl = A.level(), s = A.see(e);
+      if (!s) return;
+      const ai = (e.ai ??= { intent: 'kite', t: 0, next: 0 });
+      const dx = s.x - e.x, adx = Math.abs(dx), side = Math.sign(e.x - s.x) || -e.facing;
+      const token = game.attackers.size < (game.maxAttackers ?? 2), may = A.mayAttack(e), vis = onScreen(e, game, P.onScreen);
+      const p = game.player, rdx = Math.abs(p.x - e.x);
+      // 1. 被逼到墙边：后面就是墙、你贴上来 → 先侧闪（往纵深跳开），再接一记飞踢
+      const backX = e.x + side * P.corner.wall, cornered = backX < 40 || backX > world.w - 40;
+      if (cornered && rdx < P.corner.near) {
+        if (e.evadeCd <= 0) {
+          e.setState('hop');
+          e.vz = 5; e.z = 0.01; e.vx = 0;
+          e.vy = (e.y > DEPTH / 2 ? -1 : 1) * P.corner.side; // 往开阔的纵深闪
+          e.evadeCd = 170;
+          ai.kick = true;
+          ai.intent = 'kick';
+          return true;
+        }
+        const K = P.corner.kick;
+        if (ai.kick && rdx < K.range + 20 && Math.abs(p.y - e.y) < 26 && e.attackCd <= 0 && token && may && vis) {
+          ai.kick = false;
+          e.startWindup(game, { ...K, cd: [K.cd[lvl], K.cd[lvl] + 30] });
+          return true;
+        }
+      } else if (rdx < 130 && e.evadeCd <= 0) {
+        // 平时被贴身：和原来一样后跳拉开
+        e.setState('hop'); e.vz = 7; e.z = 0.01; e.vx = -e.facing * 6; e.evadeCd = 200;
+        return true;
+      }
+      // 2. 意图：拉开距离 / 躲到屠夫身后 / 找干净的射线
+      let brute = null, bd = P.cover.search;
+      for (const o of game.enemies) {
+        if (o === e || !o.alive || o.T.brain !== 'brute') continue;
+        const d = Math.abs(o.x - e.x) + Math.abs(o.y - e.y);
+        if (d < bd) { bd = d; brute = o; }
+      }
+      const aimY = this.aimAt(e, s, lvl, P);
+      const blocked = this.blocked(e, game, aimY);
+      const W = P.weights, ready = e.attackCd <= 30;
+      const intent = pick(e, A, P, {
+        kite: W.kite,
+        cover: brute && !ready ? W.cover : 0,
+        lane: blocked && ready ? W.lane : 0,
+      });
+      let tx, ty = s.y;
+      const band = P.kite, dist = band[0] + (band[1] - band[0]) * (0.5 + 0.5 * Math.sin((A.f + e.id * 50) * 0.02));
+      if (intent === 'cover' && brute) {
+        const cs = Math.sign(brute.x - s.x) || side; // 屠夫在你哪边，我就躲在它后面
+        tx = brute.x + cs * P.cover.behind; ty = brute.y + (e.id % 2 ? 14 : -14);
+      } else if (intent === 'lane') {
+        tx = s.x + side * dist;
+        const opts = [s.y + P.lane.step, s.y - P.lane.step, s.y + P.lane.step * 1.6, s.y - P.lane.step * 1.6].map((y) => clamp(y, 8, DEPTH - 8));
+        ty = opts.find((y) => !this.blocked({ ...e, y }, game, s.y)) ?? opts[0];
+      } else tx = s.x + side * dist;
+      steer(e, tx, ty);
+      // 3. 射：冷却、令牌、在画面内、距离合适、纵深差不太大、射线没被同伴挡 → 预警时画出瞄准线（预判过的真实路线）
+      const dyAim = Math.abs(aimY - e.y);
+      if (e.attackCd <= 0 && token && may && vis && rdx > 120 && rdx < 520 && dyAim < P.lane.maxDy && !blocked) {
+        const flight = rdx / 7.5;
+        e.startWindup(game);
+        e.aim = { vx: 7.5, vy: (aimY - e.y) / flight, len: rdx + 120 };
+        return true;
+      }
+      return true;
+    },
+    // 预判：看到的你在纵深上怎么动 → 箭射向你（预警 + 飞行）之后会在的纵深
+    aimAt(e, s, lvl, P) {
+      const flight = Math.abs(s.x - e.x) / 7.5, t = e.T.atk.windup + flight;
+      const lead = clamp((s.vy || 0) * t * P.lead.k[lvl], -P.lead.max, P.lead.max);
+      return clamp(s.y + lead, 6, DEPTH - 6);
+    },
+    // 射线上有没有同伴（箭会从同伴身边擦过去 —— 弓手不会隔着同伴放箭）
+    blocked(e, game, aimY) {
+      const P = AI_PROFILES.archer, px = game.player.x;
+      for (const o of game.enemies) {
+        if (o === e || !o.alive || o.team === 'prop' || o.z > 30) continue;
+        if ((o.x - e.x) * (px - e.x) <= 0 || Math.abs(o.x - e.x) >= Math.abs(px - e.x)) continue; // 不在我和你之间
+        const u = (o.x - e.x) / (px - e.x), ly = e.y + (aimY - e.y) * u;
+        if (Math.abs(o.y - ly) < P.lane.clear) return true;
+      }
+      return false;
     },
   },
 };

@@ -40,6 +40,7 @@ export class Projectile {
   }
   update(game) {
     this.x += this.vx;
+    this.y += this.vy || 0; // 弓手预判过的箭会斜着飞一点
     this.age++;
     // 回旋镖（夜鸦的羽刃）：一直往回减速，掉头之后回程还能再打中一次
     if (this.boomerang) {
@@ -202,6 +203,7 @@ export class Projectile {
       ctx.globalAlpha = 1;
       ctx.drawImage(tinted(T.core, col), -9, -9, 18, 18);
     } else if (this.kind === 'arrow') {
+      if (this.vy) ctx.rotate(Math.atan2(this.vy, Math.abs(this.vx))); // 预判过的箭斜着飞
       ctx.strokeStyle = 'rgba(255,90,70,.35)';
       ctx.lineWidth = 6;
       ctx.beginPath();
