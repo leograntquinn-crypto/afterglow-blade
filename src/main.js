@@ -1468,6 +1468,9 @@ class Game {
     for (const t of this.toasts) t.life--;
     this.toasts = this.toasts.filter((t) => t.life > 0);
     if (this.scene === 'world' || this.scene === 'title') {
+      // 对话框打开时收起触屏按钮（不挡立绘；点画面任意处翻页）
+      const talking = !!this.story.talk;
+      if (talking !== !!document.body.dataset.talk) { if (talking) document.body.dataset.talk = '1'; else delete document.body.dataset.talk; }
       this.world.update(this.input, { title: this.scene === 'title', frozen: this.menuOpen || this.story.active });
       return;
     }

@@ -46,6 +46,7 @@
   body:not([data-scene="play"]):not([data-scene="world"]) #touch, body[data-menu] #touch { display: none; }
   /* 地图上只要摇杆和「攻」（交互） */
   body[data-scene="world"] #touch .tbtn:not(.atk) { display: none; }
+  body[data-talk] #touch, body[data-talk] #world-bar { display: none !important; }
   #stick {
     position: absolute;
     left: calc(24px + env(safe-area-inset-left, 0px));
