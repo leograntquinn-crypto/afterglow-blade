@@ -17,6 +17,7 @@
 
 import { Projectile } from './combat.js';
 import { sfx } from './audio.js';
+import { disarmTraps } from './enemies_ext.js';
 
 const MELEE = { x: 48, w: 92, d: 30, z0: 0, z1: 100 };
 
@@ -241,6 +242,7 @@ function quakeBurst(p, game) {
   game.fx.spark(x, p.y, 10, -1, 10, p.glow);
   game.fx.crack(x, p.y);
   game.fx.dustburst(x, p.y, 1.2);
+  disarmTraps(game, x, p.y, 230); // 崩山击震掉附近的灰烬陷阱
   // 爆发：集中线炸开、两层地面冲击波、冲天光柱、星芒和冲击线；余韵：残光从裂开的地面升起
   game.cine.speed('out', 14, '#ffffff');
   game.cine.hold(0.2, 8, p);
