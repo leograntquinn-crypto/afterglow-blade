@@ -8,7 +8,7 @@
 //   5. 连段保护（导演）
 //   6. 数据化（ai_data.js）
 // 执行层（预警、出招、受击）还是 enemy.js 原来那一套，这里只决定「下一步做什么」。
-import { AI_PROFILES, DIRECTOR } from './ai_data.js';
+import { AI_PROFILES, DIRECTOR, FEINT, HABITS } from './ai_data.js';
 import { VIEW_W, DEPTH, world, clamp, toScreen, FONT_UI } from './config.js';
 
 const HIST = 32;
@@ -36,6 +36,10 @@ export class AI {
     this.guardFrom = null; // 连段保护从哪一帧开始
     const seed = typeof window !== 'undefined' && window.__aiSeed != null ? window.__aiSeed : (Math.random() * 1e9) | 0;
     this.rand = mulberry(seed);
+    this.habits = new Habits(this); // 读习惯（玩家模型）
+    this.lastFeintF = -9999; // 全场最近一次佯攻
+    this.threatUntil = -1; // 到这一帧为止，主角身边有敌人在预警（判断「看到预警就闪 / 弹刀」）
+    this.threat = null;
   }
 
   // 难度档：0 普通、1 噩梦、2 地狱（试炼：第 10 层起噩梦、第 20 层起地狱）
@@ -53,6 +57,7 @@ export class AI {
     let activeEnd = 0;
     if (m) for (const h of m.hits) activeEnd = Math.max(activeEnd, h.at + h.dur);
     const attacking = p.state === 'attack' && !!m;
+    const prev = this.f > 0 ? this.hist[(this.f - 1) % HIST] : null;
     this.hist[this.f % HIST] = {
       f: this.f, x: p.x, y: p.y, z: p.z, vx: p.vx, vy: p.vy, facing: p.facing, state: p.state,
       move: m?.id ?? null, mf: p.mf, moveStart: attacking ? this.f - p.mf : -1,
@@ -65,7 +70,10 @@ export class AI {
       dodging: p.state === 'dash' || p.state === 'airdash',
       charging: p.state === 'charge',
       air: p.z > 0,
+      parry: (p.parryT ?? 0) > 0,
+      landing: !!prev?.air && p.z <= 0, // 这一帧刚落地
     };
+    this.habits.observe(this.hist[this.f % HIST], prev);
     this.f++;
     if (this.f % DIRECTOR.period === 0) this.assignRoles();
     this.updateGuard();
@@ -112,7 +120,27 @@ export class AI {
   // 太久没人进攻：前锋的「压上」分数加倍（总有人在压，不让大家都在踩线干等）
   pressBoost(e) { return this.role(e) === 'front' && this.f - this.lastAttackF > DIRECTOR.pressAfter[this.level()]; }
 
-  onAttackStart() { this.lastAttackF = this.f; }
+  onAttackStart(e) {
+    this.lastAttackF = this.f;
+    // 主角身边的预警：之后的这段时间里闪避 / 弹刀，算「看到预警就闪 / 弹」
+    const p = this.g.player;
+    if (e && Math.abs(e.x - p.x) < 260 && Math.abs(e.y - p.y) < 80) {
+      this.threatUntil = Math.max(this.threatUntil, this.f + (e.windup ?? 30) + 6);
+      this.threat = e;
+      this.habits.exposure();
+    }
+  }
+
+  // ---------- 佯攻 ----------
+  // 这次出招要不要是佯攻：概率按难度（读到你爱闪避 / 弹刀时最多 ×1.3），同一个敌人、全场都有冷却（频率上限），连段保护期间不骗
+  feintFor(e) {
+    const lvl = this.level();
+    if ((e.feintCd ?? 0) > 0 || this.f - this.lastFeintF < FEINT.global[lvl] || this.guarding) return false;
+    if (this.rand() >= FEINT.chance[lvl] * this.habits.mult('feint')) return false;
+    this.lastFeintF = this.f;
+    e.feintCd = FEINT.cd;
+    return true;
+  }
   onPlayerHit(target) {
     this.lastHit = { e: target, f: this.f };
     if (target.hitLog) { target.hitLog.push(this.f); if (target.hitLog.length > 12) target.hitLog.shift(); } // 屠夫判断「贪刀」
@@ -153,10 +181,12 @@ export class AI {
       `AI 难度档 ${this.level()} · 反应 ${AI_PROFILES.grunt.reaction[this.level()]} 帧 · 令牌 ${g.attackers.size}/${g.maxAttackers ?? 2}`,
       `连段保护 ${this.guarding ? '开' : '关'}（连段 ${g.combo}）· 距上次进攻 ${this.f - this.lastAttackF} 帧`,
       `主角：${s?.state ?? '-'} ${s?.move ?? ''}${s?.whiff ? ' 挥空' : s?.recovering ? ' 收招' : ''}`,
+      `读习惯：闪避 ${this.habits.h('dodge').toFixed(2)} · 弹刀 ${this.habits.h('parry').toFixed(2)} · 贪刀 ${this.habits.h('greed').toFixed(2)} · 空挥 ${this.habits.h('whiff').toFixed(2)}`,
+      `佯攻倍率 ×${this.habits.mult('feint').toFixed(2)} · 距上次佯攻 ${this.f - this.lastFeintF} 帧 · 落点 ${(() => { const L = this.habits.landing(); return L ? `${L.ax | 0},${L.dy | 0}` : '—'; })()}`,
     ];
     ctx.textAlign = 'left';
     ctx.fillStyle = 'rgba(0,0,0,.6)';
-    ctx.fillRect(8, 150, 330, lines.length * 17 + 8);
+    ctx.fillRect(8, 150, 380, lines.length * 17 + 8);
     ctx.fillStyle = '#9fe8ff';
     lines.forEach((l, i) => ctx.fillText(l, 14, 162 + i * 17));
     ctx.restore();
@@ -207,7 +237,83 @@ export class AI {
   }
 }
 
-export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚', corner: '逼墙角', shove: '甩开', kite: '拉开', cover: '掩体', lane: '找射线', kick: '侧闪踢' };
+// 佯攻露出破绽了没有（Enemy.draw 用：「!」变成琥珀色的「?」、光变色、武器抖动）
+export function feintRevealed(e) {
+  if (!e.atk?.feint) return false;
+  if (e.state === 'attack') return !!e.atk.fake; // 烬翼假冲：冲下去的那一段也是琥珀色
+  if (e.state !== 'windup') return false;
+  const end = e.atk.noCancel ? e.windup : Math.round(e.windup * FEINT.cancelAt);
+  return e.st >= end - FEINT.reveal;
+}
+
+// ---------------- 读习惯（玩家模型）----------------
+// 只看画面上看得到的东西：敌人预警时你闪不闪 / 弹不弹、连段打多长、普攻挥空多不多、闪避往哪落。
+// 统计随时间打折（慢慢忘掉旧习惯）；h(k) 是 0～1 的「习惯程度」，mult(k) = 1 + 0.3 × h（影响上限 30%）
+class Habits {
+  constructor(ai) {
+    this.ai = ai;
+    this.c = { exposures: 0, dodges: 0, parries: 0, attacks: 0, whiffs: 0, combos: 0, greedy: 0 };
+    this.land = []; // 最近几次闪避的落点（相对起点：ax 往远离威胁的方向，dy 纵深）
+    this.dash = null;
+    this.shown = new Set();
+    this.lastMove = -1;
+    this.lastWhiff = -1;
+    this.maxCombo = 0;
+  }
+  exposure() { this.c.exposures++; }
+  observe(s, prev) {
+    const A = this.ai, g = A.g, c = this.c;
+    if (A.f % HABITS.decayEvery === 0 && A.f) for (const k in c) c[k] *= HABITS.decay;
+    const threat = A.f <= A.threatUntil;
+    // 闪避：开始时记下有没有预警、从哪闪；结束时记下落点
+    if (s.dodging && !prev?.dodging) {
+      if (threat) c.dodges++;
+      const t = A.threat, away = t ? Math.sign(s.x - t.x) || 1 : s.facing;
+      this.dash = { x: s.x, y: s.y, away };
+    }
+    if (!s.dodging && prev?.dodging && this.dash) {
+      this.land.push({ ax: (s.x - this.dash.x) * this.dash.away, dy: s.y - this.dash.y });
+      if (this.land.length > 8) this.land.shift();
+      this.dash = null;
+    }
+    if (s.parry && !prev?.parry && threat) c.parries++;
+    // 普攻：出了几刀、挥空几刀
+    if (s.attacking && s.moveStart !== this.lastMove) { this.lastMove = s.moveStart; c.attacks++; }
+    if (s.whiff && s.moveStart !== this.lastWhiff) { this.lastWhiff = s.moveStart; c.whiffs++; }
+    // 连段：一段连段结束时记下有多长（6 下以上算「贪」）
+    if (g.combo > 0) this.maxCombo = Math.max(this.maxCombo, g.combo);
+    else if (this.maxCombo > 0) { c.combos++; if (this.maxCombo >= 6) c.greedy++; this.maxCombo = 0; }
+    for (const k of ['dodge', 'parry', 'greed', 'whiff']) if (!this.shown.has(k) && this.h(k) >= HABITS.show) this.notify(k);
+  }
+  // 习惯程度 0～1
+  h(k) {
+    const c = this.c, H = HABITS[k];
+    const [n, d] = { dodge: [c.dodges, c.exposures], parry: [c.parries, c.exposures], greed: [c.greedy, c.combos], whiff: [c.whiffs, c.attacks] }[k];
+    if (d < H.min) return 0;
+    return clamp((n / d - H.base) / H.span, 0, 1);
+  }
+  // 参数倍率（影响上限 30%）。feint：你爱闪避或爱弹刀时佯攻更多
+  mult(k) {
+    const h = k === 'feint' ? Math.max(this.h('dodge'), this.h('parry')) : this.h(k);
+    return 1 + HABITS.cap * h;
+  }
+  // 第一次读到某个习惯：提示（每场一次）
+  notify(k) {
+    this.shown.add(k);
+    const g = this.ai.g;
+    g.toast?.(HABITS[k].toast, '#ffb347');
+    g.fx?.label(g.player.x, g.player.y, g.player.z + 120, '敌人在读你的打法', '#ffb347', 18);
+  }
+  // 你常闪去的落点（相对起点，按「远离威胁」的方向）；记录太少返回 null
+  landing() {
+    const P = AI_PROFILES.priest.trap;
+    if (this.land.length < P.min) return null;
+    const ax = this.land.reduce((a, l) => a + l.ax, 0) / this.land.length, dy = this.land.reduce((a, l) => a + l.dy, 0) / this.land.length;
+    return { ax: clamp(ax, -P.maxX, P.maxX), dy: clamp(dy, -P.maxY, P.maxY) };
+  }
+}
+
+export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚', corner: '逼墙角', shove: '甩开', kite: '拉开', cover: '掩体', lane: '找射线', kick: '侧闪踢', feint: '佯攻', fake: '假冲', real: '真冲', scatter: '散开', landdive: '落地俯冲', screen: '躲到同伴后', guard: '格挡', delay: '晚砸', protect: '护同伴', ward: '护咒', trap: '下陷阱', orbit: '盘旋' };
 
 const onScreen = (e, game, m) => e.x > game.camX + m && e.x < game.camX + VIEW_W - m;
 // 走向目标点（纵深方向慢一点，和原来一样）
@@ -247,7 +353,7 @@ export const BRAINS = {
       if (s.whiff && s.moveStart !== ai.seenWhiff && T.lunge) {
         ai.seenWhiff = s.moveStart;
         const onScreen = e.x > game.camX + P.flank.onScreen && e.x < game.camX + VIEW_W - P.flank.onScreen;
-        if (e.punishCd <= 0 && adx < P.punish.range && Math.abs(dy) < 40 && token && may && onScreen && A.rand() < P.punish.chance[lvl]) {
+        if (e.punishCd <= 0 && adx < P.punish.range && Math.abs(dy) < 40 && token && may && onScreen && A.rand() < Math.min(1, P.punish.chance[lvl] * A.habits.mult('whiff'))) {
           e.punishCd = P.punish.cd[lvl];
           ai.intent = 'punish';
           e.startWindup(game, { ...T.lunge, windup: P.punish.windup, minRange: 0, punish: true });
@@ -310,7 +416,11 @@ export const BRAINS = {
       if (e.attackCd <= 0 && token && may && rdy < 18 && onScreen) {
         const L = T.lunge;
         if (L && intent === 'press' && rdx > L.minRange && rdx < L.range && A.rand() < 0.03) { e.startWindup(game, L); return true; }
-        if (rdx <= atk.range + 8) { e.startWindup(game); return true; }
+        if (rdx <= atk.range + 8) {
+          // 佯攻：频率有上限，普通难度少用；读到你爱闪避 / 弹刀时稍多
+          if (A.feintFor(e)) { e.startWindup(game, { ...atk, feint: true }); ai.intent = 'feint'; } else e.startWindup(game);
+          return true;
+        }
       }
       return true;
     },
@@ -334,7 +444,8 @@ export const BRAINS = {
       if (e.guardT > 0) { e.vx *= 0.6; e.vy *= 0.6; ai.intent = 'guard'; return true; } // 格挡时站稳不动
       // 2. 甩开贪刀：最近被你连打了好几下、你还贴着它
       const hits = (e.hitLog ?? []).filter((f) => A.f - f < P.shove.window).length;
-      if (hits >= P.shove.hits[lvl] && adx < P.shove.near && e.shoveCd <= 0 && token && may && vis) {
+      const need = Math.max(3, Math.round(P.shove.hits[lvl] / A.habits.mult('greed'))); // 读到你爱贪刀：最多早 30% 甩开
+      if (hits >= need && adx < P.shove.near && e.shoveCd <= 0 && token && may && vis) {
         e.shoveCd = P.shove.cd[lvl];
         e.hitLog = [];
         ai.intent = 'shove';
@@ -357,7 +468,10 @@ export const BRAINS = {
       steer(e, tx, ty);
       // 4. 重砸：和原来一样（冷却、令牌、同一纵深、在距离内），只在画面内出手
       const p = game.player;
-      if (e.attackCd <= 0 && token && may && vis && Math.abs(p.y - e.y) < 18 && Math.abs(p.x - e.x) <= atk.range + 8) { e.startWindup(game); return true; }
+      if (e.attackCd <= 0 && token && may && vis && Math.abs(p.y - e.y) < 18 && Math.abs(p.x - e.x) <= atk.range + 8) {
+        if (A.feintFor(e)) { e.startWindup(game, { ...atk, feint: true }); ai.intent = 'feint'; } else e.startWindup(game);
+        return true;
+      }
       return true;
     },
     // 预警期间：重砸预警过半时看到你在闪避 → 斧头多举一会儿再砸（红圈位置不变，只是晚一点炸）
@@ -366,7 +480,7 @@ export const BRAINS = {
       if (e.atk !== e.T.atk || e.holdT || e.st < e.windup * 0.4) return;
       const s = A.see(e);
       if (!s?.dodging) return;
-      if (A.rand() >= P.delay.chance[lvl]) { e.holdT = -1; return; } // 这一次不骗（每次预警只判断一次）
+      if (A.rand() >= Math.min(1, P.delay.chance[lvl] * A.habits.mult('dodge'))) { e.holdT = -1; return; } // 这一次不骗（每次预警只判断一次）；读到你爱闪避时更常骗
       e.holdT = P.delay.extra[lvl];
       for (const h of game.hazards) if (h.owner === e && h.t < h.delay) h.delay += e.holdT;
       e.ai && (e.ai.intent = 'delay');

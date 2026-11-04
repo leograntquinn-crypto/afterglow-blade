@@ -3,6 +3,7 @@ import { world, toScreen, COLORS } from './config.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
 import { BOSS_SPRITES } from './enemy_sprites.js';
+import { FEINT } from './ai_data.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -277,6 +278,8 @@ export class Hazard {
       const u = this.t / this.delay, T = tex();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.7 + 0.3 * Math.sin(this.t * (0.35 + u * 0.6));
+      // 屠夫佯攻的红圈：露出破绽后变淡、闪烁（这一下不会砸）
+      if (this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal) ctx.globalAlpha *= 0.3 + 0.2 * Math.sin(this.t * 1.4);
       ctx.drawImage(tinted(T.ring[2], '#ff4636'), sx - this.rx * 1.04, sy - this.ry * 1.04, this.rx * 2.08, this.ry * 2.08);
       ctx.globalAlpha = 0.25 + 0.45 * u;
       ctx.drawImage(tinted(T.glow, '#ff3a2e'), sx - this.rx * u * 1.3, sy - this.ry * u * 1.3, this.rx * u * 2.6, this.ry * u * 2.6);

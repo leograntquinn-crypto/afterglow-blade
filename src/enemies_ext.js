@@ -7,6 +7,7 @@ import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
 import { hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
+import { AI_PROFILES } from './ai_data.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const WARD_COLOR = '#b48cff';
@@ -14,7 +15,7 @@ const WARD_COLOR = '#b48cff';
 // ---------------- 类型表（并入 enemy.js 的 TYPES）----------------
 export const EXT_TYPES = {
   priest: {
-    name: '灰烛司祭', lvOff: 2, hp: 110, w: 34, h: 86, speed: 1.5, weight: 0.9, armor: 0, xp: 22, drop: 0.3, ai: 'priest',
+    name: '灰烛司祭', lvOff: 2, hp: 110, w: 34, h: 86, speed: 1.5, weight: 0.9, armor: 0, xp: 22, drop: 0.3, ai: 'priest', brain: 'priest',
     look: { rig: 'priest', h: 86, robe: '#6c6676', trim: '#a888d8', mask: '#efe9df', staff: '#4a4448', flame: '#e4dcff', rim: 'rgba(214,204,236,0.75)' },
     // 护咒：长读条，读完给附近同伴套咒盾。读条时被打中 = 破招（现有机制）
     ward: { kind: 'ward', windup: 70, recover: 30, cd: [300, 420], range: 380 },
@@ -25,7 +26,7 @@ export const EXT_TYPES = {
       hit: { box: { x: 40, w: 70, d: 26, z0: 0, z1: 90 }, dmg: 6, kb: 9, stun: 14, stop: 3, shake: 3 } },
   },
   wing: {
-    name: '烬翼', lvOff: 0, hp: 34, w: 30, h: 34, speed: 3.2, weight: 0.5, armor: 0, xp: 8, drop: 0.08, ai: 'wing', flyer: true,
+    name: '烬翼', lvOff: 0, hp: 34, w: 30, h: 34, speed: 3.2, weight: 0.5, armor: 0, xp: 8, drop: 0.08, ai: 'wing', brain: 'wing', flyer: true,
     look: { rig: 'wing', h: 34, body: '#3a2a30', crack: '#ff7a40', wing: '#4a3038', eye: '#ffe2b0', rim: 'rgba(255,170,120,0.7)' },
     // 俯冲：悬停预警 28 帧，然后斜着冲向你 16 帧，再爬升回去
     atk: { kind: 'dive', windup: 28, dur: 16, recover: 46, cd: [90, 170],
@@ -39,26 +40,44 @@ const HOVER = 127, BOB = 12;
 // ---------------- 灰烛司祭 ----------------
 const priest = {
   think(e, game) {
-    const p = game.player, T = e.T;
+    const p = game.player, T = e.T, A = game.ai, P = AI_PROFILES.priest;
     const dx = p.x - e.x, adx = Math.abs(dx), dy = p.y - e.y;
     if (p.state === 'dead') { e.vx *= 0.8; e.vy = 0; return; }
     e.facing = sign(dx);
+    const ai = (e.ai ??= { intent: 'kite' });
     // 站位：离你 220～340，太近就往后退，躲在同伴后面
-    let tx = e.x;
+    let tx = e.x, ty = clamp(p.y + e.yOff * 0.6, 8, DEPTH - 8);
     if (adx < 220) tx = e.x - e.facing * 90;
     else if (adx > 340) tx = p.x - e.facing * 290;
-    const ty = clamp(p.y + e.yOff * 0.6, 8, DEPTH - 8);
+    ai.intent = 'kite';
+    // 第 3 轮：想读护咒、身前却没人挡着 → 先躲到最近的同伴身后（读条前确认有人挡）
+    const want = A && e.attackCd <= 0 && wardTargets(e, game).length;
+    const wall = want && !screened(e, game) ? screenAlly(e, game) : null;
+    if (wall) {
+      tx = clamp(wall.x - sign(p.x - wall.x) * P.screen.behind, 40, world.w - 40);
+      // 纵深错开一点（不和同伴挤在同一条线上，绕得过去），但仍在同伴的掩护范围里
+      const off = wall.y + 24 > DEPTH - 8 ? -1 : wall.y - 24 < 8 ? 1 : e.y >= wall.y ? 1 : -1;
+      ty = wall.y + off * 24;
+      ai.intent = 'screen';
+    }
     const mx = tx - e.x, my = ty - e.y, spd = T.speed * e.spdMul;
     e.vx = Math.abs(mx) > 6 ? sign(mx) * Math.min(spd, Math.abs(mx)) : 0;
     e.vy = Math.abs(my) > 4 ? sign(my) * Math.min(spd * 0.7, Math.abs(my)) : 0;
     if (e.vx || e.vy) e.walk += 0.2 * spd;
 
     if (e.attackCd > 0 || game.attackers.size >= (game.maxAttackers ?? 2)) return;
-    if (adx < T.atk.range && Math.abs(dy) < 30) return e.startWindup(game, T.atk);
-    // 同一时间场上最多一个司祭在读护咒
+    const may = A ? A.mayAttack(e) : true; // 连段保护期间不推人、不下陷阱（护咒不算进攻：护正在挨打的同伴正是它的活）
+    if (may && adx < T.atk.range && Math.abs(dy) < 30) return e.startWindup(game, T.atk);
+    // 同一时间场上最多一个司祭在读护咒；身前没人挡就先不读（同伴都死光了的时候除外 —— 那时 wardTargets 本来就是空的）
     const busy = game.enemies.some((o) => o !== e && o.T?.ai === 'priest' && o.state === 'windup' && o.atk.kind === 'ward');
-    if (!busy && wardTargets(e, game).length && Math.random() < 0.65) return e.startWindup(game, T.ward);
-    if ((e.traps ?? 0) < 2 && adx < 560) return e.startWindup(game, T.trap);
+    const list = wardTargets(e, game), hurt = A && list[0] && list[0] === protectee(game);
+    if (!busy && list.length && (!A || screened(e, game)) && (hurt || Math.random() < 0.65)) {
+      ai.intent = hurt ? 'protect' : 'ward';
+      if (hurt) game.fx.label(list[0].x, list[0].y, list[0].h + 34, '护同伴', WARD_COLOR, 16); // 告诉你它要护谁：先切司祭，或者换个打
+      return e.startWindup(game, T.ward);
+    }
+    if (wall) return; // 还在往同伴身后走：先不下陷阱
+    if (may && (e.traps ?? 0) < 2 && adx < 560) { ai.intent = 'trap'; return e.startWindup(game, T.trap); }
   },
 
   // 读条期间：被护的同伴身上冒紫色光点，让你知道它在给谁加盾
@@ -82,7 +101,17 @@ const priest = {
       sfx('witch');
     } else if (A.kind === 'trap') {
       const p = game.player;
-      const trap = new Trap({ x: clamp(p.x, 40, world.w - 40), y: p.y, owner: e });
+      // 第 3 轮：读到你常闪避的落点（闪避方向按「远离离你最近的敌人」算）→ 陷阱下在那里，而不是你脚下
+      const L = game.ai?.habits.landing();
+      let x = p.x, y = p.y;
+      if (L) {
+        const near = game.enemies.filter((o) => o.alive && o.team !== 'prop' && o.state !== 'spawn').reduce((a, o) => (!a || Math.abs(o.x - p.x) < Math.abs(a.x - p.x) ? o : a), null);
+        const away = near ? sign(p.x - near.x) : -p.facing;
+        x = p.x + L.ax * away; y = p.y + L.dy;
+        game.fx.label(x, y, 40, '堵落点', '#c9a4ff', 16);
+      }
+      const trap = new Trap({ x: clamp(x, 40, world.w - 40), y: clamp(y, 8, DEPTH - 8), owner: e });
+      trap.read = !!L;
       trap.arm = Math.round(40 * (game.D?.windup ?? 1)); // 难度越高点亮越快
       game.hazards.push(trap);
       e.traps = (e.traps ?? 0) + 1;
@@ -112,13 +141,36 @@ const priest = {
   draw: drawPriest,
 };
 
-// 护咒能套给谁：附近还没有咒盾的活着的同伴（不含首领和别的司祭）
+// 护咒能套给谁：附近还没有咒盾的活着的同伴（不含首领和别的司祭）。第 3 轮：你最近在打的那个排第一
 function wardTargets(e, game) {
   const R = e.T.ward.range * (1 + 0.15 * Math.max(0, (game.D?.attackers ?? 0) + (game.D?.affix ?? 0) - 1)); // 噩梦 / 地狱：护咒范围更大
+  const hot = protectee(game);
   return game.enemies
     .filter((o) => o !== e && o.alive && o.team !== 'prop' && !o.isBoss && o.T?.ai !== 'priest' && !o.ward && o.state !== 'spawn' && Math.abs(o.x - e.x) < R && Math.abs(o.y - e.y) < 120)
-    .sort((a, b) => Math.abs(a.x - e.x) - Math.abs(b.x - e.x))
+    .sort((a, b) => (b === hot) - (a === hot) || Math.abs(a.x - e.x) - Math.abs(b.x - e.x))
     .slice(0, 2);
+}
+
+// 正在挨打的同伴：你 protect 帧内打中过的那个
+function protectee(game) {
+  const A = game.ai, L = A?.lastHit;
+  return L && L.e?.alive && A.f - L.f < AI_PROFILES.priest.protect ? L.e : null;
+}
+
+// 身前有没有同伴挡着：同伴在司祭和你之间、纵深差不大、离司祭不远
+function screened(e, game) {
+  const p = game.player, S = AI_PROFILES.priest.screen, d = sign(p.x - e.x);
+  return game.enemies.some((o) => o !== e && o.alive && o.team !== 'prop' && o.T?.ai !== 'priest' && o.state !== 'spawn' &&
+    (o.x - e.x) * d > S.margin && (p.x - o.x) * d > 0 && Math.abs(o.x - e.x) < S.reach && Math.abs(o.y - e.y) < S.within);
+}
+// 可以躲到谁身后：离司祭最近的地面同伴（烬翼挡不住）
+function screenAlly(e, game) {
+  let best = null;
+  for (const o of game.enemies) {
+    if (o === e || !o.alive || o.team === 'prop' || o.T?.ai === 'priest' || o.T?.flyer || o.isBoss || o.state === 'spawn') continue;
+    if (!best || Math.abs(o.x - e.x) < Math.abs(best.x - e.x)) best = o;
+  }
+  return best;
 }
 
 // ---------------- 烬翼 ----------------
@@ -136,22 +188,55 @@ const wing = {
   },
 
   think(e, game) {
-    const p = game.player, T = e.T;
+    const p = game.player, T = e.T, A = game.ai, P = AI_PROFILES.wing;
     if (p.state === 'dead') { e.vx *= 0.9; e.vy *= 0.9; return; }
+    const ai = (e.ai ??= { intent: 'orbit' });
+    const s = A?.see(e); // 看到的是反应时间以前的你
     // 绕着你飘：每只有自己的角度和半径
     const a = game.ticks * 0.012 + e.id * 2.1;
     const R = 150 + (e.id % 3) * 30;
-    const tx = clamp(p.x + Math.cos(a) * R, 40, world.w - 40), ty = clamp(p.y + Math.sin(a * 1.7) * 40, 8, DEPTH - 8);
-    const spd = T.speed * e.spdMul;
+    let tx = clamp(p.x + Math.cos(a) * R, 40, world.w - 40), ty = clamp(p.y + Math.sin(a * 1.7) * 40, 8, DEPTH - 8);
+    ai.intent = 'orbit';
+    // 第 3 轮：看到你起跳 → 离你近的往外散开（不在你空中时俯冲，你的空中招打不到一群）
+    if (s?.air && Math.abs(e.x - s.x) < P.scatter.near && !ai.scatterT) ai.scatterT = 36, ai.scatterX = clamp(e.x + sign(e.x - s.x) * P.scatter.away, 40, world.w - 40);
+    if (ai.scatterT > 0) { ai.scatterT--; tx = ai.scatterX; ai.intent = 'scatter'; }
+    if (s?.landing) { ai.landAt = A.f; ai.scatterT = 0; } // 看到你落地：不再散开，准备俯冲
+    const spd = T.speed * e.spdMul * (ai.intent === 'scatter' ? 1.3 : 1);
     const mx = tx - e.x, my = ty - e.y, d = Math.hypot(mx, my) || 1;
     e.vx = (mx / d) * Math.min(spd, d);
     e.vy = (my / d) * Math.min(spd * 0.6, d);
     e.facing = sign(p.x - e.x);
     e.walk += 0.3;
-    // 飞到够高、离你不远、有攻击令牌时才俯冲
-    if (e.attackCd <= 0 && e.z > HOVER - BOB - 6 && Math.abs(p.x - e.x) < 280 && game.attackers.size < (game.maxAttackers ?? 2)) {
-      e.startWindup(game, T.atk);
+    const high = e.z > HOVER - BOB - 6, token = game.attackers.size < (game.maxAttackers ?? 2), may = A ? A.mayAttack(e) : true;
+    if (!A) { if (e.attackCd <= 0 && high && Math.abs(p.x - e.x) < 280 && token) e.startWindup(game, T.atk); return; }
+    if (s.air || ai.intent === 'scatter' || !high || !token || !may) return;
+    const near = Math.abs(p.x - e.x) < 280;
+    // 搭档的假冲到了时间 → 真冲（「!」红光，冲到底、会伤人）
+    if (ai.realAt != null) {
+      if (A.f > ai.realAt + 30) ai.realAt = null; // 错过了（令牌被占、你跑远了）就算了
+      else if (A.f >= ai.realAt) { ai.realAt = null; if (near) { e.startWindup(game, T.atk); ai.intent = 'real'; return; } }
+      else return;
     }
+    // 落地硬直：你刚落地 window 帧内、冷却快好了 → 马上俯冲（每次落地只来一只）
+    if (ai.landAt != null && A.f - ai.landAt < P.land.window && e.attackCd <= P.land.cd && near && A.landDiveF !== ai.landAt) {
+      A.landDiveF = ai.landAt;
+      e.startWindup(game, T.atk); ai.intent = 'landdive';
+      return;
+    }
+    // 轮流俯冲：已经有别的烬翼在冲就先等
+    const wings = game.enemies.filter((o) => o !== e && o.alive && o.T?.ai === 'wing');
+    if (wings.some((o) => o.state === 'windup' || (o.state === 'attack' && o.st < o.atk.dur))) return;
+    if (e.attackCd > 0 || !near) return;
+    // 一只假冲（「?」琥珀色、只冲一半、不伤人）引你闪避，搭档在假冲预警进行到 pair 时开始真冲
+    const mate = wings.find((o) => o.state === 'idle' && o.attackCd <= 40 && o.z > HOVER - BOB - 6 && Math.abs(p.x - o.x) < 300 && o.ai?.realAt == null);
+    if (mate && A.feintFor(e)) {
+      e.startWindup(game, { ...T.atk, feint: true, noCancel: true, fake: true });
+      ai.intent = 'fake';
+      (mate.ai ??= {}).realAt = A.f + Math.round(e.windup * P.pair);
+      mate.ai.intent = 'real';
+      return;
+    }
+    e.startWindup(game, T.atk);
   },
 
   windup(e) {
@@ -162,16 +247,20 @@ const wing = {
     const p = game.player, D = e.atk.dur;
     // 朝你现在的位置斜着冲下来，冲到离地约 22
     e.dive = { vx: clamp((p.x - e.x) / D, -12, 12), vy: clamp((p.y - e.y) / D, -5, 5), vz: (22 - e.z) / D };
+    if (e.atk.fake) e.dive.vz *= 0.5; // 假冲：只冲下来一半就拉起
     e.facing = sign(p.x - e.x);
     sfx('dash');
   },
 
   updateAttack(e, game) {
     const A = e.atk;
-    if (e.st < A.dur) {
+    if (A.fake && e.st === (A.dur >> 1)) { e.st = A.dur; game.fx.label(e.x, e.y, e.z + 40, '虚晃', '#ffb347', 15); } // 假冲到一半就拉起，不伤人
+    if (e.st < A.dur && !A.fake) {
       e.vx = e.dive.vx; e.vy = e.dive.vy; e.z += e.dive.vz;
       const p = game.player;
       if (!e.hitSet.has(p) && overlaps(hitBox(e, A.hit), p) && game.applyHit(e, p, A.hit, e.facing)) e.hitSet.add(p);
+    } else if (e.st < A.dur) {
+      e.vx = e.dive.vx; e.vy = e.dive.vy; e.z += e.dive.vz; // 假冲的前半段：样子和真冲一样，但不判定
     } else {
       // 爬升回盘旋高度（爬升途中离地低，地面攻击打得到 —— 这是反打的窗口）
       e.vx *= 0.88; e.vy *= 0.88;
