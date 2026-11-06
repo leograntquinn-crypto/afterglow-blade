@@ -6,6 +6,7 @@ python3 -I tools/build_sprites.py <素材包根目录> <目标> [追加的素材
       bone_lord / altar_warden / night_raven / iron_jaw（首领）/ npc_zhupo / npc_moheng / npc_ali（守灯驿的人）/ props_s / props_l（小道具、大道具，来自同一个 env_props_v1 包）
 
 素材包都是 feisun.spritepack.v1 格式（单帧 PNG + animations.json），已经是原地动画，不再做对齐修正。
+追加的素材包可以覆盖前面同名的帧（沿用原来的格子）；动画标了 "override": true 时只替换帧、不改动画的帧列表。
 每个目标输出两套图集：
   桌面：<名字>.json + <名字>_atlas.webp（角色 256 格子）
   手机：<名字>_m.json + <名字>_m_atlas.webp（格子是桌面的 75%，内存约 56%；手机上角色只有 85～245px 高，看不出区别）
@@ -141,7 +142,8 @@ for pack in [SRC, *EXTRA]:
 canvas = entries[0][3]
 assert all(e[3] == canvas and e[4] == entries[0][4] and e[5] == entries[0][5] for e in entries), "同一目标里的画布和锚点必须一致"
 PX, PY = entries[0][4], entries[0][5]
-names = [fn for e in entries for fn in e[1]["frame_names"]]
+# 后面的素材包可以覆盖前面同名的帧（重画修正，比如 hero_fix_v1）：同名帧沿用原来的格子，不多占位置
+names = list(dict.fromkeys(fn for e in entries for fn in e[1]["frame_names"]))
 cols, rows = 8, (len(names) + 7) // 8
 
 # 先按原尺寸算每帧的稳身偏移和刀身（刀身在 256 格子上检测，再按比例换算）
@@ -180,6 +182,8 @@ for suffix, cell in (("", T["cell"]), ("_m", round(T["cell"] * 0.75))):
                 b = blades[fn]  # 存成相对锚点（脚底）的坐标
                 fr["blade"] = [round((b[0] - PX) * S, 1), round((b[1] - PY) * S, 1), round((b[2] - PX) * S, 1), round((b[3] - PY) * S, 1)]
             out["frames"][fn] = fr
+        if anim.get("override"):  # 只替换帧（比如单独重画的 jump_02），不改这组动画的帧列表
+            continue
         out["anims"][aname] = {"frames": anim["frame_names"], "loop": anim["loop"], "contact": anim.get("suggested_contact_frame_indices", []),
                                "windup": anim.get("suggested_windup_frame_indices", [])}
     atlas.save(f"{OUT}/{N}{suffix}_atlas.webp", "WEBP", quality=88, method=6)
