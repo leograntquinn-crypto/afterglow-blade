@@ -1,4 +1,5 @@
 // 战斗核心：判定框、飞行道具、地面范围攻击
+import { flipbook } from './fx_art.js';
 import { world, toScreen, COLORS } from './config.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
@@ -21,14 +22,6 @@ export function overlaps(box, t) {
     t.z + t.h >= box.z0 &&
     t.z <= box.z1
   );
-}
-
-// 新月形：外沿是半个椭圆，内沿是更扁的半个椭圆，两头尖、中间厚 th
-function crescent(ctx, cx, cy, rx, ry, th) {
-  ctx.beginPath();
-  ctx.ellipse(cx, cy, rx, ry, 0, -Math.PI / 2, Math.PI / 2);
-  ctx.ellipse(cx, cy, Math.max(1, rx - th), ry, 0, Math.PI / 2, -Math.PI / 2, true);
-  ctx.fill();
 }
 
 export class Projectile {
@@ -90,15 +83,17 @@ export class Projectile {
       }
       ctx.globalAlpha = a * 0.35;
       ctx.drawImage(tinted(T.glow, col), -60 * sc, -112 * sc, 80 * sc, 124 * sc);
-      for (let i = 2; i >= 0; i--) {
-        const off = -i * 16 * sc, k = 1 - i * 0.12;
-        ctx.globalAlpha = a * (i ? 0.28 / i : 0.9);
-        ctx.fillStyle = col;
-        crescent(ctx, off, -50 * sc, 20 * sc * k, 54 * sc * k, 11 * sc * k);
-        if (!i) {
+      // 剑气本体：手绘序列帧 wave_crescent（fx_blade_v1，前缘最亮、往后渐暗，飞行中循环）。素材没载好时不画本体
+      const fb = flipbook('wave_crescent');
+      if (fb) {
+        const n = fb.frames.length, fr = fb.frames[Math.floor(this.age * fb.fps / 60) % n];
+        if (fr) {
+          // 素材格子高 256（交付尺寸），新月约占 74%：按原来剑气的高度（约 108 × sc）换算
+          const k = (146 * sc) / (fb.h / fb.sc) / fr.sc, w = fr.width * k, h = fr.height * k, x = -fr.cx * k - 40 * sc, y = -fr.cy * k - 50 * sc;
           ctx.globalAlpha = a;
-          ctx.fillStyle = '#ffffff';
-          crescent(ctx, off + 3 * sc, -50 * sc, 20 * sc, 54 * sc, 3.5 * sc);
+          ctx.drawImage(tinted(fr, col), x, y, w, h);
+          ctx.globalAlpha = a * 0.6;
+          ctx.drawImage(fr, x, y, w, h);
         }
       }
     } else if (this.kind === 'feather') {

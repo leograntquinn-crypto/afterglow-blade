@@ -14,17 +14,9 @@ import { hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { heroSprite, heroFrame, bladeOf } from './sprite.js';
-import { mix, scaleColor } from './fx_tex.js';
 import { SLASH_FX } from './fx_data.js';
 import { STAMINA } from './stamina_data.js';
-
-// 刀光的颜色渐变：刚扫过近白 → 刀光色 → 冷却变暗（每种刀光色只算一次）
-const trailRamps = new Map();
-function trailRamp(c) {
-  let r = trailRamps.get(c);
-  if (!r) trailRamps.set(c, (r = [mix('#ffffff', c, 0.7), c, c, scaleColor(c, 0.85), scaleColor(c, 0.65), scaleColor(c, 0.45)]));
-  return r;
-}
+import { ribbonTex, drawRibbon, drawTip } from './ribbon.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
 const CHARGE_LV1 = 24, CHARGE_LV2 = 66, CHARGE_HOLD = 14;
@@ -216,7 +208,9 @@ export class Player {
       // 逐帧精灵：记录当前帧里刀柄和刀尖的位置（素材处理时检测出来的）
       const b = bladeOf(heroFrame(this, 0), this.facing);
       if (b) {
-        this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, b, life: 10 });
+        // kind：用哪条刀光条带（fx_blade_v1）—— 技能 / 必杀用 skill，重击、坠星用 heavy，其余 light
+        const m = this.move, kind = this.state === 'ult' || m?.skill ? 'skill' : m?.heavy || m?.plunge ? 'heavy' : 'light';
+        this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, b, life: 10, kind });
         // 刀尖甩出的细碎光点（刀尖移动得快时才有）
         const pv = this.trail[this.trail.length - 2];
         if (pv?.b && Math.hypot(b[2] - pv.b[2], b[3] - pv.b[3]) > 14 && Math.random() < 0.6) {
@@ -229,59 +223,12 @@ export class Player {
     this.trail.push({ x: this.x, y: this.y, z: this.z, f: this.facing, a: p.angle, lean: p.lean || 0, crouch: p.crouch || 0, life: 9 });
   }
 
+  // 武器拖尾：只用刀光素材（fx_blade_v1）沿真实刀尖轨迹铺开；主角素材或刀光素材没载好时不画（不再用代码画的色带）
   drawTrail(ctx, camX, glowPass = false) {
-    const T = this.trail;
-    if (T.length < 2) return;
-    if (heroSprite.ready) return this.drawSpriteTrail(ctx, camX, glowPass);
-    const L = this.look.weapon.len;
-    // 和 rig.js 里的骨骼计算一致：肩膀 → 手（伸出 24）→ 刀身（从手往外 14 到 L）
-    const pts = (s, a) => {
-      const [bx, by] = toScreen(s.x, s.y, s.z, camX);
-      const shx = s.lean + 3, shy = -68 + s.crouch * 18 + 4;
-      const c = Math.cos(a), si = Math.sin(a);
-      const hx = shx + c * 24, hy = shy + si * 24;
-      return [[bx + s.f * (hx + c * 16), by + hy + si * 16], [bx + s.f * (hx + c * L), by + hy + si * L]];
-    };
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    for (let i = 1; i < T.length; i++) {
-      const s0 = T[i - 1], s1 = T[i];
-      if (s0.end || s0.f !== s1.f || Math.abs(s0.x - s1.x) > 60) continue;
-      // 角度差很大时多插几段，弧线才圆
-      const steps = Math.min(8, 2 + Math.ceil(Math.abs(s1.a - s0.a) / 0.25));
-      let prev = pts(s0, s0.a);
-      for (let k = 1; k <= steps; k++) {
-        const u = k / steps;
-        const mid = { x: s0.x + (s1.x - s0.x) * u, y: s0.y + (s1.y - s0.y) * u, z: s0.z + (s1.z - s0.z) * u, f: s1.f, lean: s0.lean + (s1.lean - s0.lean) * u, crouch: s0.crouch + (s1.crouch - s0.crouch) * u };
-        const cur = pts(mid, s0.a + (s1.a - s0.a) * u);
-        const life = (s0.life + (s1.life - s0.life) * u) / 9;
-        ctx.globalAlpha = 0.55 * life * life;
-        ctx.fillStyle = this.glow;
-        ctx.beginPath();
-        ctx.moveTo(prev[0][0], prev[0][1]);
-        ctx.lineTo(prev[1][0], prev[1][1]);
-        ctx.lineTo(cur[1][0], cur[1][1]);
-        ctx.lineTo(cur[0][0], cur[0][1]);
-        ctx.closePath();
-        ctx.fill();
-        // 刀尖的白色亮边
-        ctx.globalAlpha = 0.9 * life;
-        ctx.strokeStyle = '#ffffff';
-        ctx.lineWidth = 2.2 * life + 0.4;
-        ctx.beginPath();
-        ctx.moveTo(prev[1][0], prev[1][1]);
-        ctx.lineTo(cur[1][0], cur[1][1]);
-        ctx.stroke();
-        prev = cur;
-      }
-    }
-    ctx.restore();
+    if (this.trail.length < 2 || !heroSprite.ready) return;
+    this.drawSpriteTrail(ctx, camX, glowPass);
   }
 
-  // 精灵刀光：一条连续的光带。
-  // 先把所有采样（以及相邻采样之间按角度插值出的点）连成一串「内沿 / 外沿」点，每个点带年龄（1 = 刚扫过），然后分层画：
-  //   1. 外圈柔光（比刀身宽，颜色淡）  2. 主体（按年龄从近白 → 刀光色 → 冷却变暗，越老越透明）
-  //   3. 贴着外沿的亮边（刚扫过的地方最粗）  4. 白色细芯
   // 内沿从刀身 30% 处开始，外沿比刀尖再长 20%：判定框比画出来的刀略远，刀光把这段距离补上
   drawSpriteTrail(ctx, camX, glowPass = false) {
     const T = this.trail, P = [];
@@ -313,49 +260,15 @@ export class Player {
     }
     if (cur.length > 1) runs.push(cur);
     if (!runs.length) return;
-    const R = trailRamp(this.glow);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    // 在内沿 w0 和外沿 w1（0 = 内沿，1 = 外沿，可以超出）之间取点
-    const at = (q, w) => [q.ix + (q.ox - q.ix) * w, q.iy + (q.oy - q.iy) * w];
-    const quad = (q0, q1, w0a, w1a, w0b, w1b) => {
-      ctx.beginPath();
-      ctx.moveTo(...at(q0, w0a));
-      ctx.lineTo(...at(q0, w1a));
-      ctx.lineTo(...at(q1, w1b));
-      ctx.lineTo(...at(q1, w0b));
-      ctx.closePath();
-      ctx.fill();
-    };
+    // 沿刀尖轨迹铺刀光条带：外沿 = 刀尖扫过的路线（最亮），内沿往刀柄方向渐暗（ribbon.js）
+    const kind = T[T.length - 1].kind || 'light', img = ribbonTex(kind);
+    if (!img) return;
     for (const run of runs) {
-      // 1. 外圈柔光：一整条多边形，透明度跟最新那端走
-      const head = run[run.length - 1].life;
-      ctx.globalAlpha = 0.12 * head * (glowPass ? 1.6 : 1);
-      ctx.fillStyle = this.glow;
-      ctx.beginPath();
-      run.forEach((q, i) => { const [x, y] = at(q, 1.12 + 0.08 * q.life); i ? ctx.lineTo(x, y) : ctx.moveTo(x, y); });
-      for (let i = run.length - 1; i >= 0; i--) ctx.lineTo(...at(run[i], 0.05));
-      ctx.closePath();
-      ctx.fill();
-      for (let i = 1; i < run.length; i++) {
-        const q0 = run[i - 1], q1 = run[i], life = (q0.life + q1.life) / 2;
-        if (life <= 0.02) continue;
-        // 2. 主体：越新越亮、越白；越老越暗、越窄（内沿往外收）
-        ctx.globalAlpha = 0.5 * life ** 1.6 * (glowPass ? 0.7 : 1);
-        ctx.fillStyle = R[Math.min(R.length - 1, ((1 - life) * R.length) | 0)];
-        quad(q0, q1, 0.45 * (1 - q0.life), 1, 0.45 * (1 - q1.life), 1);
-        if (glowPass) continue;
-        // 3. 外沿亮边：宽度随年龄收窄
-        ctx.globalAlpha = 0.6 * life;
-        ctx.fillStyle = R[0];
-        quad(q0, q1, 1 - 0.1 * q0.life, 1, 1 - 0.1 * q1.life, 1);
-        // 4. 白芯
-        ctx.globalAlpha = 0.9 * life * life;
-        ctx.fillStyle = '#ffffff';
-        quad(q0, q1, 1 - 0.03 * q0.life, 1, 1 - 0.03 * q1.life, 1);
-      }
+      const head = run[run.length - 1];
+      const pts = run.map((q) => ({ ox: q.ox, oy: q.oy, ix: q.ix, iy: q.iy, u: Math.max(0, Math.min(1, q.life)) }));
+      drawRibbon(ctx, img, pts, this.glow, Math.min(1, 0.35 + head.life) * (glowPass ? 0.6 : 1), glowPass ? 0 : 0.55);
+      if (!glowPass && head.life > 0.75) drawTip(ctx, head.ox, head.oy, 26, this.glow, head.life);
     }
-    ctx.restore();
   }
 
   physics(game) {

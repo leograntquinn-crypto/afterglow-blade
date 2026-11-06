@@ -87,8 +87,11 @@ export const FX_ART = {
   hero: new FxPack('fx_hero'),
   bone: new FxPack('fx_bone'),
   warden: new FxPack('fx_warden'),
+  // 刀光包 fx_blade_v1（docs/ART_FX_BLADE_V1.md）：条带贴图（拖尾、新月刀光）+ 重画的五组刀光序列帧和剑气。一直载入
+  bladeTex: new FxPack('fx_blade_tex'),
+  blade: new FxPack('fx_blade'),
 };
-afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); }); // 大地图和主角先载（见 boot.js）
+afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); FX_ART.bladeTex.load(); FX_ART.blade.load(); }); // 大地图和主角先载（见 boot.js）
 
 // 首领专属特效：只载入这一关首领的那套，释放其他的（和首领图集一样，见 enemy_sprites.js 的 prepareBossSprites）
 const BOSS_FX = { boneLord: 'bone', warden: 'warden' };
@@ -101,6 +104,7 @@ export function prepareBossFx(key) {
 
 // 取一组序列帧（没载好返回 null）
 export function flipbook(id) {
-  for (const p of [FX_ART.hero, FX_ART.bone, FX_ART.warden]) if (p.ready && p.items[id]) return p.items[id];
+  // 刀光包排在最前：它的五组刀光覆盖 fx_hero 里的旧组（fx_hero 打包时已经不含这几组）
+  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.warden]) if (p.ready && p.items[id]) return p.items[id];
   return null;
 }
