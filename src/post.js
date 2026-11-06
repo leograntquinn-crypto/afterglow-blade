@@ -17,6 +17,7 @@ import { lightTex, lightFb } from './fx_art.js';
 const COOKIE = { round: 'light_round', lantern: 'light_lantern', magic: 'light_magic' };
 // cookie 画多大：手绘 cookie 比原来的渐变收得早（通用光约 0.85 半径处就到 0），按「总亮度和原来的渐变一样」放大
 // （实测亮度比：通用 0.83、火光 0.81、法术 0.82、提灯 0.58 → 边长 × 1/√比）
+const LIGHT_RES = 2;
 const SIZE = { round: 1.1, flame: 1.11, magic: 1.1, lantern: 1.31 };
 
 const mk = (w, h) => {
@@ -28,8 +29,10 @@ const mk = (w, h) => {
 
 export class Post {
   constructor() {
-    this.light = mk(VIEW_W, VIEW_H);
+    // 光照图用半分辨率（光和暗都是大片柔和的过渡，放大回去看不出区别；挖洞、铺暗、盖回画面的开销都少一大截）
+    this.light = mk(VIEW_W / LIGHT_RES, VIEW_H / LIGHT_RES);
     this.lctx = this.light.getContext('2d');
+    this.lctx.setTransform(1 / LIGHT_RES, 0, 0, 1 / LIGHT_RES, 0, 0);
     this.glow = mk(VIEW_W, VIEW_H);
     this.gctx = this.glow.getContext('2d');
     this.s1 = mk(VIEW_W / 4, VIEW_H / 4);
