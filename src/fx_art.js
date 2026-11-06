@@ -5,6 +5,7 @@
 //   sc     —— 图集像素相对交付尺寸的比例（桌面贴图 1、手机 0.5；序列帧桌面 0.5、手机 0.25）
 // 贴图（fx_tex）和主角 / 通用序列帧（fx_hero）一直载入；首领的两套只在自己那一关载入、离开就释放。
 // 素材没载好时，特效系统照常用程序生成的占位贴图。
+import { afterBoot } from './boot.js';
 import { MOBILE } from './sprite.js';
 
 const DIR = 'assets/fx/';
@@ -87,8 +88,7 @@ export const FX_ART = {
   bone: new FxPack('fx_bone'),
   warden: new FxPack('fx_warden'),
 };
-FX_ART.tex.load();
-FX_ART.hero.load();
+afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); }); // 大地图和主角先载（见 boot.js）
 
 // 首领专属特效：只载入这一关首领的那套，释放其他的（和首领图集一样，见 enemy_sprites.js 的 prepareBossSprites）
 const BOSS_FX = { boneLord: 'bone', warden: 'warden' };

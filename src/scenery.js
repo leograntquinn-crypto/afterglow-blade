@@ -6,6 +6,7 @@
 // 视差层（镜头移动 1 像素时各层移动多少）：
 //   墙 + 石柱 0.5 → 地砖每一行 0.88~1.18（越靠近镜头越快，形成透视）→ 前景剪影 1.35
 
+import { afterBoot } from './boot.js';
 import { VIEW_W, VIEW_H, GROUND_TOP, rand } from './config.js';
 import { shade } from './rig.js';
 import { MOBILE } from './sprite.js';
@@ -498,7 +499,7 @@ const got = (id) => {
   return e && e.ok ? e.im : null;
 };
 
-if (typeof fetch === 'function' && typeof Image !== 'undefined') {
+if (typeof fetch === 'function' && typeof Image !== 'undefined') afterBoot(() => { // 大地图和主角先载（见 boot.js）
   fetch(ENV_DIR + 'env.json')
     .then((r) => (r.ok ? r.json() : null))
     .then((m) => {
@@ -511,7 +512,7 @@ if (typeof fetch === 'function' && typeof Image !== 'undefined') {
       if (curStage) { const s = curStage; curStage = null; useStage(s); }
     })
     .catch(() => {});
-}
+});
 
 // 后墙和地面载好之前一直用程序生成的场景
 function envReady() {

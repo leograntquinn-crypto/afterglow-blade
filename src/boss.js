@@ -372,6 +372,7 @@ export class Boss extends Enemy {
   }
 
   update(game) {
+    if (this.state === 'idle' && (this.vx || this.vy)) this.runDist = (this.runDist ?? 0) + Math.hypot(this.vx, this.vy * 1.3); // 残影跑步换帧按距离（sprite.js runFrame）
     if (this.channelCd > 0) this.channelCd--;
     if (this.state !== 'attack' || this.act?.name !== 'channel') this.channel = null; // 被打断 / 破防时读条作废
     const next = this.B.phases[this.phase + 1];

@@ -5,7 +5,7 @@
 //   地面和道路画进一张缓存画布（进度变化时重画），地标和散件各自缓存成小画布。两种都按锚点的 y 排序遮挡。
 // 光：长明灯塔、点亮的烽灯、深渊、试炼碑、人物身上的光，交给现有的光照 / 后处理管线。
 import { VIEW_W, VIEW_H, FONT_TITLE, FONT_UI, FONT_NUM, COLORS, clamp } from './config.js';
-import { heroSprite, MOBILE } from './sprite.js';
+import { heroSprite, MOBILE, runFrame } from './sprite.js';
 import { STAGES, isUnlocked } from './stages.js';
 import { BOSSES } from './boss.js';
 import { CHALLENGES } from './training.js';
@@ -13,7 +13,8 @@ import { tex, tinted } from './fx_tex.js';
 import { drawFighter } from './rig.js';
 import { settings } from './settings.js';
 import { sfx } from './audio.js';
-import { WORLD_ART } from './world_art.js';
+import { WORLD_ART, maskCover } from './world_art.js';
+import { releaseBoot } from './boot.js';
 import { NPCS, INSCRIPTIONS, SPEAKERS, worldSave, hasNew, pendingEvents, progress, TALKS, BEACON_LINES, TRIAL_LINES, ENDING_LINES } from './world_story.js';
 
 export const MAP_W = 2400, MAP_H = 1500;
@@ -22,6 +23,11 @@ const HERO_H = 58; // 地图上人物的站立高度（战斗里约 96）
 const SPEED = 2.4; // 每帧走多少（逻辑像素）
 const NEAR = 64; // 离入口多近算「站在入口前」
 const MAP_SCALE = (0.54 * HERO_H) / 96; // 地图上人物精灵的缩放（绯隼和守灯驿的人都用这个）
+// 不让人被地图盖住看不见：站在某处时，画在他前面的地标 / 散件 / 边缘把他盖住超过 HIDE_BLOCK 就走不过去；
+// 盖住超过 HIDE_GHOST（走到树冠、灯柱后面这种）就在最上层补画一个半透明的剪影
+const HIDE_BLOCK = 0.36, HIDE_GHOST = 0.12;
+const HERO_BOX = [9, HERO_H - 6, 3]; // 判断遮挡用的身体框：左右各 9、脚底往上 3～52
+const WALK_IN = [22, 16]; // 走进入口（素材标的门口 / 台阶口）多近、往里走就打开地点卡片
 
 // ---------------- 地点 ----------------
 // x, y：锚点（底部中心）；foot：底座椭圆的半径 [rx, ry]，挡路；door：站在哪里算入口前（默认锚点正前方）
@@ -80,7 +86,7 @@ const propArtId = (o) => PROP_ART[o.kind]?.[o.v % PROP_ART[o.kind].length] ?? o.
 function scatter() {
   const R = rng(7), out = [];
   const free = (x, y, d) => roadDist(x, y) > d && SITES.every((s) => Math.hypot((x - s.x) / 1.4, y - s.y - (s.fdy ?? 0) * 0.6) > (s.id === 's5' ? 330 : 180))
-    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46) && INSCRIPTIONS.every((o) => Math.hypot(o.x - x, o.y - y) > 60)
+    && out.every((o) => Math.hypot(o.x - x, o.y - y) > 46) && INSCRIPTIONS.every((o) => Math.hypot((o.lx ?? o.x) - x, (o.ly ?? o.y) - y) > 60) // lx/ly：刻字挪过位置，按原来的空位算（免得整张地图的散件重新洗牌）
     && NPCS.every((o) => Math.hypot(o.x - x, o.y - y) > 120) && SITES.every((s) => Math.hypot(x - s.door[0], y - s.door[1]) > 150); // 入口前、守灯驿门口留空
   const put = (kind, n, d, area = () => [EDGE + 40 + R() * (MAP_W - EDGE * 2 - 80), EDGE + 60 + R() * (MAP_H - EDGE * 2 - 100)]) => {
     for (let k = 0, tries = 0; k < n && tries < n * 40; tries++) {
@@ -114,8 +120,8 @@ function scatter() {
       }
     }
   }
-  // 守灯驿门外的箱子和旧车
-  out.push({ kind: 'crates', x: 1050, y: 1132, v: 0, ...PROP_BLOCK.crates }, { kind: 'cart', x: 1400, y: 1300, v: 0, ...PROP_BLOCK.cart });
+  // 守灯驿门外的箱子和旧车（箱子原来摆在营地栅栏后面，被营地的图盖住了，挪到栅栏外）
+  out.push({ kind: 'crates', x: 986, y: 1177, v: 0, ...PROP_BLOCK.crates }, { kind: 'cart', x: 1400, y: 1300, v: 0, ...PROP_BLOCK.cart });
   // 路边可以读的刻字（路牌 / 刻字石 / 墓碑），也是散件
   for (const c of INSCRIPTIONS) out.push({ kind: c.kind === 'stone' ? 'stone' : c.kind, x: c.x, y: c.y, v: c.kind === 'grave' ? 0 : 0, r: 7, read: c });
   return out;
@@ -363,10 +369,15 @@ export class World {
     this.caption = null; // 事件的标题字幕 { text, t }
     this.guide = null; // 阿砾指路 { id, t }
     this.talking = null; // 正在和谁说话（那个人转向绯隼、做手势）
-    WORLD_ART.load(); // 封面就在地图上，开机就载入
+    // 封面就在地图上，开机就载入；载好（或者失败）以后才开始载关卡素材（见 boot.js）
+    WORLD_ART.load().finally(releaseBoot);
   }
 
   get save() { return this.g.save; }
+  // 地图能画了没有：素材和主角都到了，或者确定载不了（那时才用程序画的占位）
+  mapReady() {
+    return (WORLD_ART.ready || (WORLD_ART.failed && !WORLD_ART.loading)) && (heroSprite.ready || !heroSprite.loading);
+  }
   art_(k) { return (this.art[k] ??= LANDMARK[k]()); }
   propArt(o) {
     const kind = ['tree', 'rock', 'grave', 'lamp', 'sign', 'stone'].includes(o.kind) ? o.kind : 'rock'; // 占位只有这几种画法
@@ -404,7 +415,6 @@ export class World {
     this.hero.moving = 0;
     this.leave = null;
     this.fadeIn = 24;
-    this.artWait = 120; // 素材还在载入：最多黑屏 2 秒等它（回地图时重新解码），超时就先用占位
     WORLD_ART.load();
     this.prewarm();
     this.snapCam();
@@ -414,6 +424,7 @@ export class World {
   }
   // 进地图时一次画好所有地标、散件和地面缓存（不然走到新区域时才画，手机上会卡一下）
   prewarm() {
+    if (WORLD_ART.ready) this.artItems();
     for (const k of Object.keys(LANDMARK)) this.art_(k);
     for (const o of this.props) this.propArt(o);
     this.ground();
@@ -423,8 +434,71 @@ export class World {
     this.cam.y = clamp(this.hero.y - VIEW_H * 0.58, 0, MAP_H - VIEW_H);
   }
 
-  // 碰撞：地图边缘、地点的底座、挡路的散件
+  // 有素材时地图上的静物：地点、烽灯、散件、地图边缘。和 draw 用同一份（排序线也一样）。
+  // sy：排序线 —— 人的 y 比它大就画在它前面。地点用素材标的入口线（门口 / 台阶口）：入口前的台阶、空地是平的，
+  //   人走上去要画在上面；比入口线更靠里的部分（建筑、坑、围栏里面）人走进去会被盖住，由 blocked 挡住。
+  // 遮罩（mask）进地图时一次算好：之后判断「站在这里会不会被盖住」只是查表
+  artItems() {
+    const A = WORLD_ART;
+    if (this.items && this.itemsOf === A.land.img) return this.items;
+    const P = A.props, L = A.land, out = [];
+    const add = (Atl, id, x, y, sy, s = 1, flip = 1, o = null) => {
+      if (!Atl.has(id)) return;
+      const m = Atl.mask(id, s, flip);
+      out.push({ A: Atl, id, x, y, sy, s, flip, m, o, l: x + m.x0, r: x + m.x0 + m.w * m.C, t: y + m.y0, b: y + m.y0 + m.h * m.C, vm: Math.max(m.w, m.h) * m.C });
+    };
+    for (const o of this.props) add(P, propArtId(o), o.x, o.y, o.y, 1, o.x % 2 ? -1 : 1, o);
+    for (const st of SITES) {
+      const id = SITE_ART[st.id], en = L.has(id) ? L.entrance(id) : [0, 0];
+      add(L, id, st.x, st.y, st.y + Math.min(0, en[1]));
+      if (st.beacon) add(L, 'beacon', st.beacon[0], st.beacon[1], st.beacon[1], BEACON_S);
+    }
+    for (const e of EDGES) add(P, e.id, e.x, e.y, e.y, 1, e.flip);
+    // 随机摆的散件有的正好落在地标的图里（比如墓园围栏里、营地栅栏后面），整个被盖住看不见、却还挡路：
+    // 自己的不透明部分被排在它后面画的东西盖住一半以上的，不画、也不挡路（不重排，其余散件位置不变）
+    for (const it of out) {
+      const o = it.o;
+      if (!o || o.read) continue;
+      if (this.buriedFrac(it, out) > 0.5) o.buried = true;
+    }
+    this.itemsOf = A.land.img;
+    return (this.items = out.filter((it) => !it.o?.buried));
+  }
+
+  // 一件静物自己的不透明部分有多少被排在它后面画的东西盖住（隔一格抽样）
+  buriedFrac(it, items) {
+    const m = it.m, W1 = m.w + 1;
+    let tot = 0, cov = 0;
+    for (let cy = 0; cy < m.h; cy += 2) for (let cx = 0; cx < m.w; cx += 2) {
+      if (!(m.S[(cy + 1) * W1 + cx + 1] - m.S[cy * W1 + cx + 1] - m.S[(cy + 1) * W1 + cx] + m.S[cy * W1 + cx])) continue;
+      tot++;
+      const px = it.x + m.x0 + cx * m.C + 1, py = it.y + m.y0 + cy * m.C + 1;
+      for (const o of items) {
+        if (o === it || o.sy <= it.sy || o.l > px || o.r < px || o.t > py || o.b < py) continue;
+        if (maskCover(o.m, o.x, o.y, px - 1, py - 1, px + 1, py + 1) > 0.5) { cov++; break; }
+      }
+    }
+    return tot ? cov / tot : 0;
+  }
+
+  // 人站在 (x, y) 时被画在他前面的静物盖住多少（0～1）；by：盖住最多的那一个
+  hiddenAt(x, y) {
+    if (!WORLD_ART.ready) return { f: 0, by: null };
+    const x0 = x - HERO_BOX[0], x1 = x + HERO_BOX[0], y0 = y - HERO_BOX[1], y1 = y - HERO_BOX[2];
+    let seen = 1, by = null, bm = 0;
+    for (const it of this.artItems()) {
+      if (it.sy <= y || it.l > x1 || it.r < x0 || it.t > y1 || it.b < y0) continue;
+      const c = maskCover(it.m, it.x, it.y, x0, y0, x1, y1);
+      if (c > 0) { seen *= 1 - c; if (c > bm) { bm = c; by = it; } }
+    }
+    return { f: 1 - seen, by };
+  }
+
+  // 碰撞：地图边缘、地点的底座、挡路的散件、守灯驿的人，以及「走进去会被地图盖住看不见」的地方
   blocked(x, y) {
+    return this.solid(x, y) || this.hiddenAt(x, y).f > HIDE_BLOCK;
+  }
+  solid(x, y) {
     if (x < EDGE || x > MAP_W - EDGE || y < EDGE + 40 || y > MAP_H - EDGE + 20) return true;
     for (const s of SITES) {
       const [rx, ry] = s.foot;
@@ -433,10 +507,18 @@ export class World {
       if (((x - s.x) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1) return true;
     }
     for (const o of this.props) {
+      if (o.buried) continue;
       if (o.r && Math.hypot((x - o.x) / 1.3, y - o.y) < o.r) return true;
       if (o.rx && ((x - o.x) / o.rx) ** 2 + ((y - o.y) / o.ry) ** 2 < 1) return true;
     }
-    for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9) return true;
+    // 没解锁的入口：封印和暗雾画在最上层，人走进去会被盖住 —— 门口挡住（贴上去往里走仍会弹出「未解锁」的卡片）
+    for (const st of SITES) {
+      if (st.kind !== 'stage' || this.unlocked(st)) continue;
+      const [ex, ey] = this.entrance(st);
+      if (Math.abs(x - ex) < 42 && y < ey + 4 && y > ey - 90) return true;
+    }
+    // 守灯驿的人：脚下一小圈挡路，身后紧贴着的一段也挡（不然会整个人躲在他们身后）
+    for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9 || (Math.abs(x - n.x) < 13 && y < n.y && y > n.y - 26)) return true;
     return false;
   }
 
@@ -444,8 +526,11 @@ export class World {
   update(input, { title = false, frozen = false } = {}) {
     const h = this.hero;
     this.updateMotes();
-    if (this.artWait > 0 && WORLD_ART.loading && !WORLD_ART.ready) { this.artWait--; this.fadeIn = 24; }
-    else if (this.fadeIn > 0) this.fadeIn--;
+    // 素材还在载入：一直等（封面显示真实素材的定格图，地图上显示「载入中」），封面镜头也不动；
+    // 只有确定载不了（离线、文件缺失）才用程序画的占位
+    if (!this.mapReady()) { this.fadeIn = 24; return; }
+    if (WORLD_ART.ready && this.itemsOf !== WORLD_ART.land.img) this.artItems(); // 素材刚到：一次算好遮罩
+    if (this.fadeIn > 0) this.fadeIn--;
     for (const k in this.flare) this.flare[k]++;
     if (this.caption && ++this.caption.t > 170) this.caption = null;
     if (this.guide && (--this.guide.t <= 0 || Math.hypot(h.x - site(this.guide.id).door[0], h.y - site(this.guide.id).door[1]) < 110)) this.guide = null;
@@ -470,11 +555,14 @@ export class World {
     if (m > 1) { dx /= m; dy /= m; }
     const vx = dx * SPEED, vy = dy * SPEED * 0.8; // 纵向略慢：俯视角下看起来速度一致
     let moved = 0;
-    if (Math.abs(vx) > 0.05 && !this.blocked(h.x + vx, h.y)) { h.x += vx; moved += Math.abs(vx); }
-    if (Math.abs(vy) > 0.05 && !this.blocked(h.x, h.y + vy)) { h.y += vy; moved += Math.abs(vy); }
+    // 已经站在被盖住的地方（比如素材刚载好、站位点正好在遮挡里）：往盖得更少的方向走总是允许的，不会卡死
+    const hid = this.hiddenAt(h.x, h.y).f;
+    const can = (x, y) => !this.solid(x, y) && (this.hiddenAt(x, y).f <= HIDE_BLOCK || this.hiddenAt(x, y).f < hid - 0.01);
+    if (Math.abs(vx) > 0.05 && can(h.x + vx, h.y)) { h.x += vx; moved += Math.abs(vx); }
+    if (Math.abs(vy) > 0.05 && can(h.x, h.y + vy)) { h.y += vy; moved += Math.abs(vy); }
     if (Math.abs(dx) > 0.15) h.facing = Math.sign(dx);
     h.moving = moved > 0.3 ? Math.min(1, h.moving + 0.25) : Math.max(0, h.moving - 0.2);
-    h.phase += moved / 9; // 走 9 像素换一帧（8 帧一个循环 ≈ 72 像素，和地图上的人物大小相配）
+    h.phase += moved / 12; // 走 12 像素换一帧（6 帧一个循环 ≈ 72 像素，和地图上的人物大小相配：战斗里 120 × 地图缩放 0.6）
     // 镜头：平滑跟随，略微看向前方
     const tx = clamp(h.x - VIEW_W / 2 + h.facing * 30, 0, MAP_W - VIEW_W), ty = clamp(h.y - VIEW_H * 0.58, 0, MAP_H - VIEW_H);
     this.cam.x += (tx - this.cam.x) * 0.1;
@@ -482,7 +570,16 @@ export class World {
     // 站在哪个入口 / 哪个人 / 哪块刻字前（取最近的）
     let best = null, bd = 1e9;
     const consider = (o, x, y, r) => { const d = Math.hypot(h.x - x, (h.y - y) * 1.3); if (d < r && d - r < bd) { bd = d - r; best = o; } };
-    for (const s of SITES) if (s.kind !== 'camp') consider(s, s.door[0], s.door[1], NEAR);
+    for (const s of SITES) {
+      if (s.kind === 'camp') continue;
+      consider(s, s.door[0], s.door[1], NEAR);
+      const [ex, ey] = this.entrance(s);
+      consider(s, ex, ey + 6, 44); // 站到门口 / 台阶口上也算
+    }
+    // 走进入口：贴着门口还往里走 → 打开这个地点的卡片（和按攻击键一样）；离开门口以后才会再次触发
+    const inDoor = SITES.find((s) => s.kind !== 'camp' && Math.abs(h.x - this.entrance(s)[0]) < WALK_IN[0] && Math.abs(h.y - this.entrance(s)[1]) < WALK_IN[1]);
+    if (!inDoor) this.walkIn = null;
+    else if (dy < -0.3 && !frozen && this.walkIn !== inDoor.id) { this.walkIn = inDoor.id; this.onWalkIn?.(inDoor.id); }
     for (const n of NPCS) consider({ kind: 'npc', id: n.id, npc: n, door: [n.x, n.y] }, n.x, n.y + 10, 46);
     for (const c of INSCRIPTIONS) consider({ kind: 'read', id: c.id, read: c, door: [c.x, c.y] }, c.x, c.y + 8, 42);
     this.near = best;
@@ -700,37 +797,40 @@ export class World {
       ctx.drawImage(G, cx * k, cy * k, VIEW_W * k, VIEW_H * k, 0, 0, VIEW_W, VIEW_H);
     }
 
-    // 要按 y 排序的东西（锚点的 y 越大越靠前）
+    // 要按 y 排序的东西（排序线的 y 越大越靠前；有素材时地点按入口线排，见 artItems）
     const list = [];
     const P = A.props, L = A.land;
-    for (const o of this.props) {
-      if (!vis(o.x, o.y, art ? 220 : 120)) continue;
-      if (art && P.has(propArtId(o))) list.push({ y: o.y, d: () => P.draw(ctx, propArtId(o), ...scr(o.x, o.y), 1, o.x % 2 ? -1 : 1) });
-      else list.push({ y: o.y, d: () => this.blit(ctx, this.propArt(o), ...scr(o.x, o.y)) });
-    }
-    for (const st of SITES) {
-      if (vis(st.x, st.y, 460)) list.push({ y: st.y, d: () => (art ? L.draw(ctx, SITE_ART[st.id], ...scr(st.x, st.y)) : this.blit(ctx, this.art_(SITE_ART[st.id]), ...scr(st.x, st.y))) });
-      if (st.beacon && vis(st.beacon[0], st.beacon[1], 220)) list.push({ y: st.beacon[1], d: () => (art ? L.draw(ctx, 'beacon', ...scr(st.beacon[0], st.beacon[1]), BEACON_S) : this.blit(ctx, this.art_('beacon'), ...scr(st.beacon[0], st.beacon[1]))) });
+    if (art) {
+      for (const it of this.artItems()) if (vis(it.x, it.y, it.vm)) list.push({ y: it.sy, d: () => it.A.draw(ctx, it.id, ...scr(it.x, it.y), it.s, it.flip) });
+    } else {
+      for (const o of this.props) if (vis(o.x, o.y, 120)) list.push({ y: o.y, d: () => this.blit(ctx, this.propArt(o), ...scr(o.x, o.y)) });
+      for (const st of SITES) {
+        if (vis(st.x, st.y, 460)) list.push({ y: st.y, d: () => this.blit(ctx, this.art_(SITE_ART[st.id]), ...scr(st.x, st.y)) });
+        if (st.beacon && vis(st.beacon[0], st.beacon[1], 220)) list.push({ y: st.beacon[1], d: () => this.blit(ctx, this.art_('beacon'), ...scr(st.beacon[0], st.beacon[1])) });
+      }
     }
     // 地图四周的枯林、断崖（只在有素材时画；走不到那里，只是挡住地图外面）
-    if (art) for (const e of EDGES) if (vis(e.x, e.y, 560)) list.push({ y: e.y, d: () => P.draw(ctx, e.id, ...scr(e.x, e.y), 1, e.flip) });
+    // 没解锁的入口：锁链封印（盖在入口上）+ 一团暗雾。和地点一起按入口线排序（排在地点后面）：
+    // 人站在封印前面时画在封印上面，不会被锁链和暗雾盖住；封印后面走不进去（见 solid）
+    for (const st of SITES) {
+      if (this.unlocked(st) || !vis(st.x, st.y, 300)) continue;
+      const [ex, ey] = this.entrance(st);
+      list.push({ y: (art ? ey : st.y) + 0.01, d: () => {
+        const [x, y] = scr(ex, ey - 22);
+        const fog = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 90);
+        fog.addColorStop(0, 'rgba(8,6,12,.75)'); fog.addColorStop(1, 'rgba(8,6,12,0)');
+        ctx.fillStyle = fog; ctx.fillRect(x - 90, y - 100, 180, 180);
+        if (art) L.draw(ctx, 'seal', x, y, SEAL_S);
+        else this.blit(ctx, this.art_('seal'), x, y + 30);
+      } });
+    }
     const h = this.hero;
     for (const n of NPCS) if (vis(n.x, n.y, 80)) list.push({ y: n.y, d: () => this.drawNpc(ctx, n, ...scr(n.x, n.y), t) });
     list.push({ y: h.y, d: () => this.drawHero(ctx, ...scr(h.x, h.y), t) });
     list.sort((a, b) => a.y - b.y);
     for (const o of list) o.d();
-
-    // 没解锁的入口：锁链封印（盖在入口上）+ 一团暗雾
-    for (const st of SITES) {
-      if (this.unlocked(st) || !vis(st.x, st.y, 300)) continue;
-      const [ex, ey] = this.entrance(st);
-      const [x, y] = scr(ex, ey - 22);
-      const fog = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 90);
-      fog.addColorStop(0, 'rgba(8,6,12,.75)'); fog.addColorStop(1, 'rgba(8,6,12,0)');
-      ctx.fillStyle = fog; ctx.fillRect(x - 90, y - 100, 180, 180);
-      if (art) L.draw(ctx, 'seal', x, y, SEAL_S);
-      else this.blit(ctx, this.art_('seal'), x, y + 30);
-    }
+    // 走到树冠、灯柱、碑后面被挡住一部分：最上层补一个半透明剪影，任何时候都看得到自己在哪
+    if (art && !this.__noGhost && heroSprite.ready && this.hiddenAt(h.x, h.y).f > HIDE_GHOST) heroSprite.draw(ctx, this.heroFrame(t), ...scr(h.x, h.y), h.facing, { scale: MAP_SCALE, ghost: '#bfe4ff', alpha: 0.42 });
 
     // 光源
     const lit = this.litCount();
@@ -803,7 +903,7 @@ export class World {
 
   heroFrame(t) {
     const S = heroSprite, h = this.hero;
-    if (h.moving > 0.3) return S.frame('run', Math.floor(h.phase) % 8);
+    if (h.moving > 0.3) return S.frame('run', runFrame(h.phase, 1)); // 和战斗里同一套 6 帧循环，按走过的距离换帧
     const n = S.meta.anims.idle.frames.length;
     return S.frame('idle', Math.floor(t / 9) % n);
   }
@@ -885,7 +985,9 @@ export class World {
   drawPrompt(ctx, t, touch) {
     const s = this.near;
     if (!s || this.leave || (this.caption && this.caption.t < 140)) return; // 事件字幕还在时先不出提示
-    const [x, y] = this.frameScr(s.door[0], s.door[1], 0);
+    // 地点的提示跟着人往上挪：走进门口（比站位点更靠里）时，提示框仍然在头顶上方，不压在人身上
+    const py = s.kind === 'npc' || s.kind === 'read' ? s.door[1] : Math.min(s.door[1], this.hero.y);
+    const [x, y] = this.frameScr(s.door[0], py, 0);
     const info = this.siteInfo(s);
     const top = y - (s.kind === 'npc' ? s.npc.h + 58 : s.kind === 'read' ? 84 : 116);
     ctx.save();

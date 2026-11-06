@@ -69,10 +69,10 @@ export const CHOICES = {
 export const INSCRIPTIONS = [
   { id: 'camp_sign', kind: 'sign', x: 1092, y: 1176, title: '路牌', text: ['西：墓园。北：骨阶。', '往东的那条路，十年没人走了。'] },
   { id: 'grave_rule', kind: 'sign', x: 700, y: 935, title: '墓园门口的木牌', text: ['守墓人须知：', '听见有人叫你的名字，不要回头。'] },
-  { id: 'grave_keeper', kind: 'grave', x: 548, y: 800, title: '墓碑', text: ['这里埋着一个守灯人。', '她的光，留给了守灯驿。'] },
-  { id: 'milestone', kind: 'stone', x: 742, y: 772, title: '里程石', text: ['距守灯驿 · 三里。', '灯在，人在。'] },
+  { id: 'grave_keeper', kind: 'grave', x: 566, y: 822, lx: 548, ly: 800, title: '墓碑', text: ['这里埋着一个守灯人。', '她的光，留给了守灯驿。'] },
+  { id: 'milestone', kind: 'stone', x: 742, y: 822, lx: 742, ly: 772, title: '里程石', text: ['距守灯驿 · 三里。', '灯在，人在。'] },
   { id: 'decree', kind: 'stone', x: 1386, y: 740, title: '旧告示石', text: ['刑场重地。私藏灯火者，同罪。', '—— 长夜第二十年 立'] },
-  { id: 'altar_stone', kind: 'stone', x: 1700, y: 600, title: '祭坛前的石刻', text: ['祭坛的火是借来的。', '借了，就要还。'] },
+  { id: 'altar_stone', kind: 'stone', x: 1654, y: 609, lx: 1700, ly: 600, title: '祭坛前的石刻', text: ['祭坛的火是借来的。', '借了，就要还。'] },
   { id: 'abyss_stone', kind: 'stone', x: 1340, y: 420, title: '断桥边的石刻', text: ['从这里往下，没有回头路。', '（下面有人用刀刻了一行小字：「有的。」）'] },
   { id: 'yard_sign', kind: 'sign', x: 1690, y: 1196, title: '练剑场的木牌', text: ['木人不会喊疼。', '但你会，所以先在这里练。'] },
 ];

@@ -5,7 +5,7 @@
 // 固定时间步长（Fixed Timestep）：不管显示器是 60Hz 还是 144Hz，
 // 游戏逻辑都按每秒 60 次更新。这样帧数据（招式第几帧出判定）在任何设备上都一致。
 
-import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, clamp, rand } from './config.js';
+import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, FONT_UI, clamp, rand } from './config.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -15,6 +15,7 @@ import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, s
 import { World, drawWorldTitle, site } from './world.js';
 import { AI } from './ai.js';
 import { WORLD_ART } from './world_art.js';
+import { releaseBoot } from './boot.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
@@ -54,6 +55,8 @@ class Game {
     this.hub = new Hub(this, document.getElementById('hub'));
     // 大地图：地点卡片（关卡 / 练剑场 / 试炼）和右上角的菜单按钮
     this.world = new World(this);
+    // 走进入口（贴着门口还往里走）= 按攻击键：打开这个地点的卡片
+    this.world.onWalkIn = (id) => { if (this.scene === 'world' && !this.menuOpen && !this.story.active && !this.world.leave && !this.world.ev) this.openSite(id); };
     this.world.lastSite = this.save.worldSite ?? 'camp';
     this.siteEl = document.getElementById('site-panel');
     this.siteEl.addEventListener('click', (e) => {
@@ -386,6 +389,7 @@ class Game {
 
   // story：从营地出征时为 true —— 这时才播剧情（开场卡、战前台词、结局）
   startStage(i, d = 0, story = false) {
+    releaseBoot(); // 关卡素材马上开始载（平时等大地图素材载完才载，见 boot.js）
     WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.training = null;
     this.trial = null;
@@ -425,6 +429,7 @@ class Game {
 
   // ---------------- 残光试炼 ----------------
   startTrial() {
+    releaseBoot(); // 关卡素材马上开始载（平时等大地图素材载完才载，见 boot.js）
     WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.training = null;
     this.trial = { floor: 0, cleared: 0, pool: { gold: 0, stones: 0 } };
@@ -510,6 +515,7 @@ class Game {
 
   // 训练场：一个没有门的长房间 + 两个打不死的木人（右边那个靠墙，练撞墙反弹）
   startTraining() {
+    releaseBoot(); // 关卡素材马上开始载（平时等大地图素材载完才载，见 boot.js）
     WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.trial = null;
     this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
@@ -1557,8 +1563,29 @@ class Game {
 
   // ---------------- 绘制 ----------------
   // 大地图（和封面）：地图 → 光照 → 发光物 → 后处理 → 提示和标题
+  // 大地图素材还在载入：封面显示真实素材渲染的定格图（还没下到就是暗底）+ 标题；回地图时显示「载入中」。
+  // 不画程序画的占位地图
+  renderWorldLoading(title) {
+    const ctx = this.ctx, A = WORLD_ART;
+    ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
+    ctx.fillStyle = '#07060b';
+    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    if (title && A.still) ctx.drawImage(A.still, 0, 0, VIEW_W, VIEW_H); // 定格图里已经有暗角和调色
+    else drawVignette(ctx);
+    if (title) drawWorldTitle(ctx, this);
+    ctx.save();
+    ctx.textAlign = 'center';
+    ctx.textBaseline = 'middle';
+    ctx.font = `14px ${FONT_UI}`;
+    ctx.fillStyle = 'rgba(233,226,214,.6)';
+    const n = A.total ? ` ${A.done} / ${A.total}` : '';
+    ctx.fillText(`正在展开守灯原…${n}`, VIEW_W / 2, title ? VIEW_H - 14 : VIEW_H / 2);
+    ctx.restore();
+  }
+
   renderWorld() {
     const ctx = this.ctx, t = this.ticks, post = this.post, W = this.world, title = this.scene === 'title';
+    if (!W.mapReady()) return this.renderWorldLoading(title);
     const useGL = this.glpost.ok && this.quality > 0, grade = '#3a3a6a';
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     const { lights } = W.draw(ctx, t);
@@ -1579,7 +1606,7 @@ class Game {
     }
     if (!title && !this.menuOpen && !this.story.active && !W.ev) W.drawPrompt(ctx, t, this.touch);
     W.drawOverlay(ctx, t, { title });
-    if (title) drawWorldTitle(ctx, this);
+    if (title && !this.stillCapture) drawWorldTitle(ctx, this); // stillCapture：生成封面定格图时不画标题字（tools/make_title_still.js）
     if (this.story.active) this.story.draw(ctx);
     if (!this.hub.root.hidden) this.hub.drawPreview(t);
   }
