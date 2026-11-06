@@ -2,13 +2,22 @@
 //
 // 光照图（Light Map）：
 //   在一张离屏画布上铺满「黑暗」，再用 destination-out 在每个光源处「挖洞」，
-//   最后盖到画面上 —— 光源附近明亮，其他地方沉入黑暗。几十个径向渐变，开销很小。
+//   最后盖到画面上 —— 光源附近明亮，其他地方沉入黑暗。
+//   洞的形状是光照包 fx_light_v1 的手绘 cookie（白 = 被照亮）：通用 light_round、火光 light_flame（4 帧摇曳）、
+//   提灯 light_lantern、法术 light_magic。光照包没载好时不挖洞（只有环境暗度），不用代码画的渐变。
 //
 // 泛光：
 //   把发光的东西（火花、刀光、剑气、光柱）再画一份到 glow 画布，
 //   缩小到 1/4、1/8 再放大回来（等于便宜的模糊），用 lighter 叠加 —— 亮的东西会「晕开」。
 
 import { VIEW_W, VIEW_H } from './config.js';
+import { lightTex, lightFb } from './fx_art.js';
+
+// 光的类型 → cookie
+const COOKIE = { round: 'light_round', lantern: 'light_lantern', magic: 'light_magic' };
+// cookie 画多大：手绘 cookie 比原来的渐变收得早（通用光约 0.85 半径处就到 0），按「总亮度和原来的渐变一样」放大
+// （实测亮度比：通用 0.83、火光 0.81、法术 0.82、提灯 0.58 → 边长 × 1/√比）
+const SIZE = { round: 1.1, flame: 1.11, magic: 1.1, lantern: 1.31 };
 
 const mk = (w, h) => {
   const c = document.createElement('canvas');
@@ -26,21 +35,13 @@ export class Post {
     this.s1 = mk(VIEW_W / 4, VIEW_H / 4);
     this.s2 = mk(VIEW_W / 8, VIEW_H / 8);
     this.lights = [];
-    // 颗粒噪点贴图
-    this.grain = mk(256, 256);
-    const g = this.grain.getContext('2d'), img = g.createImageData(256, 256);
-    for (let i = 0; i < img.data.length; i += 4) {
-      const v = Math.random() * 255;
-      img.data[i] = img.data[i + 1] = img.data[i + 2] = v;
-      img.data[i + 3] = 255;
-    }
-    g.putImageData(img, 0, 0);
+    this.grainC = null; // 颗粒（光照包 grain，按原来的强度换算一次）
   }
 
-  // 光源（屏幕坐标）：r 半径，a 亮度（0~1）
-  addLight(x, y, r, a = 1) {
+  // 光源（屏幕坐标）：r 半径，a 亮度（0~1），kind：round 通用 / flame 火光 / lantern 提灯、灯塔 / magic 法术、能量
+  addLight(x, y, r, a = 1, kind = 'round') {
     if (x < -r || x > VIEW_W + r || y < -r || y > VIEW_H + r) return;
-    this.lights.push(x, y, r, a);
+    this.lights.push({ x, y, r, a, kind });
   }
 
   // 每帧开始时清空泛光层，并设置与世界层相同的变换（震屏、镜头推近）
@@ -53,22 +54,26 @@ export class Post {
     return g;
   }
 
-  applyLighting(ctx, ambient) {
+  // t：帧计数（火光 cookie 按 8 fps 换帧；每个火光错开一点相位，不会一起跳）
+  applyLighting(ctx, ambient, t = 0) {
     const L = this.lctx, ls = this.lights;
     L.globalCompositeOperation = 'source-over';
     L.clearRect(0, 0, VIEW_W, VIEW_H);
     L.fillStyle = ambient;
     L.fillRect(0, 0, VIEW_W, VIEW_H);
     L.globalCompositeOperation = 'destination-out';
-    for (let i = 0; i < ls.length; i += 4) {
-      const x = ls[i], y = ls[i + 1], r = ls[i + 2], a = ls[i + 3];
-      const g = L.createRadialGradient(x, y, 0, x, y, r);
-      g.addColorStop(0, `rgba(0,0,0,${a})`);
-      g.addColorStop(0.5, `rgba(0,0,0,${a * 0.55})`);
-      g.addColorStop(1, 'rgba(0,0,0,0)');
-      L.fillStyle = g;
-      L.fillRect(x - r, y - r, r * 2, r * 2);
+    const flame = lightFb('light_flame');
+    for (const l of ls) {
+      let img;
+      if (l.kind === 'flame' && flame) { const n = flame.frames.length; img = flame.frames[(((Math.floor(t / (60 / flame.fps) + l.x * 0.013)) % n) + n) % n]; }
+      else img = lightTex(COOKIE[l.kind] ?? 'light_round');
+      if (!img) continue;
+      // cookie 的整张画布（裁边前）对应直径 2r
+      const k = (l.r * 2 * (SIZE[l.kind] ?? 1.1)) / (img.fw ?? flame.w);
+      L.globalAlpha = Math.min(1, l.a);
+      L.drawImage(img, l.x - img.cx * k, l.y - img.cy * k, img.width * k, img.height * k);
     }
+    L.globalAlpha = 1;
     ls.length = 0;
     ctx.drawImage(this.light, 0, 0, VIEW_W, VIEW_H);
   }
@@ -96,11 +101,32 @@ export class Post {
     ctx.globalAlpha = 0.32;
     ctx.fillStyle = color;
     ctx.fillRect(0, 0, VIEW_W, VIEW_H);
-    if (!grain) { ctx.restore(); return; }
+    const G = grain && this.grainTex();
+    if (!G) { ctx.restore(); return; }
     ctx.globalCompositeOperation = 'overlay';
     ctx.globalAlpha = 0.07;
-    const ox = (t * 73) % 256, oy = (t * 151) % 256;
-    for (let x = -ox; x < VIEW_W; x += 256) for (let y = -oy; y < VIEW_H; y += 256) ctx.drawImage(this.grain, x, y);
+    const S = G.width, ox = (t * 73) % S, oy = (t * 151) % S;
+    for (let x = -ox; x < VIEW_W; x += S) for (let y = -oy; y < VIEW_H; y += S) ctx.drawImage(G, x, y);
     ctx.restore();
   }
+
+  // 颗粒：光照包的 grain（四方连续的灰度噪点，起伏约 ±10；图集里存成不透明，见 build_fx.py）。
+  // 画法沿用原来的 overlay 7%：把起伏按原来的强度放大（标准差 10 → 74），只算一次。没载好返回 null（不画颗粒）
+  grainTex() {
+    if (this.grainC) return this.grainC;
+    const g = lightTex('grain');
+    if (!g) return null;
+    const c = mk(g.width, g.height), x = c.getContext('2d');
+    x.drawImage(g, 0, 0);
+    const img = x.getImageData(0, 0, c.width, c.height), d = img.data;
+    for (let i = 0; i < d.length; i += 4) {
+      const v = Math.max(0, Math.min(255, 128 + (d[i] - 128) * GRAIN_GAIN));
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    x.putImageData(img, 0, 0);
+    return (this.grainC = c);
+  }
 }
+
+// 颗粒强度换算：交付的 grain 起伏（标准差约 10）放大到原来随机噪点的起伏（约 74）
+export const GRAIN_GAIN = 7.4;

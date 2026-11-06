@@ -1,6 +1,9 @@
-// 掉落物：金币和装备。装备会冒出对应品质颜色的光柱，品质越高光柱越高
-import { toScreen, hexA, FONT_TITLE } from './config.js';
+// 掉落物：金币和装备。装备会冒出对应品质颜色的光柱（光照包 loot_beam 序列帧，按稀有度染色），品质越高光柱越高
+import { toScreen, FONT_TITLE } from './config.js';
 import { RARITY, itemGlyph } from './items.js';
+import { lightFb } from './fx_art.js';
+import { tinted } from './fx_tex.js';
+import { drawLightTex } from './draw.js';
 
 const BEAM = [36, 90, 150, 260];
 
@@ -37,15 +40,8 @@ export class Loot {
     if (this.heal) {
       // 回血光球：绿色发光、上下浮动
       const bob = Math.sin(t * 0.12 + this.x) * 3;
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createRadialGradient(sx, sy - 14 + bob, 1, sx, sy - 14 + bob, 18);
-      g.addColorStop(0, 'rgba(200,255,215,0.95)');
-      g.addColorStop(0.4, 'rgba(111,227,138,0.6)');
-      g.addColorStop(1, 'rgba(111,227,138,0)');
-      ctx.fillStyle = g;
-      ctx.fillRect(sx - 18, sy - 32 + bob, 36, 36);
-      ctx.restore();
+      drawLightTex(ctx, 'glow_soft', '#6fe38a', sx, sy - 14 + bob, 60, 60, 1);
+      drawLightTex(ctx, 'glow_core', '#c8ffd7', sx, sy - 14 + bob, 34, 34, 1);
       return;
     }
     if (this.gold) {
@@ -60,32 +56,28 @@ export class Loot {
         ctx.ellipse(sx + ox, sy + oy - 4, 4.2, 2.7, 0, 0, Math.PI * 2);
         ctx.fill();
       }
-      if ((t + this.x) % 40 < 6) {
-        ctx.fillStyle = '#fff';
-        ctx.fillRect(sx - 1, sy - 9, 2, 2);
-      }
+      if ((t + this.x) % 40 < 6) drawLightTex(ctx, 'glow_core', null, sx, sy - 9, 14, 14, 1 - ((t + this.x) % 40) / 6); // 金币闪一下
       return;
     }
 
     const it = this.item, color = RARITY[it.rar].color;
     if (this.z <= 0) {
       // 光柱
-      const H = BEAM[it.rar] * (0.85 + 0.15 * Math.sin(t * 0.08 + this.x));
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      for (const [w, a] of [[26, 0.18], [10, 0.45]]) {
-        const g = ctx.createLinearGradient(0, gy - H, 0, gy);
-        g.addColorStop(0, hexA(color, 0));
-        g.addColorStop(1, hexA(color, a));
-        ctx.fillStyle = g;
-        ctx.fillRect(sx - w / 2, gy - H, w, H);
+      // 光柱：loot_beam 6 帧循环（12 fps），锚点在底部；高度按品质（原画布 384 高 → BEAM），宽度跟着按比例
+      const fb = lightFb('loot_beam');
+      if (fb) {
+        const H = BEAM[it.rar] * (0.9 + 0.1 * Math.sin(t * 0.08 + this.x)), k = H / (fb.h * 0.95), n = fb.frames.length;
+        const fr = fb.frames[(Math.floor(t / (60 / fb.fps) + this.x * 0.1) % n + n) % n];
+        if (fr) {
+          ctx.save();
+          ctx.globalCompositeOperation = 'lighter';
+          ctx.globalAlpha = 0.9;
+          ctx.drawImage(tinted(fr, color), sx - fr.cx * k * 1.2, gy - fr.cy * k, fr.width * k * 1.2, fr.height * k);
+          ctx.restore();
+        }
       }
-      ctx.strokeStyle = hexA(color, 0.6);
-      ctx.lineWidth = 2;
-      ctx.beginPath();
-      ctx.ellipse(sx, gy, 16 + 3 * Math.sin(t * 0.1), 6, 0, 0, Math.PI * 2);
-      ctx.stroke();
-      ctx.restore();
+      // 地上的一圈光：柔光压扁成地面透视
+      drawLightTex(ctx, 'glow_soft', color, sx, gy, 54 + 6 * Math.sin(t * 0.1), 20, 0.7);
     }
     // 物品图标：菱形底座 + 字
     ctx.save();

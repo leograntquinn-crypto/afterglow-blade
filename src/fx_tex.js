@@ -1,4 +1,5 @@
-// 特效贴图：启动时用代码画好的一组小贴图（柔光点、拉长火花、烟团、冲击环、星芒、碎片、地裂）
+// 特效贴图：柔光点 / 光核 / 火花针 / 光条 / 斩痕 / 余烬来自光照包 fx_light_v1（docs/ART_FX_LIGHT_V1.md）；
+// 烟团、冲击环、星芒、碎片、地裂来自 fx_textures_v1（载好之前用启动时代码画的占位）。
 //
 // 为什么不用 arc / lineTo 现画：
 //   现画的形状是纯色硬边，怎么调都显得「死」。成熟的特效都是贴图：中心近白、边缘柔和、
@@ -34,35 +35,7 @@ function soft(x, cx, cy, r, stops) {
   x.fillRect(cx - r, cy - r, r * 2, r * 2);
 }
 const GAUSS = [[0, 1], [0.12, 0.82], [0.28, 0.5], [0.45, 0.24], [0.65, 0.08], [0.85, 0.02], [1, 0]];
-const HOT = [[0, 1], [0.2, 0.95], [0.45, 0.45], [0.7, 0.1], [1, 0]];
 
-function makeGlow() {
-  const c = mk(64, 64);
-  soft(c.getContext('2d'), 32, 32, 32, GAUSS);
-  return c;
-}
-function makeCore() {
-  const c = mk(32, 32);
-  soft(c.getContext('2d'), 16, 16, 16, HOT);
-  return c;
-}
-// 火花：横向拉长的光条，前端（右侧）最亮、尾巴渐隐。画的时候沿速度方向旋转、按速度拉长
-function makeStreak() {
-  const c = mk(64, 16), x = c.getContext('2d');
-  const g = x.createLinearGradient(0, 0, 64, 0);
-  g.addColorStop(0, 'rgba(255,255,255,0)');
-  g.addColorStop(0.55, 'rgba(255,255,255,0.45)');
-  g.addColorStop(0.9, 'rgba(255,255,255,1)');
-  g.addColorStop(1, 'rgba(255,255,255,0)');
-  // 纵向用高斯形状收窄
-  for (let y = 0; y < 16; y++) {
-    const d = Math.abs(y - 7.5) / 7.5;
-    x.globalAlpha = Math.exp(-d * d * 4.5);
-    x.fillStyle = g;
-    x.fillRect(0, y, 64, 1);
-  }
-  return c;
-}
 // 烟团：若干个随机柔光团叠成不规则的形状，再用细噪点打散边缘；灰度带明暗（上亮下暗）
 function makeSmoke(seed) {
   const S = 96, c = mk(S, S), x = c.getContext('2d'), R = seeded(seed);
@@ -88,17 +61,6 @@ export const RING_BANDS = [0.025, 0.05, 0.09, 0.14];
 function makeRing(band) {
   const c = mk(256, 256), b = band;
   soft(c.getContext('2d'), 128, 128, 128, [[0, 0], [Math.max(0, 1 - b * 2.4), 0], [1 - b * 1.4, 0.15], [1 - b * 0.65, 0.7], [1 - b * 0.22, 1], [1, 0]]);
-  return c;
-}
-// 针芒：两头尖、中间粗的锐利亮线（斩痕、火花的芯）。锐利的芯 + 柔和的光晕，是「高级感」的关键
-function makeNeedle() {
-  const c = mk(128, 12), x = c.getContext('2d');
-  x.fillStyle = '#fff';
-  x.beginPath();
-  x.moveTo(0, 6);
-  x.quadraticCurveTo(64, -1, 128, 6);
-  x.quadraticCurveTo(64, 13, 0, 6);
-  x.fill();
   return c;
 }
 // 星芒：命中瞬间的十字闪光
@@ -190,7 +152,9 @@ let T = null;
 export function tex() {
   if (!T) {
     T = {
-      glow: makeGlow(), core: makeCore(), streak: makeStreak(), needle: makeNeedle(), ring: RING_BANDS.map(makeRing), flare: makeFlare(),
+      // 光照包没载好之前：透明的空贴图（画了也看不见），载好后换成手绘的
+      glow: EMPTY, core: EMPTY, streak: EMPTY, needle: EMPTY, cut: EMPTY, ember: EMPTY, light: false,
+      ring: RING_BANDS.map(makeRing), flare: makeFlare(),
       smoke: [11, 23, 37, 51].map(makeSmoke),
       chip: [3, 7, 13, 19, 29, 31].map(makeChip),
       crack: [5, 17, 41].map(makeCrack),
@@ -198,7 +162,27 @@ export function tex() {
     };
   }
   if (!T.art && FX_ART.tex.ready) applyArt(T, FX_ART.tex.items);
+  if (!T.light && FX_ART.light.ready) applyLight(T, FX_ART.light.items);
   return T;
+}
+
+// 空贴图：光照包没载好时代替 glow / core / needle / streak（不画任何东西，不用代码画的替身）
+const EMPTY = mk(1, 1);
+
+// 光照包到了：换上手绘的光晕、火花、斩痕。
+// 各处画的代码按原来的「逻辑尺寸」写缩放（柔光 64、光核 32、光条 64×16、火花针 128×12），
+// 所以每张记横竖两个换算系数 ux / uy，让手绘图的可见部分画出来和原来的可见大小一样（贴图已裁到可见部分）
+function applyLight(T, A) {
+  const unit = (img, w, h) => Object.assign(img, { ux: w / img.width, uy: h / img.height });
+  T.glow = unit(A.glow_soft, 64 * 0.9, 64 * 0.9);
+  T.warm = unit(A.glow_warm, 64 * 0.9, 64 * 0.9);
+  T.core = unit(A.glow_core, 32 * 0.85, 32 * 0.85);
+  T.ember = unit(A.ember, 32 * 0.85, 32 * 0.85);
+  T.mote = unit(A.mote, 32 * 0.85, 32 * 0.85);
+  T.streak = unit(A.light_streak, 64, 16);
+  T.needle = unit(A.spark_needle, 128, 12);
+  T.cut = unit(A.cut_mark, 128, 12);
+  T.light = true;
 }
 
 // 不透明部分的包围盒宽高（只在换贴图时算一次）
@@ -262,7 +246,7 @@ export function tinted(img, color, mode = 'fill') {
   let c = m.get(key);
   if (!c) {
     c = mk(img.width, img.height);
-    c.u = img.u; c.cx = img.cx; c.cy = img.cy; c.sc = img.sc; c.fw = img.fw; c.fh = img.fh; // 换算系数和锚点跟着走
+    c.u = img.u; c.ux = img.ux; c.uy = img.uy; c.cx = img.cx; c.cy = img.cy; c.sc = img.sc; c.fw = img.fw; c.fh = img.fh; // 换算系数和锚点跟着走
     const x = c.getContext('2d');
     x.drawImage(img, 0, 0);
     x.globalCompositeOperation = mode === 'fill' ? 'source-in' : 'multiply';

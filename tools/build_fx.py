@@ -1,6 +1,6 @@
 """把特效素材包（afterglow.fxpack.v1）处理成游戏用的图集。
 
-python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录]
+python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
@@ -9,6 +9,8 @@ python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_bos
   fx_warden  FX-3 里祭坛守护者的两组（魂火、召唤法阵），只在第 4 关载入
   fx_blade_tex / fx_blade  刀光包 fx_blade_v1（docs/ART_FX_BLADE_V1.md）：条带贴图（不裁边，引擎按整条铺）和序列帧。
              它里面的序列帧和 fx_hero 同名的（五组刀光）覆盖旧的：fx_hero 里就不再打包这几组
+  fx_light_tex / fx_light  光照包 fx_light_v1（docs/ART_FX_LIGHT_V1.md）：19 张贴图（光晕、火花、光照 cookie、屏幕层、门 / 宝箱光）
+             和 2 组序列帧（火光 cookie、掉落光柱）。屏幕层（vignette、dim_hole、grain）不裁边：引擎按整张铺满屏幕 / 平铺
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -18,6 +20,7 @@ from PIL import Image
 
 TEX, HERO, BOSS = sys.argv[1:4]
 BLADE = sys.argv[4] if len(sys.argv) > 4 else None
+LIGHT = sys.argv[5] if len(sys.argv) > 5 else None
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "fx")
 os.makedirs(OUT, exist_ok=True)
 GROUPS = {"fx_hero": None, "fx_bone": ["bone_spikes", "bone_rend"], "fx_warden": ["soul_fire", "summon_circle"]}
@@ -60,12 +63,20 @@ def save_atlas(name, items, width, meta):
     print(f"{name}: {width}×{h}，解码 {width * h * 4 / 2**20:.1f}MB，文件 {kb:.0f}KB，{len(items)} 块")
 
 
-def build_textures(name, root, m, keep_full=()):
-    """单张贴图：桌面原尺寸、手机 50%；keep_full 里的不裁透明边（刀光条带：引擎按整条的 UV 铺）"""
+def build_textures(name, root, m, keep_full=(), opaque=()):
+    """单张贴图：桌面原尺寸、手机 50%；keep_full 里的不裁透明边（刀光条带：引擎按整条的 UV 铺）。
+    opaque 里的（整张 alpha 是同一个值的，比如颗粒 grain）存成不透明、JSON 里记下原来的 alpha：
+    浏览器的画布按「预乘 alpha」存像素，alpha 24 的灰度起伏会被压成三四档，存成不透明才不丢细节"""
     for suffix, sc in (("", 1.0), ("_m", 0.5)):
         items, tex = [], {}
         for t in m["textures"]:
             im = Image.open(f"{root}/{t['file']}").convert("RGBA")
+            extra = {}
+            if t["id"] in opaque:
+                a = np.asarray(im)[..., 3]
+                assert a.min() == a.max(), f"{t['id']} 的 alpha 不是常数"
+                extra["alpha"] = int(a[0, 0])
+                im = Image.fromarray(np.dstack([np.asarray(im)[..., :3], np.full(a.shape, 255, np.uint8)]))
             if sc != 1:
                 im = im.resize((round(im.width * sc), round(im.height * sc)), Image.LANCZOS)
             if t["id"] in keep_full:
@@ -73,7 +84,7 @@ def build_textures(name, root, m, keep_full=()):
             else:
                 cut, (ox, oy) = trim(im)
             items.append((t["id"], cut))
-            tex[t["id"]] = {"blend": t["blend"], "anchor": t["anchor"], "full": [im.width, im.height], "off": [ox, oy]}
+            tex[t["id"]] = {"blend": t["blend"], "anchor": t["anchor"], "full": [im.width, im.height], "off": [ox, oy], **extra}
         save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "tex": tex})
 
 
@@ -135,5 +146,11 @@ if blade:
     build_textures("fx_blade_tex", BLADE, blade, keep_full={t["id"] for t in blade["textures"] if t["id"].startswith("blade_ribbon")})
     bfbs = {f["id"]: (BLADE, f) for f in blade["flipbooks"]}
     build_flipbooks("fx_blade", list(bfbs), bfbs)
+# ---------- 光照包 fx_light_v1 ----------
+if LIGHT:
+    light = json.load(open(f"{LIGHT}/fx.json"))
+    build_textures("fx_light_tex", LIGHT, light, keep_full={"vignette", "dim_hole", "grain"}, opaque={"grain"})
+    lfbs = {f["id"]: (LIGHT, f) for f in light["flipbooks"]}
+    build_flipbooks("fx_light", list(lfbs), lfbs)
 tot = sum(os.path.getsize(f"{OUT}/{f}") for f in os.listdir(OUT) if f.endswith(".webp"))
 print(f"合计 {tot / 1024:.0f}KB")

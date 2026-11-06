@@ -1,11 +1,14 @@
 // 演出：技能和必杀的「三拍」
-//   蓄力 —— 世界压暗、只留主角身边一圈光（聚光），集中线从屏幕边缘向主角收拢
+//   蓄力 —— 世界压暗、只留主角身边一圈光（聚光；压暗的形状是光照包的 dim_hole），集中线从屏幕边缘向主角收拢
 //   爆发 —— 集中线从主角向外炸开（配合闪光、冲击帧、地面冲击波、光柱，由各招式自己喷）
 //   余韵 —— 压暗慢慢退去，残光从地面升起飘散（粒子，由招式喷）
 // 这里只管屏幕级的两件事：压暗 + 聚光，和集中线。都只是画面，不影响任何判定和时间。
 import { VIEW_W, VIEW_H, REDUCED_MOTION } from './config.js';
 import { settings } from './settings.js';
 import { tex, tinted } from './fx_tex.js';
+import { lightTex } from './fx_art.js';
+
+const DIM_COLOR = '#030208';
 
 const MAXL = 56;
 
@@ -67,21 +70,30 @@ export class Cine {
   }
 
   // 画面变换之外（屏幕坐标）。fx, fy：聚光中心在屏幕上的位置
+  // 压暗：光照包的 dim_hole（中心一个柔和的透明洞，往外渐变成不透明的暗色）对准演出焦点。
+  // 洞的「半透明」半径约在贴图半宽的 0.68 处：贴图半宽取 345 像素 → 洞边约 235、完全变暗约 310（和原来渐变的 110～360 相当）；
+  // 贴图外面用同样的暗色铺满屏幕
   drawDim(ctx, fx, fy) {
     if (this.dim <= 0) return;
-    const r0 = 110, r1 = 360;
-    const g = ctx.createRadialGradient(fx, fy, r0, fx, fy, r1);
-    g.addColorStop(0, 'rgba(3,2,8,0)');
-    g.addColorStop(1, `rgba(3,2,8,${0.82 * this.dim})`);
+    const img = lightTex('dim_hole');
+    if (!img) return;
+    const R = 345, k = (R * 2) / img.fw, x0 = fx - img.cx * k, y0 = fy - img.cy * k, w = img.width * k, h = img.height * k;
     ctx.save();
-    ctx.fillStyle = g;
-    ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+    ctx.globalAlpha = 0.82 * this.dim;
+    ctx.drawImage(tinted(img, DIM_COLOR), x0, y0, w, h);
+    ctx.fillStyle = DIM_COLOR;
+    ctx.fillRect(0, 0, VIEW_W, Math.max(0, y0));
+    ctx.fillRect(0, y0 + h, VIEW_W, Math.max(0, VIEW_H - y0 - h));
+    ctx.fillRect(0, y0, Math.max(0, x0), h);
+    ctx.fillRect(x0 + w, y0, Math.max(0, VIEW_W - x0 - w), h);
     ctx.restore();
   }
 
   drawLines(ctx, fx, fy) {
     if (!this.lines.length) return;
-    const T = tex(), img = tinted(T.needle, this.lineColor);
+    const T = tex();
+    if (!T.light) return;
+    const img = tinted(T.streak, this.lineColor); // 集中线用光照包的长光条 light_streak（亮的部分占全长约 3/4）
     const m = ctx.getTransform();
     ctx.save();
     ctx.globalCompositeOperation = 'lighter';
@@ -90,9 +102,10 @@ export class Cine {
       const mid = L.r + (L.out ? L.len / 2 : -L.len / 2);
       const x = fx + c * mid, y = fy + s * mid;
       ctx.globalAlpha = (L.out ? 1 - t : Math.min(1, t * 3) * (1 - t * 0.5)) * 0.55;
-      const kx = L.len / 128, ky = L.w / 6;
+      // 光条亮的芯约占贴图高度的 1/3（原来的针芒是实心的），所以按芯的粗细算：线宽 2w 对应 0.35 倍贴图高
+      const kx = L.len / img.width, ky = (L.w * 2) / (img.height * 0.35);
       ctx.setTransform(m.a * c * kx + m.c * s * kx, m.b * c * kx + m.d * s * kx, -m.a * s * ky + m.c * c * ky, -m.b * s * ky + m.d * c * ky, m.a * x + m.c * y + m.e, m.b * x + m.d * y + m.f);
-      ctx.drawImage(img, -64, -6);
+      ctx.drawImage(img, -img.width / 2, -img.height / 2);
     }
     ctx.restore();
   }

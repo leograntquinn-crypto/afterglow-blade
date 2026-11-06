@@ -40,6 +40,8 @@ import { RARITY, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
 import { drawDoors, drawVignette, drawShadow } from './draw.js';
+import { lightTex } from './fx_art.js';
+import { tinted } from './fx_tex.js';
 import { THEMES, drawScenery, drawFog, drawForeground } from './scenery.js';
 import { Post } from './post.js';
 import { music } from './music.js';
@@ -1593,7 +1595,7 @@ class Game {
     ctx.setTransform(this.scale, 0, 0, this.scale, 0, 0);
     const { lights } = W.draw(ctx, t);
     for (const l of lights) post.addLight(...l);
-    post.applyLighting(ctx, `rgba(3,3,10,${0.47 - W.litCount() * 0.05 - (W.ended() ? 0.08 : 0)})`); // 烽灯点得越多，地图越亮
+    post.applyLighting(ctx, `rgba(3,3,10,${0.47 - W.litCount() * 0.05 - (W.ended() ? 0.08 : 0)})`, t); // 烽灯点得越多，地图越亮
     W.drawGlow(post.beginGlow(() => {}), t);
     W.drawGlow(ctx, t);
     if (this.quality > 0 && !useGL) post.applyBloom(ctx);
@@ -1652,7 +1654,7 @@ class Game {
     ctx.restore();
 
     // 2. 光照：收集这一帧的所有光源，然后压暗其余部分
-    for (const [tx, ty, fl] of torches) post.addLight(...toView(tx, ty), 240 * fl, 0.8);
+    for (const [tx, ty, fl] of torches) post.addLight(...toView(tx, ty), 240 * fl, 0.8, 'flame');
     if (inWorld) {
       const p = this.player;
       post.addLight(...at(p.x, p.y, p.z + 45), 270, 0.95);
@@ -1660,7 +1662,7 @@ class Game {
         if (e.isBoss && e.alive) post.addLight(...at(e.x, e.y, e.h * 0.5), 230, 0.7);
         else if (e.alive || e.team === 'prop') post.addLight(...at(e.x, e.y, (e.z || 0) + 40), 120, 0.45); // 跟着高度走（飞在空中的烬翼）
       }
-      for (const h of this.hazards) post.addLight(...at(h.x, h.y), (h.rx || 140) * 1.5, 0.6);
+      for (const h of this.hazards) post.addLight(...at(h.x, h.y), (h.rx || 140) * 1.5, 0.6, 'magic');
       for (const pr of this.projectiles) post.addLight(...at(pr.x, pr.y, pr.z + 30), 110, 0.8);
       for (const l of this.loots) post.addLight(...at(l.x, l.y, 20), l.item ? 70 + l.item.rar * 30 : 50, 0.65);
       for (const hl of this.hitLights) post.addLight(...at(hl.x, hl.y, hl.z), hl.r, hl.life / 8);
@@ -1669,8 +1671,8 @@ class Game {
         if (this.room.doors.w) post.addLight(...at(40, DEPTH / 2), 200, 0.7);
       }
     }
-    if (this.scene === 'title') post.addLight(VIEW_W * 0.3, 360, 340, 1);
-    post.applyLighting(ctx, th.ambient);
+    if (this.scene === 'title') post.addLight(VIEW_W * 0.3, 360, 340, 1, 'lantern');
+    post.applyLighting(ctx, th.ambient, t);
     // 技能演出的压暗：主角（或演出对象）身边留一圈光，特效画在压暗之上
     const cf = this.cine.focus ?? this.player;
     const [cfx, cfy] = at(cf.x, cf.y, (cf.z ?? 0) + 45);
@@ -1719,12 +1721,10 @@ class Game {
       ctx.fillStyle = '#3a7aff';
       ctx.fillRect(0, 0, VIEW_W, VIEW_H);
       ctx.globalCompositeOperation = 'source-over';
-      const edge = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.45, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.9);
-      edge.addColorStop(0, 'rgba(127,243,255,0)');
-      edge.addColorStop(1, `rgba(127,243,255,${0.22 * a * (0.7 + 0.3 * Math.sin(t * 0.15))})`);
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = edge;
-      ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+      // 画面四周泛青光：光照包的暗角贴图染成青色
+      const vig = lightTex('vignette');
+      ctx.globalAlpha = 0.45 * a * (0.7 + 0.3 * Math.sin(t * 0.15));
+      if (vig) ctx.drawImage(tinted(vig, '#7ff3ff'), 0, 0, VIEW_W, VIEW_H);
       ctx.restore();
     }
     // 必杀演出时世界压暗，只有剑光亮着

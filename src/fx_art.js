@@ -4,7 +4,7 @@
 //   cx, cy —— 锚点在这块画布里的位置（素材裁掉了透明边，锚点按原画布换算过来）
 //   sc     —— 图集像素相对交付尺寸的比例（桌面贴图 1、手机 0.5；序列帧桌面 0.5、手机 0.25）
 // 贴图（fx_tex）和主角 / 通用序列帧（fx_hero）一直载入；首领的两套只在自己那一关载入、离开就释放。
-// 素材没载好时，特效系统照常用程序生成的占位贴图。
+// 素材没载好时：烟、碎片、地裂、冲击环、星芒照常用程序生成的占位贴图；光照包里的东西（光晕、火花、光照、暗角……）不画。
 import { afterBoot } from './boot.js';
 import { MOBILE } from './sprite.js';
 
@@ -90,7 +90,16 @@ export const FX_ART = {
   // 刀光包 fx_blade_v1（docs/ART_FX_BLADE_V1.md）：条带贴图（拖尾、新月刀光）+ 重画的五组刀光序列帧和剑气。一直载入
   bladeTex: new FxPack('fx_blade_tex'),
   blade: new FxPack('fx_blade'),
+  // 光照包 fx_light_v1（docs/ART_FX_LIGHT_V1.md）：光晕 / 火花 / 斩痕 / 光点、光照 cookie、暗角 / 压暗 / 颗粒 / 暗雾、门 / 宝箱 / 泉水光，
+  // 和两组序列帧（火光 cookie、掉落光柱）。大地图也要用（光照、光点、封印暗雾），所以一启动就载（两套合计约 180KB）
+  light: new FxPack('fx_light_tex'),
+  lightFb: new FxPack('fx_light'),
 };
+FX_ART.light.load();
+FX_ART.lightFb.load();
+// 光照包的一张贴图 / 一组序列帧（没载好返回 null：这时不画，不用代码画的替身）
+export const lightTex = (id) => (FX_ART.light.ready && FX_ART.light.items[id]) || null;
+export const lightFb = (id) => (FX_ART.lightFb.ready && FX_ART.lightFb.items[id]) || null;
 afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); FX_ART.bladeTex.load(); FX_ART.blade.load(); }); // 大地图和主角先载（见 boot.js）
 
 // 首领专属特效：只载入这一关首领的那套，释放其他的（和首领图集一样，见 enemy_sprites.js 的 prepareBossSprites）
