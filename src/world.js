@@ -562,7 +562,7 @@ export class World {
     if (Math.abs(vy) > 0.05 && can(h.x, h.y + vy)) { h.y += vy; moved += Math.abs(vy); }
     if (Math.abs(dx) > 0.15) h.facing = Math.sign(dx);
     h.moving = moved > 0.3 ? Math.min(1, h.moving + 0.25) : Math.max(0, h.moving - 0.2);
-    h.phase += moved / 12; // 走 12 像素换一帧（6 帧一个循环 ≈ 72 像素，和地图上的人物大小相配：战斗里 120 × 地图缩放 0.6）
+    h.phase += moved / 6.5; // 走 6.5 像素换一帧：战斗里的 10.8 × 地图缩放（MAP_SCALE / HERO_SCALE ≈ 0.6），脚踩住地面不滑
     // 镜头：平滑跟随，略微看向前方
     const tx = clamp(h.x - VIEW_W / 2 + h.facing * 30, 0, MAP_W - VIEW_W), ty = clamp(h.y - VIEW_H * 0.58, 0, MAP_H - VIEW_H);
     this.cam.x += (tx - this.cam.x) * 0.1;
@@ -903,7 +903,7 @@ export class World {
 
   heroFrame(t) {
     const S = heroSprite, h = this.hero;
-    if (h.moving > 0.3) return S.frame('run', runFrame(h.phase, 1)); // 和战斗里同一套 6 帧循环，按走过的距离换帧
+    if (h.moving > 0.3) return S.frame('run', runFrame(h.phase, 1)); // 和战斗里同一套 8 帧循环，按走过的距离换帧
     const n = S.meta.anims.idle.frames.length;
     return S.frame('idle', Math.floor(t / 9) % n);
   }

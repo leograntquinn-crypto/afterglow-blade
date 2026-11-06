@@ -205,11 +205,11 @@ function onceIndex(S, anim, ms) {
   return names.length - 1;
 }
 
-// 跑步：按走过的距离换帧（不按时间），脚步和地面速度对上，不会「滑步」。
-// 素材里的 8 帧跑步有两对几乎一样的「双脚分开」帧（3≈4、7≈0），按顺序播会在每半个循环卡一下：
-// 只用 6 帧 [0,1,2,4,5,6]，左右脚各一个「着地 → 过渡 → 腾空」。素材重绘（hero_fix_v1）回来以后换回完整 8 帧
-export const RUN_CYCLE = [0, 1, 2, 4, 5, 6];
-export const RUN_STEP = 20; // 战斗里每走多少逻辑像素换一帧（一个循环 6 × 20 = 120，和素材的步幅相配）
+// 跑步：按走过的距离换帧（不按时间），着地的脚和地面速度对上，不会「滑步」。
+// 素材 hero_fix_v1（docs/ART_HERO_FIX_V1.md）：8 帧左右腿交替，着地脚每帧匀速后移 40 素材像素
+// = 40 × 0.5（256 格子）× 0.54（HERO_SCALE）= 10.8 逻辑像素 → 每走 10.8 换一帧，脚踩住地面不滑
+export const RUN_CYCLE = [0, 1, 2, 3, 4, 5, 6, 7];
+export const RUN_STEP = 10.8; // 战斗里每走多少逻辑像素换一帧（一个循环 8 × 10.8 ≈ 86）
 export const runFrame = (dist, step = RUN_STEP) => RUN_CYCLE[Math.floor(Math.max(0, dist) / step) % RUN_CYCLE.length];
 
 // 主角当前应该显示哪一帧

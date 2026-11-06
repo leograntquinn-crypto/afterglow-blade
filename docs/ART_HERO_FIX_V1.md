@@ -28,7 +28,7 @@
 - 人物身高约 360 px（和现有帧同比例，交付前和 `idle_00` 并排比对）。
 - **原地动画**：头和躯干的水平位置每帧都在 x ≈ 220（±4 px），只有手脚、头发、腰带、刀动；身体不在画布里平移。
 - **干净帧**：没有刀光、拖尾、发光、速度线、火花——只有角色和刀。
-- 身份：和现有绯隼完全一致——银发高马尾、深色发带红饰、象牙色短上衣、深藏青紧身裤、护腕、及膝长靴、深红短腰带尾、**一把单刃长刀**（刀身微弯，刀镡、刀柄缠绳、柄头和现有帧一样）。用 `artwork/hero_fullbody.png` 当身份参考图。
+- 身份：以定稿素材为准（`docs/ART_FEISUN.md`「定稿造型」）——银白色单马尾（黑色蝴蝶结 + 红缎带）、白色短外套 + 深色内搭、红腰布、深色长裤、黑色高筒靴配银色星形饰件，**一把单刃长刀**（刀镡、刀柄缠绳、柄头和现有帧一样）。用 `artwork/hero_fullbody.png` 当身份参考图。
 - 画风：和现有帧一致的手绘动漫游戏风、稳定的赛璐璐阴影、背光一侧淡淡的冷色轮廓光。
 
 ## 四、跑步循环 8 帧的动作要求
@@ -93,9 +93,10 @@ hero_fix_v1/
 ### 跑步循环（8 帧，4 列 × 2 行，2048×1024）
 ```
 Use case: stylized-concept. Asset type: production sprite animation sheet for a 2D side-scrolling action game.
-The reference image is the IDENTITY / COSTUME reference, not the layout. Draw exactly the SAME adult silver-haired
-female swordswoman: small high ponytail dark ribbon red ornament, ivory short jacket, dark navy fitted trousers,
-bracers, knee-high boots, crimson short sash tails, ONE long single-edged steel sword with a slight curve.
+The reference image is the IDENTITY / COSTUME reference, not the layout. Draw exactly the SAME adult female
+swordswoman as the reference: silver-white single ponytail with a black bow and red ribbons, white cropped jacket
+over a dark top, red waist cloth, dark long trousers, tall black boots with silver star-shaped ornaments,
+ONE long single-edged steel sword.
 Preserve her face, hair, weapon, outfit and proportions, in crisp high-quality hand-drawn anime game art with
 consistent controlled cel shading. Subtle cool rim light along the back edge of the silhouette.
 OUTPUT LAYOUT IS CRITICAL: exactly EIGHT full-body sequential animation poses in a uniform FOUR-column TWO-row
@@ -138,3 +139,13 @@ the closed fist.
 `python3 -I tools/build_sprites.py <v2 包> hero <skills_v3 包> <hero_fix_v1 包>`（后面的包覆盖同名帧），重新生成桌面 / 手机图集；
 跑步改回完整 8 帧按距离播放（`src/sprite.js` 的 `RUN_CYCLE`、`RUN_STEP` 按新步幅标定），刀光检测（`blade`）把 `run`、`jump` 加进去复核；
 截图对比、跑全套测试、记录帧率后发布。
+
+## 九、接入记录（2026-11-06，Release `assets-v8`）
+
+- Muse 独立验货通过：zip 完整、19 个文件，9 帧 512×512，地面线统一 y = 448，没有重复姿势，刀柄—刀镡—刀身一条直线，人物身份和定稿一致。
+- **造型描述更正**：本文件原来第三节、第七节的人物文字和定稿用词不一致；已经按定稿造型（`docs/ART_FEISUN.md`）改正，本包按定稿造型生成。
+- **和规格不同的地方**：
+  - 步幅：交付的着地脚每帧后移 **40** 素材像素（规格写的是 57）。游戏按交付的 40 标定（`RUN_STEP` = 40 × 0.5 × 0.54 = 10.8 逻辑像素一帧），脚不滑；代价是步频偏快（满速约 23 帧 / 秒，一个循环 0.35 秒）。
+  - 包里没有 `animations.json`：接入时写了一个适配说明（只覆盖 `run` 8 帧和 `jump_02`），用 `tools/build_sprites.py` 和原始 v2、skills_v3 包一起重新生成图集。先验证了「不加本包时重新生成的图集和仓库里的一模一样」，再加本包；结果只有这 9 个格子变了。
+  - 刀的样式：新帧里的刀身比旧帧直一些；游戏尺寸下看不出明显差别，记录在这里。
+- **条件帧**：`launcher_00`、`air_slash_02_00` 复核结论是面部、握刀手、刀镡细节偏软，刀没有折角，本包未重画。判断：这两帧在游戏里各只显示几帧（招式起手），不单独出包；以后有主角素材包（比如职业系统 / 装备外观需要重画主角时）一并重画。
