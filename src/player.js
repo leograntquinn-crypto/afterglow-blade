@@ -16,6 +16,7 @@ import { sfx } from './audio.js';
 import { heroSprite, heroFrame, bladeOf } from './sprite.js';
 import { mix, scaleColor } from './fx_tex.js';
 import { SLASH_FX } from './fx_data.js';
+import { STAMINA } from './stamina_data.js';
 
 // 刀光的颜色渐变：刚扫过近白 → 刀光色 → 冷却变暗（每种刀光色只算一次）
 const trailRamps = new Map();
@@ -46,6 +47,8 @@ export class Player {
     this.cd = { skill1: 0, skill2: 0, skill3: 0, skill4: 0 };
     this.cdMax = { ...this.cd };
     this.dashCd = 0;
+    // 耐力（stamina_data.js）：sta 当前值；staDelay 还要等几帧才开始回复；staLock 侧步冷却；staFlash 不够时耐力条闪红
+    this.sta = STAMINA.max; this.staDelay = 0; this.staLock = 0; this.staFlash = 0; this.staGain = 0;
     this.airHangs = 0;
     this.airDashes = 0;
     this.walk = 0;
@@ -67,6 +70,7 @@ export class Player {
   }
 
   setState(s) {
+    if (s !== 'dash') this.weakStep = false;
     this.state = s;
     this.st = 0;
     this.teched = false; // 受身翻滚（只在刚受身的那次 air 状态里播）
@@ -75,7 +79,49 @@ export class Player {
 
   // 极限闪避的判定窗口：闪避 / 空中冲刺刚开始的那几帧
   inPerfectWindow() {
+    if (this.weakStep) return false; // 耐力不够时的侧步没有极限闪避
     return (this.state === 'dash' && this.st <= 11) || (this.state === 'airdash' && this.st <= 9);
+  }
+
+  // ---------- 耐力（stamina_data.js）----------
+  // 回复：停止消耗 delay 帧以后开始；放技能的动作里不回复；跑动中回得慢一点
+  updateStamina() {
+    if (this.staLock > 0) this.staLock--;
+    if (this.staFlash > 0) this.staFlash--;
+    if (this.staGain > 0) this.staGain--;
+    if (this.state === 'attack' && this.move?.skill) return;
+    if (this.staDelay > 0) { this.staDelay--; return; }
+    if (this.sta < STAMINA.max) this.sta = Math.min(STAMINA.max, this.sta + (this.state === 'run' ? STAMINA.regenRun : STAMINA.regen));
+  }
+  spendStamina(n) {
+    this.sta = Math.max(0, this.sta - n);
+    this.staDelay = STAMINA.delay;
+  }
+  // 极限闪避、弹刀返还：并且马上开始回复
+  gainStamina(n) {
+    this.sta = Math.min(STAMINA.max, this.sta + n);
+    this.staDelay = 0;
+    this.staGain = 24;
+  }
+  // 按闪避：耐力够 → 正常闪避；不够 → 侧步（没有无敌帧、距离一半），之后一段时间不能再侧步；都不行就不动（耐力条闪红）
+  tryDash(game, air = false) {
+    const cost = air ? STAMINA.airDodge : STAMINA.dodge;
+    if (this.sta >= cost) {
+      this.spendStamina(cost);
+      if (air) this.startAirDash(game); else this.startDash(game);
+      return true;
+    }
+    this.staFlash = STAMINA.flash;
+    const sv = game.save;
+    if (sv && !sv.tips?.stamina) { // 第一次耐力不够：讲一句规则（每个存档一次）
+      sv.tips = { ...sv.tips, stamina: true };
+      game.toast?.('耐力不足：闪避要花耐力，停下来一会儿就会回满；极限闪避、弹刀会返还耐力', '#b8e88a');
+    }
+    if (air || this.staLock > 0) return false;
+    this.staLock = STAMINA.step.lockout;
+    this.staDelay = STAMINA.delay;
+    this.startDash(game, false, true);
+    return true;
   }
 
   update(game) {
@@ -83,6 +129,7 @@ export class Player {
     if (this.invuln > 0) this.invuln--;
     if (this.flash > 0) this.flash--;
     if (this.dashCd > 0) this.dashCd--;
+    this.updateStamina();
     this.mp = Math.min(this.maxMp, this.mp + this.S.mpRegen);
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.004) : this.hp;
     this.readyFlash ??= {};
@@ -367,7 +414,7 @@ export class Player {
     const inp = game.input;
     if (this.tryUlt(game)) return true;
     if (this.trySkill(game)) return true;
-    if (inp.buffered('dash') && this.dashCd <= 0) { inp.consume('dash'); this.startDash(game); return true; }
+    if (inp.buffered('dash') && this.dashCd <= 0) { inp.consume('dash'); if (this.tryDash(game)) return true; }
     if (inp.buffered('jump')) { inp.consume('jump'); this.jump(game); return true; }
     if (inp.buffered('attack')) {
       inp.consume('attack');
@@ -410,7 +457,7 @@ export class Player {
     this.vx += (inp.dx * SPEED_X - this.vx) * 0.12;
     this.vy = inp.dy * 1.6;
     if (inp.dx) this.facing = Math.sign(inp.dx);
-    if (inp.buffered('dash') && this.airDashes < 1) { inp.consume('dash'); this.startAirDash(game); return; }
+    if (inp.buffered('dash') && this.airDashes < 1) { inp.consume('dash'); if (this.tryDash(game, true)) return; }
     if (inp.buffered('attack')) {
       inp.consume('attack');
       this.startMove(game, inp.dy > 0.5 && this.z > 30 ? 'plunge' : 'airSlash');
@@ -418,13 +465,15 @@ export class Player {
   }
 
   // ---------- 闪避（带无敌帧；前几帧被打中 = 极限闪避）----------
-  startDash(game, roll = false) {
+  // weak：耐力不够时的侧步（没有无敌帧、距离一半）
+  startDash(game, roll = false, weak = false) {
     const dx = game.input.dx;
     if (dx) this.facing = Math.sign(dx);
     this.move = null;
     this.setState('dash');
     this.dashDy = game.input.dy;
-    this.invuln = roll ? 30 : 14;
+    this.weakStep = weak;
+    this.invuln = weak ? 0 : roll ? 30 : 14;
     this.dashCd = roll ? 10 : 26;
     game.fx.dust(this.x, this.y, 6);
     sfx('dash');
@@ -432,9 +481,10 @@ export class Player {
 
   updateDash(game) {
     const t = this.st, inp = game.input;
-    this.vx = this.facing * 11 * Math.max(0, 1 - t / 20);
-    this.vy = (inp.dy || this.dashDy) * 2.6 * Math.max(0, 1 - t / 20);
-    if (t % 2 === 0) this.addGhost();
+    const k = this.weakStep ? STAMINA.step.dist : 1;
+    this.vx = this.facing * 11 * k * Math.max(0, 1 - t / 20);
+    this.vy = (inp.dy || this.dashDy) * 2.6 * k * Math.max(0, 1 - t / 20);
+    if (t % 2 === 0 && !this.weakStep) this.addGhost();
     if (t >= 4 && inp.buffered('attack')) { inp.consume('attack'); this.startMove(game, 'dashAtk'); return; }
     if (t >= 6 && this.trySkill(game)) return;
     if (t >= 8 && inp.buffered('jump')) { inp.consume('jump'); this.jump(game); return; }
@@ -486,7 +536,7 @@ export class Player {
     }
     if (t % 4 === 0) game.fx.converge(this.x + this.facing * 10, this.y, 50, lv === 2 ? 6 : 3, lv === 2 ? '#ffffff' : this.glow);
     // 闪避 / 跳跃可以取消蓄力
-    if (inp.buffered('dash') && this.dashCd <= 0) { inp.consume('dash'); this.startDash(game); return; }
+    if (inp.buffered('dash') && this.dashCd <= 0) { inp.consume('dash'); if (this.tryDash(game)) return; }
     if (inp.buffered('jump')) { inp.consume('jump'); this.jump(game); return; }
     if (inp.dx) this.facing = Math.sign(inp.dx);
     if (!inp.isHeld('attack') || t > 180) {
@@ -579,11 +629,11 @@ export class Player {
     // 命中后可以用跳跃取消（地面普攻），把敌人留在空中追打
     if (m.jcOnHit && this.landed && this.z <= 0 && f >= (m.hits[0]?.at ?? 0) + 3 && inp.buffered('jump')) { inp.consume('jump'); this.jump(game); return; }
     // 空中招式命中后可以空中冲刺取消
-    if (m.air && !m.plunge && this.landed && this.airDashes < 1 && inp.buffered('dash')) { inp.consume('dash'); this.startAirDash(game); return; }
+    if (m.air && !m.plunge && this.landed && this.airDashes < 1 && inp.buffered('dash')) { inp.consume('dash'); if (this.tryDash(game, true)) return; }
     // 普攻命中后可以立刻用技能 / 必杀取消；技能之间要等到 cancel 帧
     const skillOk = m.skill ? canCancel : canCancel || this.landed;
     if (!m.air && skillOk && (this.tryUlt(game) || this.trySkill(game))) return;
-    if (!m.air && canCancel && this.dashCd <= 0 && inp.buffered('dash')) { inp.consume('dash'); this.startDash(game); return; }
+    if (!m.air && canCancel && this.dashCd <= 0 && inp.buffered('dash')) { inp.consume('dash'); if (this.tryDash(game)) return; }
 
     if (this.mf >= m.total && !m.plunge) {
       this.move = null;
@@ -608,6 +658,7 @@ export class Player {
       if (this.cd[key] > 0) { say('冷却中', '#9fb3c8'); continue; }
       if (this.mp < s.mp) { say('魔力不足', '#4fa3ff'); continue; }
       this.mp -= s.mp;
+      this.spendStamina(STAMINA.skill); // 技能：扣一点耐力，动作里不回复（updateStamina）
       this.cd[key] = this.cdMax[key] = Math.round(s.cd * (1 - this.S.cdr));
       this.startMove(game, s.move);
       game.fx.label(this.x, this.y, this.z + 118, s.name, this.glow, 28);
