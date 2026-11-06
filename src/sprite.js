@@ -206,11 +206,28 @@ function onceIndex(S, anim, ms) {
 }
 
 // 跑步：按走过的距离换帧（不按时间），着地的脚和地面速度对上，不会「滑步」。
-// 素材 hero_fix_v1（docs/ART_HERO_FIX_V1.md）：8 帧左右腿交替，着地脚每帧匀速后移 40 素材像素
-// = 40 × 0.5（256 格子）× 0.54（HERO_SCALE）= 10.8 逻辑像素 → 每走 10.8 换一帧，脚踩住地面不滑
-export const RUN_CYCLE = [0, 1, 2, 3, 4, 5, 6, 7];
-export const RUN_STEP = 10.8; // 战斗里每走多少逻辑像素换一帧（一个循环 8 × 10.8 ≈ 86）
-export const runFrame = (dist, step = RUN_STEP) => RUN_CYCLE[Math.floor(Math.max(0, dist) / step) % RUN_CYCLE.length];
+// 素材 hero_fix_v2（docs/ART_HERO_FIX_V2.md）：8 帧，00～02 / 04～06 是着地帧，03 / 07 是蹬伸剪刀帧（后脚尖刚离地）。
+// 逐帧距离按包里 check/validation.json 实测的着地脚位置标定：着地帧 = 着地脚到下一帧的后移量（素材像素）
+//   × 0.5（256 格子）× 0.54（HERO_SCALE）= 0.27 → 逻辑像素；脚踩住地面不滑。
+//   右脚半圈 274.5 → 222 → 153 → 109（后移 52.5 / 69 / 44），左脚半圈 277.5 → 217 → 149.5 → 112.5（60.5 / 67.5 / 37）。
+// 蹬伸帧两脚都不在地上（腾空），停多久都不打滑：取 18.4，让正常跑速（每帧 4.2）一圈 126 逻辑像素 ≈ 30 帧 = 0.50 秒。
+export const RUN_FOOT = [274.5, 222.0, 153.0, 109.0, 277.5, 217.0, 149.5, 112.5]; // validation.json support_x_by_frame
+export const RUN_PX = 0.5 * 0.54;
+export const RUN_FLIGHT = 18.4;
+export const RUN_DIST = RUN_FOOT.map((x, i) => (i % 4 === 3 ? RUN_FLIGHT : (x - RUN_FOOT[i + 1]) * RUN_PX)); // 每帧走多少逻辑像素
+export const RUN_CYCLE_LEN = RUN_DIST.reduce((a, b) => a + b, 0); // 一圈 ≈ 126
+const RUN_EDGE = RUN_DIST.reduce((a, d, i) => (a.push((a[i - 1] ?? 0) + d), a), []); // 每帧结束时累计的距离
+// 战斗里每帧走过的「跑步距离」：按画面上的速度算（纵向 2.7 换算成和横向一样快），但不超过满速横跑的 4.2——
+// 键盘斜着跑时横向本来就是满速，再加上纵向会让腿快到 0.38 秒一圈（碎步）；封顶以后横、竖、斜满速都是 0.5 秒一圈，
+// 横向分量大于封顶（被推着跑）时按横向走，着地脚不打滑。
+export const RUN_FULL = 4.2, RUN_KY = 4.2 / 2.7;
+export const runStep = (vx, vy) => Math.max(Math.abs(vx), Math.min(RUN_FULL, Math.hypot(vx, vy * RUN_KY)));
+// dist：战斗尺度下走过的逻辑像素（地图上先除以地图缩放比换算回来）
+export function runFrame(dist) {
+  const d = Math.max(0, dist) % RUN_CYCLE_LEN;
+  for (let i = 0; i < RUN_EDGE.length; i++) if (d < RUN_EDGE[i]) return i;
+  return RUN_EDGE.length - 1;
+}
 
 // 主角当前应该显示哪一帧
 export function heroFrame(p, t) {

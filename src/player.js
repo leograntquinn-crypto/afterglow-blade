@@ -13,7 +13,7 @@ import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
-import { heroSprite, heroFrame, bladeOf } from './sprite.js';
+import { heroSprite, heroFrame, bladeOf, runStep } from './sprite.js';
 import { SLASH_FX } from './fx_data.js';
 import { STAMINA } from './stamina_data.js';
 import { ribbonTex, drawRibbon, drawTip } from './ribbon.js';
@@ -272,7 +272,7 @@ export class Player {
   }
 
   physics(game) {
-    if (this.state === 'run') this.runDist = (this.runDist ?? 0) + Math.hypot(this.vx, this.vy * 1.3); // 跑步换帧按距离（sprite.js runFrame）
+    if (this.state === 'run') this.runDist = (this.runDist ?? 0) + runStep(this.vx, this.vy); // 跑步换帧按距离（sprite.js runFrame / runStep）
     this.x += this.vx;
     this.y += this.vy;
     if (this.state !== 'airdash' && this.state !== 'ult' && (this.z > 0 || this.vz > 0)) {

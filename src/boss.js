@@ -10,7 +10,7 @@ import { DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE
 import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
-import { heroSprite, shadowFrame } from './sprite.js';
+import { heroSprite, shadowFrame, runStep } from './sprite.js';
 import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sprites.js';
 import { sfx } from './audio.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
@@ -372,7 +372,7 @@ export class Boss extends Enemy {
   }
 
   update(game) {
-    if (this.state === 'idle' && (this.vx || this.vy)) this.runDist = (this.runDist ?? 0) + Math.hypot(this.vx, this.vy * 1.3); // 残影跑步换帧按距离（sprite.js runFrame）
+    if (this.state === 'idle' && (this.vx || this.vy)) this.runDist = (this.runDist ?? 0) + runStep(this.vx, this.vy); // 残影跑步换帧按距离（sprite.js runFrame / runStep）
     if (this.channelCd > 0) this.channelCd--;
     if (this.state !== 'attack' || this.act?.name !== 'channel') this.channel = null; // 被打断 / 破防时读条作废
     const next = this.B.phases[this.phase + 1];
