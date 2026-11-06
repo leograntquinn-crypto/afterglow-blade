@@ -151,12 +151,12 @@ function drawPlayerFrame(ctx, game) {
     const S = STAMINA, low = p.sta < S.dodge, fl = p.staFlash > 0 && Math.floor(p.staFlash / 4) % 2 === 0;
     ctx.save();
     ctx.globalAlpha = p.sta >= S.max && !p.staFlash ? 0.35 : 1;
-    fancyBar(ctx, 102, 95, 170, 5, p.sta, S.max, null, fl ? '#ff5a4a' : p.staGain > 0 ? '#f4ffe0' : low ? '#d8b25a' : '#b8e88a', fl ? '#a01e14' : low ? '#8a6418' : '#4f8a2e', { border: false });
+    fancyBar(ctx, 102, 99, 170, 5, p.sta, S.max, null, fl ? '#ff5a4a' : p.staGain > 0 ? '#f4ffe0' : low ? '#d8b25a' : '#b8e88a', fl ? '#a01e14' : low ? '#8a6418' : '#4f8a2e', { border: false });
     ctx.font = `12px ${FONT_TITLE}`;
     ctx.textAlign = 'left';
     ctx.textBaseline = 'middle';
     ctx.fillStyle = fl ? '#ff8a7a' : 'rgba(200,232,170,.7)';
-    ctx.fillText(fl ? '耐力不足' : '耐力', 278, 98);
+    ctx.fillText(fl ? '耐力不足' : '耐力', 278, 103);
     ctx.restore();
   }
   ctx.font = `500 16px ${FONT_NUM}`;
