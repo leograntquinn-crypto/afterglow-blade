@@ -23,25 +23,29 @@ const HERO_H = 58; // 地图上人物的站立高度（战斗里约 96）
 const SPEED = 2.4; // 每帧走多少（逻辑像素）
 const NEAR = 64; // 离入口多近算「站在入口前」
 const MAP_SCALE = (0.54 * HERO_H) / 96; // 地图上人物精灵的缩放（绯隼和守灯驿的人都用这个）
-// 不让人被地图盖住看不见：站在某处时，画在他前面的地标 / 散件 / 边缘把他盖住超过 HIDE_BLOCK 就走不过去；
-// 盖住超过 HIDE_GHOST（走到树冠、灯柱后面这种）就在最上层补画一个半透明的剪影
-const HIDE_BLOCK = 0.36, HIDE_GHOST = 0.12;
+// 遮挡和碰撞分开（地图精修第 5 轮）：被画在前面的东西盖住只补画半透明剪影（超过 HIDE_GHOST），不因此禁行；
+// 真正挡路的只有物件实际的底座（按素材的底座像素量出来，见 footprints），灯柱这类细高物件底座很小
+const HIDE_GHOST = 0.12;
+// 量底座用哪一段（离地多少逻辑像素）：树、灯柱量树干 / 灯杆（根和草铺得很宽，不能算底座）；其余量贴地的那一段
+const FOOT_BAND = { tree: [30, 50], lamp: [30, 50] };
+const NO_BLOCK = new Set(['bush', 'reeds']); // 灌木、芦苇：人能穿过去
 const HERO_BOX = [9, HERO_H - 6, 3]; // 判断遮挡用的身体框：左右各 9、脚底往上 3～52
 const WALK_IN = [22, 16]; // 走进入口（素材标的门口 / 台阶口）多近、往里走就打开地点卡片
 
 // ---------------- 地点 ----------------
 // x, y：锚点（底部中心）；foot：底座椭圆的半径 [rx, ry]，挡路；door：站在哪里算入口前（默认锚点正前方）
 // fdy：底座椭圆中心在锚点上方多少（按素材里建筑的位置量的）；地标的地面圆台可以走，建筑本身挡路
+// feet：另外几块底座 [dx, dy, rx, ry]（相对锚点的椭圆）：营地前面的木栅栏、墓穴的建筑和两侧围栏、练剑场的围场（按素材量的）
 export const SITES = [
-  { id: 'camp', kind: 'camp', name: '守灯驿', x: 1200, y: 1150, foot: [150, 60], fdy: -72, door: [1200, 1200] },
-  { id: 's1', kind: 'stage', stage: 0, x: 640, y: 850, foot: [92, 46], fdy: -76, beacon: [500, 880] },
+  { id: 'camp', kind: 'camp', name: '守灯驿', x: 1200, y: 1150, foot: [150, 60], fdy: -72, door: [1200, 1200], feet: [[-105, -22, 60, 9], [100, -22, 62, 9]] },
+  { id: 's1', kind: 'stage', stage: 0, x: 640, y: 850, foot: [92, 46], fdy: -76, beacon: [500, 880], feet: [[0, -84, 95, 40], [-128, -52, 28, 36], [128, -52, 28, 36]] },
   { id: 's2', kind: 'stage', stage: 1, x: 1000, y: 600, foot: [124, 98], fdy: -146, beacon: [1150, 620] },
   { id: 's3', kind: 'stage', stage: 2, x: 1760, y: 850, foot: [118, 88], fdy: -134, beacon: [1910, 880] },
   { id: 's4', kind: 'stage', stage: 3, x: 1910, y: 470, foot: [108, 92], fdy: -142, beacon: [1760, 500] },
   // 深渊：底座是整个深渊，入口在断桥伸出去的地方
   { id: 's5', kind: 'stage', stage: 4, x: 1200, y: 360, foot: [224, 130], fdy: -184, beacon: [1460, 400] },
   { id: 'trial', kind: 'trial', name: '残光试炼', x: 780, y: 1180, foot: [70, 40], fdy: -75 },
-  { id: 'training', kind: 'training', name: '练剑场', x: 1590, y: 1210, foot: [0, 0], door: [1590, 1250] },
+  { id: 'training', kind: 'training', name: '练剑场', x: 1590, y: 1210, foot: [0, 0], door: [1590, 1250], feet: [[0, -130, 148, 90]] },
 ].map((s) => ({ ...s, name: s.name ?? STAGES[s.stage].name, door: s.door ?? [s.x, s.y + 24] }));
 export const site = (id) => SITES.find((s) => s.id === id);
 
@@ -80,7 +84,8 @@ const PROP_BLOCK = {
   wall: { rx: 58, ry: 12 }, arch: { rx: 66, ry: 12 }, crates: { rx: 40, ry: 14 }, cart: { rx: 50, ry: 16 },
 };
 // 素材里的 id：kind + 变体
-const PROP_ART = { tree: ['tree_a', 'tree_b', 'tree_c'], rock: ['boulder', 'rocks', 'slab'], grave: ['grave_a', 'grave_b', 'grave_cross'], lamp: ['lamp'], sign: ['signpost'], stone: ['milestone'] };
+// lamp_fallen：原来画成倒在地上的灯（素材本身是躺着的），玩家看着像「地图元素躺着」—— 改成立着的旧路灯（摆放位置不变）
+const PROP_ART = { lamp_fallen: ['lamp'], tree: ['tree_a', 'tree_b', 'tree_c'], rock: ['boulder', 'rocks', 'slab'], grave: ['grave_a', 'grave_b', 'grave_cross'], lamp: ['lamp'], sign: ['signpost'], stone: ['milestone'] };
 const propArtId = (o) => PROP_ART[o.kind]?.[o.v % PROP_ART[o.kind].length] ?? o.kind;
 // kind：tree 枯树 / rock 石头 / grave 墓碑 / lamp 路灯 / sign 路牌；r：挡路的半径（0 = 不挡）
 function scatter() {
@@ -345,6 +350,8 @@ const DECALS = (() => {
   }
   return out;
 })();
+// 贴花里画的是「立着的东西」的几种（插在地上的断剑、半埋的提灯、陶罐、草丛）：不画进地面，和其他散件一样按纵深排序立着画
+const STAND_DECALS = new Set(['broken_sword', 'buried_lantern', 'clay_pot', 'dead_grass']);
 // 地面混合的区域：墓园土（①）、灰烬地（④⑤）、守灯驿和练剑场门口踩出来的泥地
 const ZONES = [['grave', 640, 830, 330, 1], ['ash', 1910, 450, 380, 1], ['ash', 1200, 210, 600, 1], ['road', 1200, 1180, 190, 0.55], ['road', 1590, 1240, 150, 0.4]];
 
@@ -454,12 +461,14 @@ export class World {
       if (st.beacon) add(L, 'beacon', st.beacon[0], st.beacon[1], st.beacon[1], BEACON_S);
     }
     for (const e of EDGES) add(P, e.id, e.x, e.y, e.y, 1, e.flip);
+    for (const d of DECALS) if (STAND_DECALS.has(d.id)) add(P, d.id, d.x, d.y, d.y, 1, d.flip); // 立着的贴花：不挡路
     // 随机摆的散件有的正好落在地标的图里（比如墓园围栏里、营地栅栏后面），整个被盖住看不见、却还挡路：
     // 自己的不透明部分被排在它后面画的东西盖住一半以上的，不画、也不挡路（不重排，其余散件位置不变）
     for (const it of out) {
       const o = it.o;
-      if (!o || o.read) continue;
-      if (this.buriedFrac(it, out) > 0.5) o.buried = true;
+      if (!o) continue;
+      o.feet = this.footprints(it, o.kind === 'lamp_fallen' ? 'lamp' : o.kind); // 按素材量底座（碰撞只看这个）
+      if (!o.read && this.buriedFrac(it, out) > 0.5) o.buried = true;
     }
     this.itemsOf = A.land.img;
     return (this.items = out.filter((it) => !it.o?.buried));
@@ -494,9 +503,33 @@ export class World {
     return { f: 1 - seen, by };
   }
 
-  // 碰撞：地图边缘、地点的底座、挡路的散件、守灯驿的人，以及「走进去会被地图盖住看不见」的地方
+  // 碰撞：地图边缘、地点的底座、散件的底座、守灯驿的人、未解锁的封印。会不会被盖住不影响能不能走（盖住时画剪影）
   blocked(x, y) {
-    return this.solid(x, y) || this.hiddenAt(x, y).f > HIDE_BLOCK;
+    return this.solid(x, y);
+  }
+
+  // 散件的底座：素材里贴地那一段（FOOT_BAND）里「实心」的列（八成以上不透明 —— 稀疏的草叶不算）连成几段，每段一个扁椭圆。
+  // 石拱、断墙这类会量出两段（中间的门洞能走），灯柱只量出很窄的一段
+  footprints(it, kind) {
+    if (NO_BLOCK.has(kind)) return [];
+    const m = it.m, C = m.C, W1 = m.w + 1, S = m.S;
+    const cell = (r, c) => S[(r + 1) * W1 + c + 1] - S[r * W1 + c + 1] - S[(r + 1) * W1 + c] + S[r * W1 + c];
+    let bottom = -1;
+    for (let r = m.h - 1; r >= 0 && bottom < 0; r--) for (let c = 0; c < m.w; c++) if (cell(r, c)) { bottom = r; break; }
+    if (bottom < 0) return [];
+    const [lo, hi] = FOOT_BAND[kind] ?? [4, 16], r0 = Math.max(0, bottom - Math.round(hi / C)), r1 = Math.max(r0, bottom - Math.round(lo / C));
+    const dense = [];
+    for (let c = 0; c < m.w; c++) { let n = 0; for (let r = r0; r <= r1; r++) n += cell(r, c); dense.push(n >= 0.8 * (r1 - r0 + 1)); }
+    const runs = [];
+    for (let c = 0, start = -1, last = -9; c <= m.w; c++) {
+      if (c < m.w && dense[c]) { if (start < 0 || c - last > 2) { if (start >= 0) runs.push([start, last]); start = c; } last = c; }
+      else if (c === m.w && start >= 0) runs.push([start, last]);
+    }
+    const gy = it.y + m.y0 + (bottom + 1) * C; // 素材的地面线（最下面一行不透明像素）
+    return runs.filter(([a, b]) => (b - a + 1) * C >= 6).map(([a, b]) => {
+      const rx = Math.max(4, ((b - a + 1) * C) / 2 * 0.85);
+      return { x: it.x + m.x0 + ((a + b + 1) / 2) * C, y: gy - 3, rx, ry: Math.min(9, Math.max(4, rx * 0.3)) };
+    });
   }
   solid(x, y) {
     if (x < EDGE || x > MAP_W - EDGE || y < EDGE + 40 || y > MAP_H - EDGE + 20) return true;
@@ -506,8 +539,10 @@ export class World {
       const cy = s.y + s.fdy;
       if (((x - s.x) / rx) ** 2 + ((y - cy) / ry) ** 2 < 1) return true;
     }
+    for (const s of SITES) for (const [dx, dy, rx, ry] of s.feet ?? []) if (((x - s.x - dx) / rx) ** 2 + ((y - s.y - dy) / ry) ** 2 < 1) return true;
     for (const o of this.props) {
       if (o.buried) continue;
+      if (o.feet) { for (const f of o.feet) if (((x - f.x) / f.rx) ** 2 + ((y - f.y) / f.ry) ** 2 < 1) return true; continue; } // 有素材：按素材量出来的底座
       if (o.r && Math.hypot((x - o.x) / 1.3, y - o.y) < o.r) return true;
       if (o.rx && ((x - o.x) / o.rx) ** 2 + ((y - o.y) / o.ry) ** 2 < 1) return true;
     }
@@ -517,8 +552,8 @@ export class World {
       const [ex, ey] = this.entrance(st);
       if (Math.abs(x - ex) < 42 && y < ey + 4 && y > ey - 90) return true;
     }
-    // 守灯驿的人：脚下一小圈挡路，身后紧贴着的一段也挡（不然会整个人躲在他们身后）
-    for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9 || (Math.abs(x - n.x) < 13 && y < n.y && y > n.y - 26)) return true;
+    // 守灯驿的人：脚下一小圈挡路
+    for (const n of NPCS) if (Math.hypot((x - n.x) / 1.3, y - n.y) < 9) return true;
     return false;
   }
 
@@ -555,9 +590,7 @@ export class World {
     if (m > 1) { dx /= m; dy /= m; }
     const vx = dx * SPEED, vy = dy * SPEED * 0.8; // 纵向略慢：俯视角下看起来速度一致
     let moved = 0;
-    // 已经站在被盖住的地方（比如素材刚载好、站位点正好在遮挡里）：往盖得更少的方向走总是允许的，不会卡死
-    const hid = this.hiddenAt(h.x, h.y).f;
-    const can = (x, y) => !this.solid(x, y) && (this.hiddenAt(x, y).f <= HIDE_BLOCK || this.hiddenAt(x, y).f < hid - 0.01);
+    const can = (x, y) => !this.solid(x, y);
     if (Math.abs(vx) > 0.05 && can(h.x + vx, h.y)) { h.x += vx; moved += Math.abs(vx); }
     if (Math.abs(vy) > 0.05 && can(h.x, h.y + vy)) { h.y += vy; moved += Math.abs(vy); }
     if (Math.abs(dx) > 0.15) h.facing = Math.sign(dx);
@@ -771,7 +804,7 @@ export class World {
         c.fillRect(x0, y0, size, size);
       }, open ? 1 : 0.3);
     }
-    for (const d of DECALS) if (inChunk(d.x, d.y, 80)) A.props.draw(g, d.id, d.x, d.y, 1, d.flip);
+    for (const d of DECALS) if (!STAND_DECALS.has(d.id) && inChunk(d.x, d.y, 80)) A.props.draw(g, d.id, d.x, d.y, 1, d.flip);
   }
 
   // ---------- 绘制 ----------
