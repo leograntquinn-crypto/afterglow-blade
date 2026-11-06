@@ -138,3 +138,36 @@ mathematical gradient). No characters, no text, no borders.
 - `loot.js` 光柱改 `loot_beam`（按稀有度染色）；`props.js` 宝箱 / 泉水光改 `chest_glow` / `shrine_glow`。
 - `world.js` 地图光点改 `mote` / `ember`，封印暗雾改 `seal_fog`。
 - 验收：截图对比（战斗光照、技能演出、掉落、宝箱、门、大地图，桌面 + 手机）、全套测试、帧率。
+
+## 八、接入记录（子轮 F，2026-11-06）
+
+- **包**：`fx_light_v1.zip`（Release `assets-v8`，2 519 602 字节，sha256 `454347ef…8f73e6a9`），37 个文件，Muse 验货通过。
+- **构建**：`python3 -I tools/build_fx.py fx_textures_v1 fx_hero_v1 fx_boss_v1 fx_blade_v1 fx_light_v1` → 新增 `fx_light_tex`（19 张，桌面 160KB / 手机 60KB）和 `fx_light`（2 组 10 帧，20KB / 8KB）；原有图集重新构建逐字节不变。
+  - 屏幕层 `vignette`、`dim_hole`、`grain` 不裁边（整张铺满 / 平铺）。
+  - `grain` 交付时整张 alpha 是 24：浏览器画布按预乘 alpha 存像素，±10 的灰度起伏会被压成三四档，所以图集里存成不透明、JSON 记下原 alpha（无损，alpha 是常数）。
+- **一启动就载**（不等主角 / 战斗素材）：大地图的光照、光点、暗雾也要用；两套合计约 180KB。没载好时这些东西**不画**（第 14 项永久规则：不用代码画的替身），只有环境暗度。
+
+| 原来 | 现在 |
+|---|---|
+| `fx_tex.js` 代码生成的 `glow / core / streak / needle` | `glow_soft / glow_core / light_streak / spark_needle`（`makeGlow / makeCore / makeStreak / makeNeedle` 已删）。各处画法按原来的逻辑尺寸写缩放，每张记横竖两个换算系数，可见大小和原来一致 |
+| 斩痕的白芯（针芒） | `cut_mark` |
+| 余烬粒子（光核） | `ember` |
+| `post.js` 光照：径向渐变挖洞 | cookie 挖洞：`addLight` 加光的类型——通用 `light_round`、火光 `light_flame`（8 fps 换帧，每个火光相位错开）、提灯 / 灯塔 `light_lantern`、法术 / 深渊 / 试炼碑 / 地面预警 `light_magic`。手绘 cookie 收得比原来的渐变早，按「总亮度和原来一样」放大（通用 ×1.1、火 ×1.11、法术 ×1.1、提灯 ×1.31） |
+| 颗粒：启动时随机噪点 | `grain`（Canvas 和 WebGL 两条路都是），起伏按原来的强度换算（标准差 10 → 74） |
+| WebGL 合成里的暗角（smoothstep）和颗粒（hash） | 同一张 `vignette` / `grain` 贴图（上传一次，颗粒按 1:1 像素重复平铺） |
+| `cine.js` 压暗：径向渐变 | `dim_hole` 对准演出焦点（贴图半宽 345：洞边约 235、完全变暗约 310，和原来 110～360 相当），贴图外面用同色铺满 |
+| `cine.js` 集中线：针芒 | `light_streak`（针芒的亮芯太短太细，做集中线看不清） |
+| `draw.js` 暗角 | `vignette` 铺满画面 |
+| `draw.js` 门光、地面光带、出口箭头 | `door_light`（竖着做门光；横过来铺在地上做光带）、`exit_chevron`（朝右，西门镜像） |
+| `loot.js` 光柱 + 地上的椭圆圈 | `loot_beam` 6 帧（12 fps，按稀有度染色，高度按品质）+ 压扁的 `glow_soft` |
+| `loot.js` 回血光球、金币闪光 | `glow_soft` + `glow_core` |
+| `props.js` 宝箱未开的金光 / 打开的光 | 未开：`door_light` 染金色呼吸；打开：`chest_glow`（开盖那一下最亮） |
+| `props.js` 泉水的光柱和光点 | `shrine_glow` + `mote` |
+| `world.js` 地图光点（2×2 方块） | 深渊光点 `mote`、烽灯 / 灯塔火星 `ember` |
+| `world.js` 烽灯、灯塔的光晕 | `glow_warm` |
+| `world.js` 封印暗雾：径向渐变 | `seal_fog` 染成深紫黑 |
+| （顺带）`scenery.js` 火把火光和地面倒影、`main.js` 完美闪避的画面青边 | `glow_warm`、`vignette` 染青 |
+
+- **验收**：截图对比 `docs/fx_light_v1_cmp.jpg`（桌面）/ `docs/fx_light_v1_cmp_m.jpg`（手机）：每行左 v43 / 右本轮，依次是战斗光照、技能演出、掉落、宝箱 + 泉水、门、大地图三处（烽灯、封印、深渊）。WebGL 合成路径另外强制打开截图核对（无报错、没有退回 Canvas）。
+- **待 Quinn 看**：整体明暗（暗角比原来的渐变轻、集中在四角）、技能压暗的洞边更利落、掉落光柱的高度和亮度、封印暗雾的浓度。
+
