@@ -4,6 +4,7 @@
 // 数据驱动：每种喷发的参数写在 fx_data.js 的 EMIT 表里，这里只按表执行。
 // 贴图：fx_tex.js 启动时用代码画好的柔光贴图；画的时候只做 drawImage，不再每帧建渐变和路径。
 // 画质：lod（0.35～1）按比例减少粒子数量；上限 MAX 个，超出就不再喷新的。
+import { ribbonTex, drawRibbon } from './ribbon.js';
 import { GROUND_TOP, toScreen, FONT_NUM, FONT_TITLE, rand, REDUCED_MOTION } from './config.js';
 import { settings } from './settings.js';
 import { MOBILE } from './sprite.js';
@@ -619,34 +620,24 @@ export class FX {
     this.restore(ctx);
   }
 
-  // 新月形刀光：刀头在前一段时间里扫过 a0→a1（先快后慢），刀尾随后追上；中间最厚、两头尖。
-  // 三层：外层彩色光晕、主体、贴着外沿的白芯
+  // 新月形刀光：刀头在前一段时间里扫过 a0→a1（先快后慢），刀尾随后追上。
+  // 画法：刀光条带素材（fx_blade_v1，ribbon.js）沿弧铺开 —— 外沿（刀尖扫过的那条）最亮，往圆心方向渐暗；
+  // 尾巴是条带的旧端（散成光片），刀头是新端。素材没载好时不画（不再用代码画的纯色新月）
   drawArc(ctx, p, sx, sy, glowPass) {
     const age = p.max - p.life, T0 = p.max - 3;
     const head = easeOut(Math.min(1, age / Math.max(1, T0 * 0.4)));
     const tail = Math.max(0, (age - T0 * 0.25) / (T0 * 0.75 + 3)) ** 1.6;
     if (head - tail < 0.02) return;
+    const img = ribbonTex(p.w >= 14 ? 'heavy' : 'light');
+    if (!img) return;
     const fade = Math.min(1, (p.life / p.max) * 1.8);
-    const SEG = 16, da = p.a1 - p.a0;
-    const band = (outer, wMul, alpha, color) => {
-      ctx.globalAlpha = alpha * fade;
-      ctx.fillStyle = color;
-      ctx.beginPath();
-      for (let i = 0; i <= SEG; i++) {
-        const u = i / SEG, a = p.a0 + da * (tail + (head - tail) * u);
-        ctx.lineTo(sx + Math.cos(a) * (p.r0 + outer) * p.facing, sy + Math.sin(a) * (p.r0 + outer));
-      }
-      for (let i = SEG; i >= 0; i--) {
-        const u = i / SEG, a = p.a0 + da * (tail + (head - tail) * u);
-        const w = p.w * wMul * ((u ** 0.7 * (1 - u) ** 0.3) / 0.543);
-        ctx.lineTo(sx + Math.cos(a) * (p.r0 + outer - w) * p.facing, sy + Math.sin(a) * (p.r0 + outer - w));
-      }
-      ctx.closePath();
-      ctx.fill();
-    };
-    band(p.w * 0.25, 1.7, 0.35, p.color);
-    band(0, 1, 0.85, p.color);
-    if (!glowPass) band(-p.w * 0.05, 0.38, 0.95, '#ffffff');
+    const SEG = 16, da = p.a1 - p.a0, outer = p.r0 + p.w * 0.25, inner = Math.max(2, p.r0 - p.w * 1.7);
+    const pts = [];
+    for (let i = 0; i <= SEG; i++) {
+      const u = i / SEG, a = p.a0 + da * (tail + (head - tail) * u), c = Math.cos(a) * p.facing, sn = Math.sin(a);
+      pts.push({ ox: sx + c * outer, oy: sy + sn * outer, ix: sx + c * inner, iy: sy + sn * inner, u });
+    }
+    drawRibbon(ctx, img, pts, p.color, fade * (glowPass ? 0.6 : 1), glowPass ? 0 : 0.55);
   }
 
   drawTexts(ctx, camX) {

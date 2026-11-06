@@ -1,12 +1,14 @@
 """把特效素材包（afterglow.fxpack.v1）处理成游戏用的图集。
 
-python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录>
+python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录]
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
   fx_hero    FX-2 绯隼与通用序列帧（一直载入）
   fx_bone    FX-3 里骸骨统领的两组（骨刺、骨裂斩痕），只在第 1 关载入
   fx_warden  FX-3 里祭坛守护者的两组（魂火、召唤法阵），只在第 4 关载入
+  fx_blade_tex / fx_blade  刀光包 fx_blade_v1（docs/ART_FX_BLADE_V1.md）：条带贴图（不裁边，引擎按整条铺）和序列帧。
+             它里面的序列帧和 fx_hero 同名的（五组刀光）覆盖旧的：fx_hero 里就不再打包这几组
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -15,6 +17,7 @@ import numpy as np
 from PIL import Image
 
 TEX, HERO, BOSS = sys.argv[1:4]
+BLADE = sys.argv[4] if len(sys.argv) > 4 else None
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "fx")
 os.makedirs(OUT, exist_ok=True)
 GROUPS = {"fx_hero": None, "fx_bone": ["bone_spikes", "bone_rend"], "fx_warden": ["soul_fire", "summon_circle"]}
@@ -57,6 +60,44 @@ def save_atlas(name, items, width, meta):
     print(f"{name}: {width}×{h}，解码 {width * h * 4 / 2**20:.1f}MB，文件 {kb:.0f}KB，{len(items)} 块")
 
 
+def build_textures(name, root, m, keep_full=()):
+    """单张贴图：桌面原尺寸、手机 50%；keep_full 里的不裁透明边（刀光条带：引擎按整条的 UV 铺）"""
+    for suffix, sc in (("", 1.0), ("_m", 0.5)):
+        items, tex = [], {}
+        for t in m["textures"]:
+            im = Image.open(f"{root}/{t['file']}").convert("RGBA")
+            if sc != 1:
+                im = im.resize((round(im.width * sc), round(im.height * sc)), Image.LANCZOS)
+            if t["id"] in keep_full:
+                cut, (ox, oy) = im, (0, 0)
+            else:
+                cut, (ox, oy) = trim(im)
+            items.append((t["id"], cut))
+            tex[t["id"]] = {"blend": t["blend"], "anchor": t["anchor"], "full": [im.width, im.height], "off": [ox, oy]}
+        save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "tex": tex})
+
+
+def build_flipbooks(name, ids, fbs):
+    """序列帧：桌面交付尺寸 50%、手机 25%，每帧裁透明边"""
+    for suffix, sc in (("", 0.5), ("_m", 0.25)):
+        items, meta = [], {}
+        for fid in ids:
+            root, f = fbs[fid]
+            W, H = round(f["w"] * sc), round(f["h"] * sc)
+            frames = []
+            for i, fn in enumerate(f["frames"]):
+                im = Image.open(f"{root}/{fn}").convert("RGBA").resize((W, H), Image.LANCZOS)
+                cut, (ox, oy) = trim(im)
+                if cut is None:
+                    frames.append(None)  # 完全透明的帧：引擎照常计时，不画
+                    continue
+                key = f"{fid}_{i:02d}"
+                items.append((key, cut))
+                frames.append([key, ox, oy, cut.width, cut.height])
+            meta[fid] = {"w": W, "h": H, "anchor": f["anchor"], "fps": f.get("fps", 30), "loop": bool(f.get("loop")), "blend": f["blend"], "frames": frames}
+        save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
+
+
 # ---------- FX-1 单张贴图 ----------
 m = json.load(open(f"{TEX}/fx.json"))
 chips = json.load(open(f"{TEX}/docs/chip_regions.json"))
@@ -83,24 +124,16 @@ fbs = {}
 for root in (HERO, BOSS):
     for f in json.load(open(f"{root}/fx.json"))["flipbooks"]:
         fbs[f["id"]] = (root, f)
+blade = json.load(open(f"{BLADE}/fx.json")) if BLADE else None
+override = {f["id"] for f in blade["flipbooks"]} if blade else set()
 for name, ids in GROUPS.items():
-    ids = ids or [k for k, (r, _) in fbs.items() if r == HERO]
-    for suffix, sc in (("", 0.5), ("_m", 0.25)):
-        items, meta = [], {}
-        for fid in ids:
-            root, f = fbs[fid]
-            W, H = round(f["w"] * sc), round(f["h"] * sc)
-            frames = []
-            for i, fn in enumerate(f["frames"]):
-                im = Image.open(f"{root}/{fn}").convert("RGBA").resize((W, H), Image.LANCZOS)
-                cut, (ox, oy) = trim(im)
-                if cut is None:
-                    frames.append(None)  # 完全透明的帧：引擎照常计时，不画
-                    continue
-                key = f"{fid}_{i:02d}"
-                items.append((key, cut))
-                frames.append([key, ox, oy, cut.width, cut.height])
-            meta[fid] = {"w": W, "h": H, "anchor": f["anchor"], "fps": f.get("fps", 30), "loop": bool(f.get("loop")), "blend": f["blend"], "frames": frames}
-        save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
+    ids = ids or [k for k, (r, _) in fbs.items() if r == HERO and k not in override]
+    build_flipbooks(name, ids, fbs)
+
+# ---------- 刀光包 fx_blade_v1 ----------
+if blade:
+    build_textures("fx_blade_tex", BLADE, blade, keep_full={t["id"] for t in blade["textures"] if t["id"].startswith("blade_ribbon")})
+    bfbs = {f["id"]: (BLADE, f) for f in blade["flipbooks"]}
+    build_flipbooks("fx_blade", list(bfbs), bfbs)
 tot = sum(os.path.getsize(f"{OUT}/{f}") for f in os.listdir(OUT) if f.endswith(".webp"))
 print(f"合计 {tot / 1024:.0f}KB")
