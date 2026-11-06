@@ -11,6 +11,7 @@ import { VIEW_W, VIEW_H, GROUND_TOP, rand } from './config.js';
 import { shade } from './rig.js';
 import { MOBILE } from './sprite.js';
 import { propsS } from './props_sprites.js';
+import { drawLightTex } from './draw.js';
 
 export const THEMES = {
   crypt: {
@@ -337,11 +338,7 @@ export function drawScenery(ctx, camX, t, name = 'crypt', room = null) {
     const tx = i * 300 - par, ty = 160;
     const fl = 0.85 + Math.sin(t * 0.31 + i * 1.7) * 0.1 + Math.sin(t * 0.73 + i) * 0.06;
     torches.push([tx, ty, fl]);
-    const glow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 90 * fl);
-    glow.addColorStop(0, `rgba(${th.torch},0.35)`);
-    glow.addColorStop(1, `rgba(${th.torch},0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(tx - 100, ty - 100, 200, 200);
+    drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, ty, 300 * fl, 300 * fl, 0.35); // 火光：光照包 glow_warm（可见半径约 90）
     ctx.fillStyle = `rgba(${th.torch},0.9)`;
     ctx.beginPath();
     ctx.ellipse(tx, ty + 2, 7 * fl, 13 * fl, 0, 0, Math.PI * 2);
@@ -369,11 +366,7 @@ export function drawScenery(ctx, camX, t, name = 'crypt', room = null) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const [tx, , fl] of torches) {
-    const g = ctx.createRadialGradient(tx, GROUND_TOP + 30, 0, tx, GROUND_TOP + 30, 110 * fl);
-    g.addColorStop(0, `rgba(${th.torch},0.12)`);
-    g.addColorStop(1, `rgba(${th.torch},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(tx - 120, GROUND_TOP, 240, 150);
+    drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, GROUND_TOP + 30, 366 * fl, 150, 0.12); // 地面倒影：压扁的 glow_warm
   }
   ctx.restore();
   return torches;
@@ -676,11 +669,7 @@ function drawEnv(ctx, camX, t, name, room) {
 
   // 火焰（引擎画，会动，也是光照系统的光源）
   for (const [tx, ty, fl2] of torches) {
-    const glow = ctx.createRadialGradient(tx, ty, 0, tx, ty, 90 * fl2);
-    glow.addColorStop(0, `rgba(${th.torch},0.35)`);
-    glow.addColorStop(1, `rgba(${th.torch},0)`);
-    ctx.fillStyle = glow;
-    ctx.fillRect(tx - 100, ty - 100, 200, 200);
+    drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, ty, 300 * fl2, 300 * fl2, 0.35); // 火光：光照包 glow_warm（可见半径约 90）
     ctx.fillStyle = `rgba(${th.torch},0.9)`;
     ctx.beginPath();
     ctx.ellipse(tx, ty - 6, 6 * fl2, 12 * fl2, 0, 0, Math.PI * 2);
@@ -700,11 +689,7 @@ function drawEnv(ctx, camX, t, name, room) {
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
   for (const [tx, , fl2] of torches) {
-    const g = ctx.createRadialGradient(tx, GROUND_TOP + 30, 0, tx, GROUND_TOP + 30, 110 * fl2);
-    g.addColorStop(0, `rgba(${th.torch},0.12)`);
-    g.addColorStop(1, `rgba(${th.torch},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(tx - 120, GROUND_TOP, 240, 150);
+    drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, GROUND_TOP + 30, 366 * fl2, 150, 0.12); // 地面倒影：压扁的 glow_warm
   }
   ctx.restore();
   return torches;

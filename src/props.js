@@ -1,8 +1,9 @@
 // 房间里的道具：宝箱（打 3 下打开）、泉水（靠近恢复）
 // 它们放在 game.enemies 里，这样玩家的攻击判定能打到宝箱；alive = false 让它们不影响清场判断。
-import { toScreen, hexA } from './config.js';
+import { toScreen } from './config.js';
 import { sfx } from './audio.js';
 import { propsS, propsL, drawProp, PROP_SCALE } from './props_sprites.js';
+import { drawLightTex } from './draw.js';
 
 export class Chest {
   constructor(x, y, opened = false) {
@@ -41,18 +42,9 @@ export class Chest {
     this.drawBody(ctx, sx, sy);
     if (this.opened) this.drawOpenGlow(ctx, sx, sy);
   }
-  // 未开启时向上冒金光，提示可以互动
+  // 未开启时向上冒金光，提示可以互动（光照包 door_light 的竖直光幕，染成金色、轻轻呼吸）
   drawGlow(ctx, sx, sy, t) {
-    {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      const g = ctx.createLinearGradient(0, sy - 120, 0, sy);
-      g.addColorStop(0, hexA('#ffd65a', 0));
-      g.addColorStop(1, hexA('#ffd65a', 0.22 + 0.08 * Math.sin(t * 0.08)));
-      ctx.fillStyle = g;
-      ctx.fillRect(sx - 30, sy - 120, 60, 120);
-      ctx.restore();
-    }
+    drawLightTex(ctx, 'door_light', '#ffd65a', sx, sy, 90, 130, 0.5 + 0.18 * Math.sin(t * 0.08));
   }
   // 程序画的箱子（素材没载入时）
   drawBody(ctx, sx, sy) {
@@ -84,16 +76,10 @@ export class Chest {
     ctx.fillRect(22, -18, 8, 18);
     ctx.restore();
   }
+  // 打开：光照包 chest_glow（往上喷的扇形光）。开盖那一下最亮，之后留一层柔光
   drawOpenGlow(ctx, sx, sy) {
-    {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      ctx.fillStyle = hexA('#ffd65a', 0.3);
-      ctx.beginPath();
-      ctx.ellipse(sx, sy - 28, 22, 6, 0, 0, Math.PI * 2);
-      ctx.fill();
-      ctx.restore();
-    }
+    const k = this.openT == null ? 0 : Math.max(0, 1 - this.openT / 40);
+    drawLightTex(ctx, 'chest_glow', '#ffd65a', sx, sy - 18, 150 + 60 * k, 150 + 60 * k, 0.45 + 0.9 * k);
   }
 }
 
@@ -145,25 +131,12 @@ export class Shrine {
     ctx.fill();
     if (!this.used) this.drawSparkle(ctx, sx, sy, t);
   }
+  // 泉水的光：光照包 shrine_glow（往上的光雾）+ 几个往上飘的光点（mote）
   drawSparkle(ctx, sx, sy, t) {
-    {
-      ctx.save();
-      ctx.globalCompositeOperation = 'lighter';
-      for (let i = 0; i < 5; i++) {
-        const ph = (t * 0.02 + i / 5) % 1;
-        ctx.globalAlpha = (1 - ph) * 0.7;
-        ctx.fillStyle = '#b8ffd0';
-        ctx.beginPath();
-        ctx.arc(sx + Math.sin(i * 2.3 + t * 0.03) * 18, sy - 30 - ph * 70, 2.5, 0, Math.PI * 2);
-        ctx.fill();
-      }
-      const g = ctx.createLinearGradient(0, sy - 110, 0, sy - 20);
-      g.addColorStop(0, hexA('#6fe38a', 0));
-      g.addColorStop(1, hexA('#6fe38a', 0.25));
-      ctx.globalAlpha = 1;
-      ctx.fillStyle = g;
-      ctx.fillRect(sx - 26, sy - 110, 52, 90);
-      ctx.restore();
+    drawLightTex(ctx, 'shrine_glow', '#6fe38a', sx, sy - 24, 150, 150, 0.85 + 0.15 * Math.sin(t * 0.05));
+    for (let i = 0; i < 5; i++) {
+      const ph = (t * 0.02 + i / 5) % 1;
+      drawLightTex(ctx, 'mote', '#b8ffd0', sx + Math.sin(i * 2.3 + t * 0.03) * 18, sy - 30 - ph * 70, 12, 12, (1 - ph) * 0.9);
     }
   }
 }

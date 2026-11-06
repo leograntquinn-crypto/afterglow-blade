@@ -7,6 +7,9 @@
 //
 // 画质：2 = 两级泛光 + 扭曲 + 色差 + 颗粒；1 = 一级泛光 + 扭曲；0 = 不用 WebGL（退回 Canvas）
 
+import { lightTex } from './fx_art.js';
+import { GRAIN_GAIN } from './post.js';
+
 const VS = `
 attribute vec2 aPos;
 varying vec2 vUv;
@@ -57,13 +60,14 @@ void main() {
   gl_FragColor = vec4(c * 0.25, 1.0);
 }`;
 
-// 合成：扭曲 → 色差 → 泛光 → 调色（柔光叠主题色 + 一点 S 曲线和饱和度）→ 暗角 → 颗粒
+// 合成：扭曲 → 色差 → 泛光 → 调色（柔光叠主题色 + 一点 S 曲线和饱和度）→ 暗角 → 颗粒（暗角、颗粒是光照包的贴图）
 const NS = 6; // 同时最多几道冲击波
 const FS_FINAL = `
 precision mediump float;
 varying vec2 vUv;
-uniform sampler2D uScene, uB1, uB2;
-uniform float uAspect, uTime, uChroma, uBloom1, uBloom2, uGradeAmt, uSat, uContrast, uVig, uGrain;
+uniform sampler2D uScene, uB1, uB2, uVigT, uGrainT;
+uniform vec2 uGrainK, uGrainO;
+uniform float uAspect, uChroma, uBloom1, uBloom2, uGradeAmt, uSat, uContrast, uVig, uGrain;
 uniform vec3 uGrade;
 uniform vec4 uShock[${NS}]; // x, y（0～1，左上为原点）, 半径, 强度（0 = 无）
 uniform float uShockW[${NS}];
@@ -71,7 +75,6 @@ uniform vec2 uChromaC;
 vec3 softLight(vec3 b, vec3 s) {
   return mix(2.0 * b * s + b * b * (1.0 - 2.0 * s), sqrt(b) * (2.0 * s - 1.0) + 2.0 * b * (1.0 - s), step(0.5, s));
 }
-float hash(vec2 p) { return fract(sin(dot(p, vec2(12.9898, 78.233))) * 43758.5453); }
 void main() {
   vec2 uv = vec2(vUv.x, 1.0 - vUv.y);
   // 冲击波：环附近的像素沿径向被推开（像透过一圈气浪看背景）
@@ -101,9 +104,9 @@ void main() {
   col = mix(col, col * col * (3.0 - 2.0 * col), uContrast);
   float l = dot(col, vec3(0.299, 0.587, 0.114));
   col = mix(vec3(l), col, uSat);
-  vec2 vc = (vUv - 0.5) * vec2(uAspect, 1.0);
-  col *= 1.0 - uVig * smoothstep(0.45, 1.05, length(vc));
-  col += (hash(vUv * 937.0 + uTime) - 0.5) * uGrain;
+  // 暗角、颗粒：光照包的 vignette / grain 贴图（没载好时 uVig、uGrain 为 0）
+  col *= 1.0 - uVig * texture2D(uVigT, uv).a;
+  col += (texture2D(uGrainT, uv * uGrainK + uGrainO).r - 0.5) * uGrain;
   gl_FragColor = vec4(col, 1.0);
 }`;
 
@@ -185,6 +188,20 @@ export class GLPost {
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
     return t;
   }
+  // 光照包的暗角、颗粒贴图：载好后上传一次（颗粒 256 / 手机 128，是 2 的幂，可以重复平铺）
+  artTex() {
+    if (this.art) return this.art;
+    const vig = lightTex('vignette'), grain = lightTex('grain');
+    if (!vig || !grain) return null;
+    const gl = this.gl, up = (img, wrap) => {
+      const t = this.tex();
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, wrap);
+      gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, wrap);
+      gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, img);
+      return t;
+    };
+    return (this.art = { vig: up(vig, gl.CLAMP_TO_EDGE), grain: up(grain, gl.REPEAT), gw: grain.width });
+  }
   // 离屏缓冲（泛光用的 1/4、1/8 分辨率），尺寸变了才重建
   target(name, w, h) {
     const gl = this.gl;
@@ -262,7 +279,6 @@ export class GLPost {
         this.bind(1, A.t, u.uB1);
         this.bind(2, C.t, u.uB2);
         gl.uniform1f(u.uAspect, W / H);
-        gl.uniform1f(u.uTime, (o.time % 1000) * 0.137);
         gl.uniform1f(u.uChroma, o.quality > 1 ? o.chroma || 0 : 0);
         gl.uniform2f(u.uChromaC, ...(o.chromaC || [0.5, 0.5]));
         gl.uniform1f(u.uBloom1, 0.55);
@@ -271,8 +287,16 @@ export class GLPost {
         gl.uniform1f(u.uGradeAmt, 0.32);
         gl.uniform1f(u.uSat, 1.06);
         gl.uniform1f(u.uContrast, 0.12);
-        gl.uniform1f(u.uVig, 0.55);
-        gl.uniform1f(u.uGrain, o.quality > 1 ? 0.045 : 0);
+        const art = this.artTex();
+        this.bind(3, art ? art.vig : this.scene, u.uVigT);
+        this.bind(4, art ? art.grain : this.scene, u.uGrainT);
+        gl.uniform1f(u.uVig, art ? 1 : 0);
+        // 颗粒：贴图按 1:1 像素平铺、每帧换个偏移；强度按原来的随机噪点换算（GRAIN_GAIN，见 post.js）
+        gl.uniform1f(u.uGrain, art && o.quality > 1 ? 0.045 * GRAIN_GAIN : 0);
+        if (art) {
+          gl.uniform2f(u.uGrainK, W / art.gw, H / art.gw);
+          gl.uniform2f(u.uGrainO, ((o.time * 73) % art.gw) / art.gw, ((o.time * 151) % art.gw) / art.gw);
+        }
         gl.uniform4fv(u.uShock, this.shock);
         gl.uniform1fv(u.uShockW, this.shockW);
       });

@@ -14,6 +14,7 @@ import { drawFighter } from './rig.js';
 import { settings } from './settings.js';
 import { sfx } from './audio.js';
 import { WORLD_ART, maskCover } from './world_art.js';
+import { lightTex } from './fx_art.js';
 import { releaseBoot } from './boot.js';
 import { NPCS, INSCRIPTIONS, SPEAKERS, worldSave, hasNew, pendingEvents, progress, TALKS, BEACON_LINES, TRIAL_LINES, ENDING_LINES } from './world_story.js';
 
@@ -686,10 +687,10 @@ export class World {
       if (f > 30) continue;
       const G = WORLD_ART.ready ? GEO.art : GEO.placeholder; // 火星从光的位置喷出（素材和占位的高度不同）
       const s = site(k), [x, y, z, c] = k === 'camp' ? [s.x, s.y, G.lantern, '#ffd27a'] : k === 'trial' ? [s.x, s.y, G.trialZ, '#7ff3ff'] : [s.beacon[0], s.beacon[1], G.flame, '#ffb45a'];
-      for (let i = 0; i < 3; i++) this.motes.push({ x: x + (Math.random() - 0.5) * 30, y, z: z + (Math.random() - 0.5) * 20, vz: 0.8 + Math.random() * 2, life: 70, max: 70, c });
+      for (let i = 0; i < 3; i++) this.motes.push({ x: x + (Math.random() - 0.5) * 30, y, z: z + (Math.random() - 0.5) * 20, vz: 0.8 + Math.random() * 2, life: 70, max: 70, c, fire: k !== 'trial' });
     }
     const fz = (WORLD_ART.ready ? GEO.art : GEO.placeholder).flame;
-    for (const s of SITES) if (this.lit(s) && t % 9 === 0) this.motes.push({ x: s.beacon[0] + (Math.random() - 0.5) * 8, y: s.beacon[1], z: fz, vz: 0.6 + Math.random() * 0.5, life: 60, max: 60, c: '#ffb45a' });
+    for (const s of SITES) if (this.lit(s) && t % 9 === 0) this.motes.push({ x: s.beacon[0] + (Math.random() - 0.5) * 8, y: s.beacon[1], z: fz, vz: 0.6 + Math.random() * 0.5, life: 60, max: 60, c: '#ffb45a', fire: true });
     for (const m of this.motes) { m.z += m.vz; m.x += Math.sin((t + m.y) * 0.03) * 0.3; m.life--; }
     this.motes = this.motes.filter((m) => m.life > 0);
   }
@@ -851,9 +852,15 @@ export class World {
       const [ex, ey] = this.entrance(st);
       list.push({ y: (art ? ey : st.y) + 0.01, d: () => {
         const [x, y] = scr(ex, ey - 22);
-        const fog = ctx.createRadialGradient(x, y - 10, 4, x, y - 10, 90);
-        fog.addColorStop(0, 'rgba(8,6,12,.75)'); fog.addColorStop(1, 'rgba(8,6,12,0)');
-        ctx.fillStyle = fog; ctx.fillRect(x - 90, y - 100, 180, 180);
+        // 暗雾：光照包 seal_fog（普通混合），染成深紫黑，慢慢起伏
+        const fog = lightTex('seal_fog');
+        if (fog) {
+          const img = tinted(fog, '#120a1c'), k = (220 / fog.fw) * (1 + 0.04 * Math.sin(t * 0.03 + ex));
+          ctx.save();
+          ctx.globalAlpha = 0.85;
+          ctx.drawImage(img, x - fog.cx * k, y - 10 - fog.cy * k, fog.width * k, fog.height * k);
+          ctx.restore();
+        }
         if (art) L.draw(ctx, 'seal', x, y, SEAL_S);
         else this.blit(ctx, this.art_('seal'), x, y + 30);
       } });
@@ -873,20 +880,20 @@ export class World {
     const full = this.ended(), cf = this.flare.camp;
     const burst = (f) => (f == null ? 0 : Math.max(0, 1 - f / 50));
     const G = art ? GEO.art : GEO.placeholder;
-    lights.push([...scr(camp.x, camp.y - 120), full ? 560 : 300 + lit * 40, full ? 1 : 0.7 + lit * 0.06]);
-    glows.push({ x: camp.x, y: camp.y, z: G.lantern, r: (full ? 22 : 10 + lit * 2) * (1 + burst(cf) * 2.5), c: '#ffd27a', a: full ? 1 : 0.6 + lit * 0.08 });
-    lights.push([...scr(...G.abyss), 380, 0.42]); // 深渊往上透的光
+    lights.push([...scr(camp.x, camp.y - 120), full ? 560 : 300 + lit * 40, full ? 1 : 0.7 + lit * 0.06, 'lantern']);
+    glows.push({ x: camp.x, y: camp.y, z: G.lantern, r: (full ? 22 : 10 + lit * 2) * (1 + burst(cf) * 2.5), c: '#ffd27a', a: full ? 1 : 0.6 + lit * 0.08, warm: true });
+    lights.push([...scr(...G.abyss), 380, 0.42, 'magic']); // 深渊往上透的光
     for (const st of SITES) {
       if (this.lit(st)) {
         // 刚点亮：火苗从小到大、先闪一下，光慢慢铺开
         const f = this.flare[st.id], grow = f == null ? 1 : Math.min(1, f / 40);
-        lights.push([...scr(st.beacon[0], st.beacon[1], G.flame * 0.8), 300 * (0.3 + 0.7 * grow), 1]);
+        lights.push([...scr(st.beacon[0], st.beacon[1], G.flame * 0.8), 300 * (0.3 + 0.7 * grow), 1, 'flame']);
         glows.push({ x: st.beacon[0], y: st.beacon[1], z: G.flame, r: 16 * (0.4 + 0.6 * grow) * (1 + burst(f) * 2), c: '#ffb45a', a: 1, flicker: true });
       }
       if (st.kind === 'stage' && this.unlocked(st)) { const [ex, ey] = this.entrance(st); lights.push([...scr(ex, ey - 30), 150, 0.5]); }
       if (st.kind === 'trial' && this.trialAwake()) {
         const f = this.flare.trial, grow = f == null ? 1 : Math.min(1, f / 60);
-        lights.push([...scr(st.x, st.y, G.trialZ), 150 * (0.3 + 0.7 * grow), 0.5 + burst(f) * 0.5]);
+        lights.push([...scr(st.x, st.y, G.trialZ), 150 * (0.3 + 0.7 * grow), 0.5 + burst(f) * 0.5, 'magic']);
         glows.push({ x: st.x + G.trialDx, y: st.y, z: G.trialZ, r: 9 * (1 + burst(f) * 2), c: '#7ff3ff', a: (0.55 + 0.2 * Math.sin(t * 0.05)) * grow, rune: G.rune });
       }
       if (st.kind === 'training') lights.push([...scr(st.x, st.y - 40), 120, 0.35]);
@@ -909,10 +916,11 @@ export class World {
     for (const g of this.frameGlows) {
       const [x, y] = scr(g.x, g.y, g.z), f = g.flicker ? 0.85 + 0.15 * Math.sin(t * 0.37 + g.x) : 1;
       ctx.globalAlpha = g.a * f;
-      const r = g.r * 3.2 * f;
-      ctx.drawImage(tinted(T.glow, g.c), x - r, y - r, r * 2, r * 2);
+      if (!T.light) continue;
+      const warm = g.flicker || g.warm, r = g.r * (warm ? 2.5 : 3.2) * f; // 火光（烽灯、灯塔）用 glow_warm：它中心更集中、外圈更亮，画小一点
+      ctx.drawImage(tinted(warm ? T.warm : T.glow, g.c), x - r, y - r, r * 2, r * 2);
       ctx.globalAlpha = Math.min(1, g.a * 1.2);
-      ctx.drawImage(tinted(T.core ?? T.glow, '#fff2d0'), x - g.r * 0.5, y - g.r * 0.8, g.r, g.r * 1.2);
+      ctx.drawImage(tinted(T.core, '#fff2d0'), x - g.r * 0.5, y - g.r * 0.8, g.r, g.r * 1.2);
       if (g.rune) {
         ctx.globalAlpha = g.a * 0.8;
         ctx.strokeStyle = '#7ff3ff';
@@ -921,12 +929,13 @@ export class World {
         for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(x, y + r0 + k * step, w - k, 3.5, 0, 0, Math.PI); ctx.stroke(); }
       }
     }
-    for (const m of this.motes) {
+    // 光点：深渊冒的光用 mote，烽灯 / 灯塔的火星用 ember（光照包，按颜色染色）
+    if (T.light) for (const m of this.motes) {
       const [x, y] = scr(m.x, m.y, m.z);
       if (x < -10 || x > VIEW_W + 10 || y < -10 || y > VIEW_H + 10) continue;
-      ctx.globalAlpha = Math.min(1, m.life / 30, (m.max - m.life) / 20) * 0.8;
-      ctx.fillStyle = m.c;
-      ctx.fillRect(x, y, 2, 2);
+      ctx.globalAlpha = Math.min(1, m.life / 30, (m.max - m.life) / 20) * 0.9;
+      const img = tinted(m.fire ? T.ember : T.mote, m.c), s = m.fire ? 9 : 8;
+      ctx.drawImage(img, x - s / 2, y - s / 2, s, s);
     }
     ctx.restore();
   }

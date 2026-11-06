@@ -1,21 +1,30 @@
 // 绘制：门、阴影、暗角（场景本身在 scenery.js）
 import { VIEW_W, VIEW_H, GROUND_TOP, DEPTH, world } from './config.js';
 import { propsL, drawProp, PROP_SCALE } from './props_sprites.js';
+import { lightTex } from './fx_art.js';
+import { tinted } from './fx_tex.js';
+
+// 光照包 fx_light_v1 的一张发光贴图，按「原画布」的锚点画：(x, y) 是锚点的位置，w × h 是原画布铺开的大小
+// （贴图裁过透明边，cx / cy / fw / fh 记着它在原画布里的位置）。没载好就不画
+export function drawLightTex(ctx, id, color, x, y, w, h, alpha = 1) {
+  const img = lightTex(id);
+  if (!img || alpha <= 0) return;
+  const kx = w / img.fw, ky = h / img.fh;
+  ctx.save();
+  ctx.globalCompositeOperation = 'lighter';
+  ctx.globalAlpha *= alpha;
+  ctx.drawImage(color ? tinted(img, color) : img, x - img.cx * kx, y - img.cy * ky, img.width * kx, img.height * ky);
+  ctx.restore();
+}
+const rgb = (c) => `rgb(${c})`;
 
 // 铁栅门（ENV-3 素材）：没清完是关着的（红光），清完升起（0.5 秒）后变青光。没载入素材时退回程序画的拱门
 function drawGate(ctx, x, room, open, t) {
   if (!propsL.ready) return false;
   const i = !open ? 0 : room.openedAt == null ? 7 : Math.min(7, 1 + Math.floor((t - room.openedAt) / 5));
   const c = open ? '127,243,255' : '255,77,94';
-  ctx.save();
-  ctx.globalCompositeOperation = 'lighter';
-  const top = GROUND_TOP - 120;
-  const g = ctx.createLinearGradient(0, top, 0, GROUND_TOP);
-  g.addColorStop(0, `rgba(${c},0)`);
-  g.addColorStop(1, `rgba(${c},${open ? 0.4 : 0.2})`);
-  ctx.fillStyle = g;
-  ctx.fillRect(x - 40, top, 80, GROUND_TOP - top);
-  ctx.restore();
+  // 门光：光照包的 door_light（竖直的光幕，底部最亮往上渐隐），锚点在底部中心
+  drawLightTex(ctx, 'door_light', rgb(c), x, GROUND_TOP, 110, 200, open ? 0.75 : 0.4);
   drawProp(ctx, propsL, 'gate', i, x, GROUND_TOP + 4, { scale: PROP_SCALE.gate });
   return true;
 }
@@ -40,11 +49,7 @@ function drawArch(ctx, x, w, top, open, t) {
   ctx.save();
   archPath(ctx, x, w, top);
   ctx.clip();
-  const g = ctx.createLinearGradient(0, top, 0, GROUND_TOP);
-  g.addColorStop(0, `rgba(${c},0)`);
-  g.addColorStop(1, `rgba(${c},${open ? 0.45 : 0.18})`);
-  ctx.fillStyle = g;
-  ctx.fillRect(x - w / 2, top, w, GROUND_TOP - top);
+  drawLightTex(ctx, 'door_light', rgb(c), x, GROUND_TOP, w * 1.4, (GROUND_TOP - top) * 1.3, open ? 0.8 : 0.35);
   if (!open) {
     ctx.strokeStyle = '#3a3440';
     ctx.lineWidth = 4;
@@ -72,23 +77,32 @@ export function drawDoors(ctx, camX, room, t) {
     const edge = (d === 'w' ? 0 : world.w) - camX;
     const inward = d === 'w' ? 1 : -1;
     if (!drawGate(ctx, edge + inward * 64, room, open, t)) drawArch(ctx, edge + inward * 52, 70, 170, open, t);
-    // 地面光带
-    const g = ctx.createLinearGradient(edge, 0, edge + inward * 90, 0);
-    g.addColorStop(0, `rgba(${c},${0.32 * pulse})`);
-    g.addColorStop(1, `rgba(${c},0)`);
-    ctx.fillStyle = g;
-    ctx.fillRect(Math.min(edge, edge + inward * 90), GROUND_TOP - 4, 90, DEPTH + 10);
-    if (open) {
-      ctx.fillStyle = `rgba(${c},${0.5 + 0.4 * pulse})`;
+    // 地面光带：door_light 横过来铺在地上（底部 = 门口最亮，往房间里渐隐）
+    const band = lightTex('door_light');
+    if (band) {
+      const L = 110, H = DEPTH + 10, kx = L / band.fh, ky = H / band.fw;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = 0.55 * pulse;
+      ctx.translate(edge, GROUND_TOP - 4 + H / 2);
+      ctx.rotate(inward > 0 ? Math.PI / 2 : -Math.PI / 2); // 光幕的「往上」转成「往房间里」
+      ctx.scale(ky, kx);
+      ctx.drawImage(tinted(band, rgb(c)), -band.cx, -band.cy, band.width, band.height);
+      ctx.restore();
+    }
+    // 出口箭头：光照包的 exit_chevron（朝右，往西的门镜像），三个依次往外流
+    const chev = lightTex('exit_chevron');
+    if (open && chev) {
+      const ay = GROUND_TOP + DEPTH / 2, sz = 26;
       for (let i = 0; i < 3; i++) {
         const ax = edge + inward * (70 - i * 16 + ((t * 0.6) % 16));
-        const ay = GROUND_TOP + DEPTH / 2;
-        ctx.beginPath();
-        ctx.moveTo(ax, ay - 10);
-        ctx.lineTo(ax - inward * 10, ay);
-        ctx.lineTo(ax, ay + 10);
-        ctx.lineTo(ax - inward * 4, ay);
-        ctx.fill();
+        ctx.save();
+        ctx.globalCompositeOperation = 'lighter';
+        ctx.globalAlpha = 0.55 + 0.4 * pulse;
+        ctx.translate(ax, ay);
+        ctx.scale((-inward * sz) / chev.fw, sz / chev.fh);
+        ctx.drawImage(tinted(chev, rgb(c)), -chev.cx, -chev.cy);
+        ctx.restore();
       }
     }
   }
@@ -114,12 +128,11 @@ export function drawDoors(ctx, camX, room, t) {
   }
 }
 
+// 暗角：光照包的 vignette（中间透明、四周渐暗、带笔刷质感），铺满画面。没载好就不画
 export function drawVignette(ctx) {
-  const g = ctx.createRadialGradient(VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.35, VIEW_W / 2, VIEW_H / 2, VIEW_H * 0.95);
-  g.addColorStop(0, 'rgba(0,0,0,0)');
-  g.addColorStop(1, 'rgba(0,0,0,0.55)');
-  ctx.fillStyle = g;
-  ctx.fillRect(0, 0, VIEW_W, VIEW_H);
+  const img = lightTex('vignette');
+  if (!img) return;
+  ctx.drawImage(img, 0, 0, VIEW_W, VIEW_H);
 }
 
 export function drawShadow(ctx, ent, camX) {

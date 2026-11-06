@@ -131,7 +131,7 @@ export class FX {
       if (d.type === 'smoke') p.img = tinted(pick(T.smoke), color, 'mul');
       else if (d.type === 'chip') p.img = tinted(pick(T.chip), color, 'mul');
       else if (d.type === 'spark') p.tx = tintRamp(T.streak, rp);
-      else if (d.type === 'ember') p.tx = tintRamp(T.core, rp);
+      else if (d.type === 'ember') p.tx = tintRamp(T.ember, rp);
       else if (d.type === 'glow') p.tx = tintRamp(T.glow, rp);
     }
   }
@@ -336,8 +336,8 @@ export class FX {
   // 手绘贴图带着换算系数 u（让它和原来的占位贴图一样大）和锚点 cx, cy（裁过透明边的图，锚点不在正中）
   put(ctx, img, x, y, rot, kx, ky, ax, ay) {
     if (ax === undefined) { ax = img.cx ?? img.width / 2; ay = img.cy ?? img.height / 2; }
-    const u = img.u || 1, cs = Math.cos(rot), sn = Math.sin(rot);
-    kx *= u; ky *= u;
+    const cs = Math.cos(rot), sn = Math.sin(rot);
+    kx *= img.ux ?? img.u ?? 1; ky *= img.uy ?? img.u ?? 1; // 换算系数：手绘图按原来的逻辑尺寸画（见 fx_tex.js）
     this.putM(ctx, img, x, y, cs * kx, sn * kx, -sn * ky, cs * ky, ax, ay);
   }
   // 任意 2×2 局部变换（la lb lc ld）+ 平移，叠在世界变换上
@@ -488,10 +488,11 @@ export class FX {
           const len = Math.max(p.size * 2.5, sp * p.stretch * 1.6), wid = p.size * curve(p.sizeC, t);
           const rot = Math.atan2(-p.vz + p.vy * 0.5, p.vx);
           ctx.globalAlpha = a;
-          this.put(ctx, p.tx[ci], sx, sy, rot, len / 58, (wid * 2.6) / 16, 58, 8);
+          const st = p.tx[ci];
+          this.put(ctx, st, sx, sy, rot, len / 58, (wid * 2.6) / 16, st.width * 0.906, st.height / 2); // 锚点在前端：光条拖在身后
           if (t < 0.45 && !glowPass) {
             ctx.globalAlpha = a * (1 - t / 0.45);
-            this.put(ctx, T.needle, sx, sy, rot, (len * 0.8) / 128, (wid * 0.5) / 6, 118, 6);
+            this.put(ctx, T.needle, sx, sy, rot, (len * 0.8) / 128, (wid * 0.5) / 6, T.needle.width * 0.92, T.needle.height / 2);
           }
           break;
         }
@@ -544,7 +545,8 @@ export class FX {
           const s = p.size * curve(p.sizeC, t);
           const rot = Math.atan2(p.oz, -p.ox); // 指向中心
           ctx.globalAlpha = a;
-          this.put(ctx, p.tx[ci], x, y, rot, (8 + 30 * t) / 58, (s * 2.4) / 16, 58, 8);
+          const st = p.tx[ci];
+          this.put(ctx, st, x, y, rot, (8 + 30 * t) / 58, (s * 2.4) / 16, st.width * 0.906, st.height / 2);
           this.put(ctx, p.tx2[ci], x, y, 0, (s * 4) / 64, (s * 4) / 64);
           break;
         }
@@ -555,7 +557,7 @@ export class FX {
           this.put(ctx, p.img, sx, sy, p.angle, len / 64, (w * 2.2) / 64);
           if (!glowPass) {
             ctx.globalAlpha = Math.min(1, (1 - t) * 1.8);
-            this.put(ctx, T.needle, sx, sy, p.angle, len / 128, (w * 0.55) / 6);
+            this.put(ctx, T.cut, sx, sy, p.angle, len / 128, (w * 0.55) / 6); // 斩痕：光照包的 cut_mark
             if (age < 3) {
               ctx.globalAlpha = (1 - age / 3) * 0.8;
               this.put(ctx, T.flare, sx, sy, p.angle * 0.5, 0.4, 0.4);
