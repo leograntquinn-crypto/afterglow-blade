@@ -16,6 +16,7 @@ import { World, drawWorldTitle, site } from './world.js';
 import { AI } from './ai.js';
 import { WORLD_ART } from './world_art.js';
 import { releaseBoot } from './boot.js';
+import { STAMINA } from './stamina_data.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
@@ -1020,6 +1021,7 @@ class Game {
   }
 
   perfectDodge() {
+    this.player.gainStamina(STAMINA.perfect); // 耐力返还（stamina_data.js）
     this.tr('perfect');
     this.quest('perfect');
     this.markOn('dodge', 180);
@@ -1052,6 +1054,7 @@ class Game {
   }
 
   parry(e) {
+    this.player.gainStamina(STAMINA.parry);
     this.tr('parry');
     this.quest('parry');
     this.refundCooldowns();

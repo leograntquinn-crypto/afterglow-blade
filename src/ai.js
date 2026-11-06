@@ -8,6 +8,7 @@
 //   5. 连段保护（导演）
 //   6. 数据化（ai_data.js）
 // 执行层（预警、出招、受击）还是 enemy.js 原来那一套，这里只决定「下一步做什么」。
+import { STAMINA } from './stamina_data.js';
 import { AI_PROFILES, DIRECTOR, FEINT, HABITS } from './ai_data.js';
 import { VIEW_W, DEPTH, world, clamp, toScreen, FONT_UI } from './config.js';
 
@@ -72,6 +73,7 @@ export class AI {
       air: p.z > 0,
       parry: (p.parryT ?? 0) > 0,
       landing: !!prev?.air && p.z <= 0, // 这一帧刚落地
+      winded: (p.sta ?? STAMINA.max) < STAMINA.dodge, // 耐力不够闪避了（耐力条在画面上看得到：闪红 / 偏黄）
     };
     this.habits.observe(this.hist[this.f % HIST], prev);
     this.f++;
@@ -372,7 +374,7 @@ export const BRAINS = {
         const threat = facingMe && adx < P.backoff && (closing || s.attacking);
         const onFlankSide = side === A.flankSide;
         const sc = {
-          press: W.press * (canPress ? 1 : 0.15) * (A.pressBoost(e) ? 2 : 1) * (role === 'ring' ? 0.35 : 1),
+          press: W.press * (canPress ? 1 : 0.15) * (A.pressBoost(e) ? 2 : 1) * (role === 'ring' ? 0.35 : 1) * (s.winded ? 1.4 : 1), // 你喘息时更敢压上
           space: W.space * (canPress ? 0.45 : 1) + (threat ? 0.4 : 0),
           retreat: W.retreat * (threat && e.hp < e.maxHp * 0.35 ? 1.4 : 0.05),
           strafe: W.strafe * (s.charging && facingMe && Math.abs(dy) < 30 ? 1.6 : 0.02),

@@ -1,4 +1,5 @@
 // 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
+import { STAMINA } from './stamina_data.js';
 import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './config.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE, xpToNext, MAX_LV } from './progression.js';
@@ -145,6 +146,19 @@ function drawPlayerFrame(ctx, game) {
   ctx.textBaseline = 'middle';
   ctx.fillStyle = full ? `rgba(255,214,90,${0.6 + 0.4 * Math.sin(t * 0.2)})` : 'rgba(233,207,142,.6)';
   ctx.fillText(full ? (game.touch ? '残光 · 点觉' : '残光 · H') : '残光', 278, 88);
+  // 耐力（stamina_data.js）：满的时候淡出；不够时闪红；极限闪避 / 弹刀返还时亮一下
+  {
+    const S = STAMINA, low = p.sta < S.dodge, fl = p.staFlash > 0 && Math.floor(p.staFlash / 4) % 2 === 0;
+    ctx.save();
+    ctx.globalAlpha = p.sta >= S.max && !p.staFlash ? 0.35 : 1;
+    fancyBar(ctx, 102, 95, 170, 5, p.sta, S.max, null, fl ? '#ff5a4a' : p.staGain > 0 ? '#f4ffe0' : low ? '#d8b25a' : '#b8e88a', fl ? '#a01e14' : low ? '#8a6418' : '#4f8a2e', { border: false });
+    ctx.font = `12px ${FONT_TITLE}`;
+    ctx.textAlign = 'left';
+    ctx.textBaseline = 'middle';
+    ctx.fillStyle = fl ? '#ff8a7a' : 'rgba(200,232,170,.7)';
+    ctx.fillText(fl ? '耐力不足' : '耐力', 278, 98);
+    ctx.restore();
+  }
   ctx.font = `500 16px ${FONT_NUM}`;
   ctx.textAlign = 'right';
   ctx.fillStyle = '#fff';
