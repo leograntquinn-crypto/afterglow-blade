@@ -205,6 +205,13 @@ function onceIndex(S, anim, ms) {
   return names.length - 1;
 }
 
+// 跑步：按走过的距离换帧（不按时间），脚步和地面速度对上，不会「滑步」。
+// 素材里的 8 帧跑步有两对几乎一样的「双脚分开」帧（3≈4、7≈0），按顺序播会在每半个循环卡一下：
+// 只用 6 帧 [0,1,2,4,5,6]，左右脚各一个「着地 → 过渡 → 腾空」。素材重绘（hero_fix_v1）回来以后换回完整 8 帧
+export const RUN_CYCLE = [0, 1, 2, 4, 5, 6];
+export const RUN_STEP = 20; // 战斗里每走多少逻辑像素换一帧（一个循环 6 × 20 = 120，和素材的步幅相配）
+export const runFrame = (dist, step = RUN_STEP) => RUN_CYCLE[Math.floor(Math.max(0, dist) / step) % RUN_CYCLE.length];
+
 // 主角当前应该显示哪一帧
 export function heroFrame(p, t) {
   const S = heroSprite, ms = t * (1000 / 60), sms = p.st * (1000 / 60);
@@ -217,7 +224,7 @@ export function heroFrame(p, t) {
       // 刚落地：跳跃的落地缓冲两帧
       if (p.touchdown && p.st < 8) return F('jump', p.st < 4 ? 6 : 7);
       return F('idle', loopIndex(S, 'idle', ms));
-    case 'run': return F('run', loopIndex(S, 'run', ms));
+    case 'run': return F('run', runFrame(p.runDist ?? 0));
     case 'air':
       if (p.teched && p.st < 16) return F('tech', Math.floor(p.st / 5));
       if (p.st < 3 && p.vz > 0) return F('jump', 0);
@@ -282,7 +289,7 @@ export function shadowFrame(b, t) {
   const S = heroSprite, ms = t * (1000 / 60);
   const F = (a, i) => S.frame(a, i);
   switch (b.state) {
-    case 'idle': return b.vx || b.vy ? F('run', loopIndex(S, 'run', ms)) : F('idle', loopIndex(S, 'idle', ms));
+    case 'idle': return b.vx || b.vy ? F('run', runFrame(b.runDist ?? 0)) : F('idle', loopIndex(S, 'idle', ms));
     case 'hurt': return F('hurt', Math.min(5, Math.floor(b.st / 4)));
     case 'air': return F('air_hurt', Math.min(2, Math.floor(b.st / 6)));
     case 'dying': return b.z > 0 ? F('air_hurt', 2) : F('death', 5);

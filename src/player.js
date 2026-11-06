@@ -312,6 +312,7 @@ export class Player {
   }
 
   physics(game) {
+    if (this.state === 'run') this.runDist = (this.runDist ?? 0) + Math.hypot(this.vx, this.vy * 1.3); // 跑步换帧按距离（sprite.js runFrame）
     this.x += this.vx;
     this.y += this.vy;
     if (this.state !== 'airdash' && this.state !== 'ult' && (this.z > 0 || this.vz > 0)) {

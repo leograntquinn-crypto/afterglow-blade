@@ -4,11 +4,12 @@
 // 素材里每个攻击动画标了预警帧（windup）和接触帧（contact），这里把它们对到游戏的预警时长和出伤帧上。
 import { prepareBossFx } from './fx_art.js';
 import { SpriteSheet } from './sprite.js';
+import { afterBoot } from './boot.js';
 import { tex, tinted } from './fx_tex.js';
 
 const sheet = (name) => {
   const s = new SpriteSheet('assets/enemies/', name, { avatar: 'avatar' });
-  s.load();
+  afterBoot(() => s.load()); // 大地图和主角先载（见 boot.js）
   return s;
 };
 // 按关卡载入的敌人（灰烛司祭、烬翼）：先不载入，进关卡时由 prepareEnemySprites 决定

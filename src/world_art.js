@@ -11,6 +11,7 @@ import { MOBILE, SpriteSheet } from './sprite.js';
 const BASE = 'assets/world/';
 const TERRAINS = ['moor', 'ash', 'road', 'grave'];
 const CHUNK = 480, CHUNK_MAX = 12;
+const MASK_C = 2; // 遮罩一格 = 2 逻辑像素
 
 function loadImage(src) {
   return new Promise((resolve) => {
@@ -21,6 +22,17 @@ function loadImage(src) {
   });
 }
 const mk = (w, h) => { const c = document.createElement('canvas'); c.width = Math.max(1, Math.ceil(w)); c.height = Math.max(1, Math.ceil(h)); return c; };
+
+// 遮罩 m（锚点在 ax, ay）盖住矩形 [x0, x1) × [y0, y1)（世界坐标）的比例，0～1
+export function maskCover(m, ax, ay, x0, y0, x1, y1) {
+  const C = m.C, ox = ax + m.x0, oy = ay + m.y0;
+  const cx0 = Math.max(0, Math.floor((x0 - ox) / C)), cx1 = Math.min(m.w, Math.ceil((x1 - ox) / C));
+  const cy0 = Math.max(0, Math.floor((y0 - oy) / C)), cy1 = Math.min(m.h, Math.ceil((y1 - oy) / C));
+  if (cx1 <= cx0 || cy1 <= cy0) return 0;
+  const W = m.w + 1, S = m.S;
+  const n = S[cy1 * W + cx1] - S[cy0 * W + cx1] - S[cy1 * W + cx0] + S[cy0 * W + cx0];
+  return Math.min(1, (n * C * C) / ((x1 - x0) * (y1 - y0)));
+}
 
 class Atlas {
   constructor(name) { this.name = name; }
@@ -44,6 +56,30 @@ class Atlas {
     }
     ctx.drawImage(this.img, it.pos[0], it.pos[1], it.dims[0], it.dims[1], x + dx, y + dy, it.dims[0] * k, it.dims[1] * k);
   }
+  // 不透明区域的遮罩（逻辑坐标，MASK_C 像素一格，做成积分图）：判断主角站在某处时会被这张图盖住多少。
+  // 和 draw 用同样的锚点、缩放、镜像；第一次用到时从图集里读一次像素，之后直接查
+  mask(id, s = 1, flip = 1) {
+    const key = `${id}|${s}|${flip}`;
+    const hit = (this.masks ??= new Map()).get(key);
+    if (hit) return hit;
+    const it = this.meta.items[id], k = this.k * s, C = MASK_C;
+    const W = it.dims[0] * k, H = it.dims[1] * k, w = Math.max(1, Math.ceil(W / C)), h = Math.max(1, Math.ceil(H / C));
+    const c = mk(w, h), g = c.getContext('2d', { willReadFrequently: true });
+    g.drawImage(this.img, it.pos[0], it.pos[1], it.dims[0], it.dims[1], 0, 0, W / C, H / C);
+    const a = g.getImageData(0, 0, w, h).data, S = new Int32Array((w + 1) * (h + 1));
+    for (let y = 0; y < h; y++) {
+      let row = 0;
+      for (let x = 0; x < w; x++) {
+        row += a[(y * w + (flip < 0 ? w - 1 - x : x)) * 4 + 3] > 110 ? 1 : 0;
+        S[(y + 1) * (w + 1) + x + 1] = S[y * (w + 1) + x + 1] + row;
+      }
+    }
+    c.width = c.height = 0;
+    const dx = (it.off[0] - it.anchor[0]) * k, dy = (it.off[1] - it.anchor[1]) * k;
+    const m = { x0: flip < 0 ? -dx - w * C : dx, y0: dy, w, h, C, S };
+    this.masks.set(key, m);
+    return m;
+  }
   // 入口相对锚点的位置（逻辑像素）
   entrance(id, s = 1) {
     const it = this.meta.items[id];
@@ -54,6 +90,11 @@ class Atlas {
 export const WORLD_ART = {
   ready: false,
   loading: null,
+  failed: false, // 载入失败（离线、文件缺失）：这时地图才用程序画的占位
+  done: 0, total: 0, // 载入进度（几个文件好了）
+  // 封面第一帧的定格图：用真实素材渲染好的一张小图（tools/make_title_still.js 生成），比图集小得多、最先载；
+  // 图集还没到的时候封面先显示它，不显示程序画的占位
+  still: null,
   land: new Atlas('world_land'),
   props: new Atlas('world_props'),
   terrain: {},
@@ -64,17 +105,23 @@ export const WORLD_ART = {
     if (this.ready) return Promise.resolve();
     if (this.loading) return this.loading;
     this.released = false;
+    this.failed = false;
     this.loading = (async () => {
       try {
         const v = MOBILE ? '_m' : '';
         for (const n of Object.values(this.npcs)) n.load(); // NPC 单独载入，好了就换（不挡地图）
-        const [a, b, ...tex] = await Promise.all([this.land.load(), this.props.load(), ...TERRAINS.map((t) => loadImage(`${BASE}terrain_${t}${v}.webp`))]);
-        if (!a || !b || tex.some((t) => !t) || this.released) return;
+        const jobs = [this.land.load(), this.props.load(), ...TERRAINS.map((t) => loadImage(`${BASE}terrain_${t}${v}.webp`))];
+        this.done = 0; this.total = jobs.length;
+        for (const j of jobs) j.then(() => this.done++);
+        const [a, b, ...tex] = await Promise.all(jobs);
+        if (this.released) return;
+        if (!a || !b || tex.some((t) => !t)) { this.failed = true; return; }
         TERRAINS.forEach((t, i) => (this.terrain[t] = tex[i]));
         this.tk = MOBILE ? 1 : 0.5; // 地面贴图：逻辑像素 / 贴图像素
         this.ready = true;
       } catch {
         this.ready = false; // 载入失败：地图继续用程序画的占位
+        this.failed = true;
       } finally {
         this.loading = null;
       }
@@ -87,6 +134,7 @@ export const WORLD_ART = {
     this.released = true;
     this.ready = false;
     this.land.img = this.props.img = null;
+    this.land.masks = this.props.masks = null;
     this.terrain = {};
     for (const c of this.chunks.values()) c.width = c.height = 0;
     this.chunks.clear();
@@ -152,3 +200,6 @@ export const WORLD_ART = {
     return p;
   },
 };
+
+// 封面定格图：模块一载入就开始下（很小，排在所有素材前面）
+if (typeof Image !== 'undefined') loadImage(`${BASE}title_still${MOBILE ? '_m' : ''}.webp`).then((im) => (WORLD_ART.still = im));
