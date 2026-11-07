@@ -94,13 +94,20 @@ export const FX_ART = {
   // 和两组序列帧（火光 cookie、掉落光柱）。大地图也要用（光照、光点、封印暗雾），所以一启动就载（两套合计约 180KB）
   light: new FxPack('fx_light_tex'),
   lightFb: new FxPack('fx_light'),
+  // 敌人特效包第 1 批 fx_enemy_v1_common（docs/ART_FX_ENEMY_V1.md）：瞄准线、箭、地面光带等 7 张贴图 + 状态光、地面预警、词缀、司祭 16 组序列帧。
+  // 每一关都用得到，一直载入（第 2 批 fx_enemy_v1_types 到了以后按关卡里有的敌人载入）
+  enemyTex: new FxPack('fx_enemy_tex'),
+  enemy: new FxPack('fx_enemy'),
 };
 FX_ART.light.load();
 FX_ART.lightFb.load();
 // 光照包的一张贴图 / 一组序列帧（没载好返回 null：这时不画，不用代码画的替身）
 export const lightTex = (id) => (FX_ART.light.ready && FX_ART.light.items[id]) || null;
 export const lightFb = (id) => (FX_ART.lightFb.ready && FX_ART.lightFb.items[id]) || null;
-afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); FX_ART.bladeTex.load(); FX_ART.blade.load(); }); // 大地图和主角先载（见 boot.js）
+// 敌人特效包的一张贴图 / 一组序列帧（没载好返回 null）
+export const enemyTex = (id) => (FX_ART.enemyTex.ready && FX_ART.enemyTex.items[id]) || null;
+export const enemyFb = (id) => (FX_ART.enemy.ready && FX_ART.enemy.items[id]) || null;
+afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); FX_ART.bladeTex.load(); FX_ART.blade.load(); FX_ART.enemyTex.load(); FX_ART.enemy.load(); }); // 大地图和主角先载（见 boot.js）
 
 // 首领专属特效：只载入这一关首领的那套，释放其他的（和首领图集一样，见 enemy_sprites.js 的 prepareBossSprites）
 const BOSS_FX = { boneLord: 'bone', warden: 'warden' };
@@ -114,6 +121,6 @@ export function prepareBossFx(key) {
 // 取一组序列帧（没载好返回 null）
 export function flipbook(id) {
   // 刀光包排在最前：它的五组刀光覆盖 fx_hero 里的旧组（fx_hero 打包时已经不含这几组）
-  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.warden]) if (p.ready && p.items[id]) return p.items[id];
+  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.warden, FX_ART.enemy]) if (p.ready && p.items[id]) return p.items[id];
   return null;
 }

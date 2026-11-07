@@ -252,7 +252,7 @@ export class FX {
     if (!p) return false;
     const color = o.color ?? '#ffffff';
     p.fb = fb; p.add = fb.add; p.color = color; p.facing = o.facing ?? 1; p.w = o.flipY ?? 1; p.rot = o.rot ?? 0;
-    p.size = (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); p.alpha = o.alpha ?? 1; p.ground = !!o.ground;
+    p.size = o.size ?? (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); // size：直接给「逻辑像素 / 交付像素」（敌人特效按身高算） p.alpha = o.alpha ?? 1; p.ground = !!o.ground;
     p.tx = fb.frames.map((c) => c && tinted(c, color, fb.add ? 'fill' : 'mul'));
     if (o.follow) { p.follow = o.follow; p.ox = o.ox ?? 0; p.oz = o.oz ?? 0; }
     return p;

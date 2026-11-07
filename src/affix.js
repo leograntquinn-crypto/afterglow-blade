@@ -7,6 +7,7 @@
 import { rand, clamp, world, DEPTH, FONT_UI, yLimits } from './config.js';
 import { Hazard } from './combat.js';
 import { sfx } from './audio.js';
+import { drawShieldArc, blinkFx } from './enemy_fx.js';
 
 export const AFFIXES = {
   shield: { name: '坚盾', color: '#8fc4ff', types: ['grunt'], tip: '正面挡住普通攻击。等它出招后的空隙、冲刺绕到背后，或用重击、上挑、弹刀破盾' },
@@ -93,6 +94,7 @@ export function onAffixHit(e, game) {
 
 function blinkBehind(e, game) {
   const p = game.player, c = AFFIXES.blink.color;
+  blinkFx(game, e, e.x, e.y); // 撕裂光缝（离开的地方）
   game.fx.ring(e.x, e.y, e.z + e.h * 0.5, c, 10, 8, 18, 4);
   game.fx.converge(e.x, e.y, e.z + e.h * 0.5, 10, c);
   const side = -p.facing; // 落到玩家背后
@@ -106,6 +108,7 @@ function blinkBehind(e, game) {
   e.facing = Math.sign(p.x - e.x) || 1;
   e.attackCd = 14; // 落地马上出招：玩家看到紫光要立刻闪避
   e.blinkFlash = 30;
+  blinkFx(game, e, e.x, e.y); // 撕裂光缝（出现的地方）
   game.fx.ring(e.x, e.y, e.h * 0.5, c, 6, 12, 22, 5);
   game.fx.label(e.x, e.y, e.h + 40, '迅 影', c, 26);
   sfx('dash');
@@ -126,7 +129,8 @@ export function onAffixDeath(e, game) {
 export function drawAffixes(ctx, e, sx, sy, top) {
   if (!e.aff || !e.alive) return;
   // 盾：面朝方向的一面半透明弧形
-  if (e.aff.has('shield') && e.guardBrokenT <= 0 && e.state !== 'spawn') {
+  // 素材（fx_enemy_v1 的 shield_arc）：按已经挡掉的次数选帧；没载好时代码画
+  if (e.aff.has('shield') && e.guardBrokenT <= 0 && e.state !== 'spawn' && !drawShieldArc(ctx, e, sx, sy, GUARD_MAX - e.guard)) {
     const fx = sx + e.facing * (e.w * 0.55), fy = sy - e.h * 0.5;
     const a = 0.35 + 0.15 * (e.guard / GUARD_MAX);
     ctx.save();

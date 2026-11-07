@@ -9,6 +9,7 @@
 //   6. 数据化（ai_data.js）
 // 执行层（预警、出招、受击）还是 enemy.js 原来那一套，这里只决定「下一步做什么」。
 import { STAMINA } from './stamina_data.js';
+import { drawAimLine, drawThreatBack } from './enemy_fx.js';
 import { AI_PROFILES, DIRECTOR, FEINT, HABITS } from './ai_data.js';
 import { VIEW_W, DEPTH, world, clamp, clampY, toScreen, FONT_UI } from './config.js';
 
@@ -216,6 +217,7 @@ export class AI {
       if (!e.alive || e.state !== 'windup' || !e.aim) continue;
       const [x0, y0] = toScreen(e.x + e.facing * 30, e.y, 52, camX), [x1, y1] = toScreen(e.x + e.facing * (30 + e.aim.len), e.y + e.aim.vy * (e.aim.len / e.aim.vx), 52, camX);
       const u = Math.min(1, e.st / Math.max(1, e.windup));
+      if (drawAimLine(ctx, x0, y0, x1, y1, u, t)) continue; // 素材（fx_enemy_v1 的 aim_line 平铺往前流 + 终点 aim_mark）；没载好时红色虚线
       ctx.save();
       ctx.globalAlpha = 0.25 + 0.45 * u;
       ctx.strokeStyle = '#ff4a3a';
@@ -232,6 +234,7 @@ export class AI {
     if (!behind) return null;
     const dir = Math.sign(behind.x - p.x);
     const [x, y] = toScreen(p.x + dir * 40, p.y, p.z + 62, camX);
+    if (drawThreatBack(ctx, x + dir * 6, y, dir, 0.7 + 0.3 * Math.sin(t * 0.5))) return behind; // 素材 threat_back；没载好时两个描边三角
     ctx.save();
     ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 0.5);
     ctx.fillStyle = '#ff3b3b';

@@ -8,6 +8,8 @@ import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
 import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
 import { BRAINS, feintRevealed } from './ai.js';
 import { FEINT } from './ai_data.js';
+import { ENEMY_FX } from './fx_data.js';
+import { drawEnemyAura, drawCrown, drawVolatile, wardBreakFx, typeFx } from './enemy_fx.js';
 
 export const TYPES = {
   grunt: {
@@ -241,6 +243,7 @@ export class Enemy {
     this.setState('windup');
     game.attackers.add(this);
     game.ai?.onAttackStart(this);
+    if (!this.isBoss) typeFx(game, this, 'tele', { life: this.windup }); // 第 2 批：各敌人自己的预警（素材没到时不画）
     this.vx = this.vy = 0;
     this.hitSet.clear();
     if (atk.slam) {
@@ -253,6 +256,7 @@ export class Enemy {
   doAttack(game) {
     const A = this.atk;
     this.setState('attack');
+    if (!this.isBoss) typeFx(game, this, 'attack'); // 第 2 批：各敌人自己的出招（素材没到时不画）
     if (AI[this.T.ai]) return AI[this.T.ai].doAttack(this, game);
     if (A.speed) { this.vx = this.facing * A.speed; sfx('dash'); return; }
     if (this.T.ranged) {
@@ -308,7 +312,7 @@ export class Enemy {
       if (this.ward.hp > 0) return { warded: true };
       this.ward = null;
       this.game.fx.label(this.x, this.y, this.h + 30, '咒盾破碎', '#b48cff', 20);
-      this.game.fx.ring(this.x, this.y, this.h * 0.5, '#b48cff', 14, 10, 18, 5);
+      if (!wardBreakFx(this.game, this)) this.game.fx.ring(this.x, this.y, this.h * 0.5, '#b48cff', 14, 10, 18, 5); // 咒盾碎裂（素材没载好时用冲击环）
       sfx('break');
       this.setState('hurt');
       this.hitstun = 34;
@@ -324,6 +328,7 @@ export class Enemy {
     // 被重击打飞：一段时间内会撞倒路上的同伴
     if ((h.kb ?? 0) >= 6 || h.wallBounce) { this.flying = 26; this.flyDmg = h.dmg; this.pinSet.clear(); }
 
+    if (this.hp > 0) typeFx(this.game, this, 'hit'); // 第 2 批：各敌人自己的挨打（死亡的在 game.onKill）
     if (this.hp <= 0) {
       this.hp = 0;
       this.setState('dying');
@@ -464,14 +469,20 @@ export class Enemy {
     if (this.state === 'dying' && this.z <= 0) alpha = Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
 
-    const feint = feintRevealed(this); // 佯攻露出破绽：光变成琥珀色、「!」变成「?」、武器抖动
-    if (feint) { drawAura(ctx, sx, sy, this.h, '#ffb347', 0.9 + 0.5 * Math.sin(this.st * 1.3)); sx += Math.sin(this.st * 2.1) * 1.6; }
-    else if (this.state === 'windup') drawAura(ctx, sx, sy, this.h, '#ff2a2a', 1.2 + 0.5 * Math.sin(this.st * 0.6));
-    else if (this.guardT > 0 && this.alive) drawAura(ctx, sx, sy, this.h, '#9fd0ff', 1.1 + 0.3 * Math.sin(this.st * 0.5)); // 屠夫举斧格挡：冷色光
-    else if (this.armor > 0 && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.ember, 0.8);
-    else if (this.blinkFlash > 0) drawAura(ctx, sx, sy, this.h, AFFIXES.blink.color, 1.4);
-    else if (this.enraged && this.alive) drawAura(ctx, sx, sy, this.h, AFFIXES.frenzy.color, 0.9 + 0.3 * Math.sin(t * 0.3));
-    else if (this.elite && this.alive) drawAura(ctx, sx, sy, this.h, COLORS.gold, 0.8 + 0.2 * Math.sin(t * 0.1));
+    // 状态光（fx_enemy_v1 的 aura_threat / aura_feint / aura_guard，染色见 fx_data.js 的 ENEMY_FX.aura）；素材没载好时退回代码画的径向光
+    // strength：代码画的那种的亮度（素材本身会跳动 / 呼吸，不再额外闪）
+    const feint = feintRevealed(this); // 佯攻露出破绽：光变成琥珀色、断断续续，「!」变成「?」、武器抖动
+    let aura = null, strength = 1;
+    if (feint) { aura = 'feint'; strength = 0.9 + 0.5 * Math.sin(this.st * 1.3); }
+    else if (this.state === 'windup') { aura = 'threat'; strength = 1.2 + 0.5 * Math.sin(this.st * 0.6); }
+    else if (this.guardT > 0 && this.alive) { aura = 'guard'; strength = 1.1 + 0.3 * Math.sin(this.st * 0.5); } // 屠夫举斧格挡：冷色光
+    else if (this.armor > 0 && this.alive) { aura = 'armor'; strength = 0.8; }
+    else if (this.blinkFlash > 0) { aura = 'blink'; strength = 1.4; }
+    else if (this.enraged && this.alive) { aura = 'frenzy'; strength = 0.9 + 0.3 * Math.sin(t * 0.3); }
+    else if (this.elite && this.alive) { aura = 'elite'; strength = 0.8 + 0.2 * Math.sin(t * 0.1); }
+    if (aura && !drawEnemyAura(ctx, this, sx, sy, aura, t, alpha)) drawAura(ctx, sx, sy, this.h, ENEMY_FX.aura[aura].color, strength);
+    this.auraKey = aura; // 测试用：这一帧画的是哪种状态光
+    if (feint) sx += Math.sin(this.st * 2.1) * 1.6;
     // 受击时挤压一下（横向撑开、纵向压扁），让打击有「肉感」
     const q = this.squash / 8;
     ctx.save();
@@ -492,6 +503,11 @@ export class Enemy {
     }
     ctx.restore();
 
+    // 精英的冠光、爆裂的核：叠在身体前面（素材没载好时不画，精英照旧有金色的状态光）
+    if (this.alive && this.state !== 'spawn') {
+      if (this.elite) drawCrown(ctx, this, sx, sy, t);
+      if (this.aff?.has('volatile')) drawVolatile(ctx, this, sx, sy, t);
+    }
     if (this.ward && this.alive) drawWard(ctx, this, sx, sy, t);
     const top = sy - this.h - 14;
     drawAffixes(ctx, this, sx, sy, top);

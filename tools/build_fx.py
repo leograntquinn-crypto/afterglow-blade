@@ -1,6 +1,7 @@
 """把特效素材包（afterglow.fxpack.v1）处理成游戏用的图集。
 
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
+python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录>      （只打敌人特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
@@ -11,6 +12,8 @@ python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_bos
              它里面的序列帧和 fx_hero 同名的（五组刀光）覆盖旧的：fx_hero 里就不再打包这几组
   fx_light_tex / fx_light  光照包 fx_light_v1（docs/ART_FX_LIGHT_V1.md）：19 张贴图（光晕、火花、光照 cookie、屏幕层、门 / 宝箱光）
              和 2 组序列帧（火光 cookie、掉落光柱）。屏幕层（vignette、dim_hole、grain）不裁边：引擎按整张铺满屏幕 / 平铺
+  fx_enemy_tex / fx_enemy  敌人特效包第 1 批 fx_enemy_v1_common（docs/ART_FX_ENEMY_V1.md）：7 张贴图（瞄准线、箭、地面光带……；
+             可平铺的 aim_line、lane_band 不裁边）和 16 组序列帧（状态光、地面预警、词缀、司祭）。一直载入
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -18,7 +21,10 @@ import json, os, sys
 import numpy as np
 from PIL import Image
 
-TEX, HERO, BOSS = sys.argv[1:4]
+TEX, HERO, BOSS = sys.argv[1:4] if sys.argv[1] != "--enemy" else (None,) * 3
+# 敌人特效的序列帧：地面预警圈在游戏里画得比交付尺寸的一半大（rx 115 → 宽约 240 逻辑像素），按 50% 存会被放大发糊，
+# 所以桌面存 60%、手机 30%（只多约 40% 像素）
+ENEMY_FB_SCALE = (0.6, 0.3)
 BLADE = sys.argv[4] if len(sys.argv) > 4 else None
 LIGHT = sys.argv[5] if len(sys.argv) > 5 else None
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "fx")
@@ -88,9 +94,9 @@ def build_textures(name, root, m, keep_full=(), opaque=()):
         save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "tex": tex})
 
 
-def build_flipbooks(name, ids, fbs):
-    """序列帧：桌面交付尺寸 50%、手机 25%，每帧裁透明边"""
-    for suffix, sc in (("", 0.5), ("_m", 0.25)):
+def build_flipbooks(name, ids, fbs, scales=(0.5, 0.25)):
+    """序列帧：默认桌面交付尺寸 50%、手机 25%，每帧裁透明边"""
+    for suffix, sc in (("", scales[0]), ("_m", scales[1])):
         items, meta = [], {}
         for fid in ids:
             root, f = fbs[fid]
@@ -108,6 +114,15 @@ def build_flipbooks(name, ids, fbs):
             meta[fid] = {"w": W, "h": H, "anchor": f["anchor"], "fps": f.get("fps", 30), "loop": bool(f.get("loop")), "blend": f["blend"], "frames": frames}
         save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
 
+
+# ---------- 敌人特效包 fx_enemy_v1（单独打，不需要别的包）----------
+if sys.argv[1] == "--enemy":
+    COMMON = sys.argv[2]
+    em = json.load(open(f"{COMMON}/fx.json"))
+    build_textures("fx_enemy_tex", COMMON, em, keep_full={"aim_line", "lane_band"})
+    efbs = {f["id"]: (COMMON, f) for f in em["flipbooks"]}
+    build_flipbooks("fx_enemy", list(efbs), efbs, ENEMY_FB_SCALE)
+    sys.exit(0)
 
 # ---------- FX-1 单张贴图 ----------
 m = json.load(open(f"{TEX}/fx.json"))
