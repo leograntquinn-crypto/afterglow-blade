@@ -8,7 +8,7 @@ import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
 import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
 import { BRAINS, feintRevealed } from './ai.js';
 import { FEINT } from './ai_data.js';
-import { drawEnemyAura, drawCrown, drawVolatile, wardBreakFx, typeFx } from './enemy_fx.js';
+import { drawEnemyAura, drawCrown, drawVolatile, wardBreakFx, typeFx, drawTypeTele, drawEmberTrail } from './enemy_fx.js';
 
 export const TYPES = {
   grunt: {
@@ -169,9 +169,11 @@ export class Enemy {
         this.vy = 0;
         if (this.z <= 0) {
           this.vx *= 0.85;
+          // 尸体落地：各敌人自己的死亡特效（散架成骨堆、铁甲崩落、化作紫烟、烛烟、燃尽成灰）；有它就不再冒通用的消散光点
+          if (this.deadT === 0) this.deathFx = typeFx(game, this, 'death');
           if (++this.deadT > 45) this.remove = true;
           // 化成光点消散（首领更密、用自己的颜色）
-          else if (this.deadT < 40 && (this.isBoss || this.deadT % 2 === 0)) {
+          else if (!this.deathFx && this.deadT < 40 && (this.isBoss || this.deadT % 2 === 0)) {
             game.fx.emit('dissolve', this.x + rand(-this.w / 2, this.w / 2), this.y + rand(-6, 6), rand(4, this.h * 0.75), { color: this.isBoss ? this.B.glow : '#b9a6ff', n: this.isBoss ? 3 : 1 });
           }
         }
@@ -242,7 +244,7 @@ export class Enemy {
     this.setState('windup');
     game.attackers.add(this);
     game.ai?.onAttackStart(this);
-    if (!this.isBoss) typeFx(game, this, 'tele', { life: this.windup }); // 第 2 批：各敌人自己的预警（素材没到时不画）
+    if (!this.isBoss) typeFx(game, this, 'tele'); // 各敌人自己的预警（fx_enemy_v1 第 2 批；屠夫、烬翼的跟着状态画，见 draw）
     this.vx = this.vy = 0;
     this.hitSet.clear();
     if (atk.slam) {
@@ -255,7 +257,7 @@ export class Enemy {
   doAttack(game) {
     const A = this.atk;
     this.setState('attack');
-    if (!this.isBoss) typeFx(game, this, 'attack'); // 第 2 批：各敌人自己的出招（素材没到时不画）
+    if (A.slam && !this.isBoss) typeFx(game, this, 'attack'); // 屠夫重砸：沉重的斧光（砸下去的这一帧红圈爆发）
     if (AI[this.T.ai]) return AI[this.T.ai].doAttack(this, game);
     if (A.speed) { this.vx = this.facing * A.speed; sfx('dash'); return; }
     if (this.T.ranged) {
@@ -277,7 +279,8 @@ export class Enemy {
     } else this.vx *= 0.8;
     if ((!this.T.ranged || A.kind === 'kick') && !A.slam) { // 弓手的飞踢也是近身判定
       if (this.st === A.hitAt) {
-        game.fx.arc(this.x + this.facing * 6, this.y, 50, this.facing, 56, A.speed ? -0.1 : -2.0, A.speed ? 0.1 : 0.9, '#ff6a5a', 10);
+        // 各敌人自己的刀光（腐骨兵 grunt_slash、屠夫 brute_cleave）；没有的（弓手飞踢）或素材没载好用通用的新月刀光
+        if (!typeFx(game, this, 'attack')) game.fx.arc(this.x + this.facing * 6, this.y, 50, this.facing, 56, A.speed ? -0.1 : -2.0, A.speed ? 0.1 : 0.9, '#ff6a5a', 10);
         sfx('swing');
       }
       if (this.st >= A.hitAt && this.st < A.hitAt + (A.dur ?? 5)) {
@@ -327,7 +330,6 @@ export class Enemy {
     // 被重击打飞：一段时间内会撞倒路上的同伴
     if ((h.kb ?? 0) >= 6 || h.wallBounce) { this.flying = 26; this.flyDmg = h.dmg; this.pinSet.clear(); }
 
-    if (this.hp > 0) typeFx(this.game, this, 'hit'); // 第 2 批：各敌人自己的挨打（死亡的在 game.onKill）
     if (this.hp <= 0) {
       this.hp = 0;
       this.setState('dying');
@@ -475,6 +477,8 @@ export class Enemy {
       : this.guardT > 0 ? 'guard' // 屠夫举斧格挡：冷蓝
       : this.armor > 0 ? 'armor' : this.blinkFlash > 0 ? 'blink' : this.enraged ? 'frenzy' : this.elite ? 'elite' : null;
     if (aura) drawEnemyAura(ctx, this, sx, sy, aura, t, alpha);
+    // 烬翼俯冲：身后拖一条火星（假冲琥珀色），画在身体后面
+    if (this.look.rig === 'wing' && this.state === 'attack' && this.st < (this.atk?.dur ?? 0)) drawEmberTrail(ctx, this, sx, sy, !!this.atk.fake);
     this.auraKey = aura; // 测试用：这一帧画的是哪种状态光
     if (feint) sx += Math.sin(this.st * 2.1) * 1.6;
     // 受击时挤压一下（横向撑开、纵向压扁），让打击有「肉感」
@@ -498,6 +502,7 @@ export class Enemy {
     ctx.restore();
 
     // 精英的冠光、爆裂的核：叠在身体前面（素材没载好时不画，精英照旧有金色的状态光）
+    drawTypeTele(ctx, this, sx, sy, t, feint); // 屠夫烧红的斧刃、烬翼发亮的裂纹（出招预警期间）
     if (this.alive && this.state !== 'spawn') {
       if (this.elite) drawCrown(ctx, this, sx, sy, t);
       if (this.aff?.has('volatile')) drawVolatile(ctx, this, sx, sy, t);

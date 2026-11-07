@@ -129,35 +129,39 @@ export const ENEMY_FX = {
   lane: { tex: 'lane_band', h: 1.3, scroll: 3, alpha: 1.6 }, // 冲锋 / 齐射路线光带：光带可见的高 = half × h；scroll 每帧往前滚多少逻辑像素
   aim: { tex: 'aim_line', mark: 'aim_mark', color: '#ff4a3a', k: 0.7, markK: 0.5, scroll: 4 }, // 弓手瞄准线：沿路线平铺、往前流
   threatBack: { tex: 'threat_back', color: '#ff3b3b', k: 0.5 }, // 背后来袭
+  // 烬翼俯冲的火星拖尾（第 2 批唯一的贴图）：len × 身高 = 多长，thick 粗细倍数；假冲琥珀色
+  emberTrail: { tex: 'ember_trail', len: 3.4, thick: 1, alpha: 0.95, color: '#ff7a3a', fakeColor: '#ffb347' },
   arrow: { tex: 'arrow', trail: 'arrow_trail', brk: 'arrow_break', k: 0.5, trailColor: '#ff5a7a', trailAt: -12, brkColor: '#e6dccb', brkK: 0.42 },
 };
 
 // 第 2 批（各敌人自己的出招 / 命中 / 死亡，fx_enemy_v1_types）：按敌人（look.rig）查 tele 预警 / attack 出招 / hit 挨打 / death 死亡 →
 //   fb 素材 id、color 染色（带颜色的实物给 null）、size（× 身高 / 260）、x 往前偏移（× 身高）、z 高度（× 身高）、
-//   follow 跟着敌人走（循环的预警）、hold 一次性的播完在最后一帧停多久再淡出、feintColor 假动作用的颜色
-// 素材还没到：查到了也不画（不加代码画的替身），现在的通用粒子照旧。弓手的预警 / 出招就是瞄准线和箭（第 1 批）
+//   follow 跟着敌人走、attached 跟着状态每帧画（预警期间一直在，佯攻露出破绽换 feintColor）、hold 一次性的播完在最后一帧停多久再淡出
+// 用在：tele 出招预警开始；attack 出手那一下（替代通用的新月刀光）；hit 挨打的那一点（替代通用的材质碎片）；
+//   death 尸体落地（替代通用的消散光点和碎片）。没有这一项、或素材没载好时，照旧用通用的
+// 弓手的预警 / 出招就是瞄准线和箭（第 1 批）；烬翼的出招是俯冲拖尾 ember_trail（ENEMY_FX.emberTrail）
 export const ENEMY_TYPE_FX = {
   grunt: {
-    tele: { fb: 'grunt_glint', color: '#ff6a4a', size: 0.55, x: 0.35, z: 0.62 },
-    attack: { fb: 'grunt_slash', color: '#d8794a', size: 0.6, x: 0.3, z: 0.5 },
-    hit: { fb: 'bone_chips', color: null, size: 0.5, z: 0.55 },
-    death: { fb: 'bone_collapse', color: null, size: 0.8, hold: 50 },
+    tele: { fb: 'grunt_glint', color: '#ff6a4a', size: 0.8, x: 0.35, z: 0.62, follow: true },
+    attack: { fb: 'grunt_slash', color: '#d8794a', size: 1.3, x: 0.3, z: 0.5, follow: true },
+    hit: { fb: 'bone_chips', color: null, size: 0.9, z: 0.55 },
+    death: { fb: 'bone_collapse', color: null, size: 1.1, hold: 50 },
   },
   brute: {
-    tele: { fb: 'brute_heat', color: '#ff5a2a', size: 0.5, x: 0.45, z: 0.75, follow: true },
-    attack: { fb: 'brute_cleave', color: '#ffb070', size: 0.7, x: 0.35, z: 0.5 },
-    hit: { fb: 'metal_spark', color: '#ffe0a0', size: 0.55, z: 0.6 },
-    death: { fb: 'armor_fall', color: null, size: 0.9, hold: 50 },
+    tele: { fb: 'brute_heat', color: '#ff5a2a', feintColor: '#ffb347', size: 0.6, x: 0.4, z: 1.1, attached: true },
+    attack: { fb: 'brute_cleave', color: '#ffb070', size: 0.95, x: 0.35, z: 0.5, follow: true },
+    hit: { fb: 'metal_spark', color: '#ffe0a0', size: 0.9, z: 0.6 },
+    death: { fb: 'armor_fall', color: null, size: 1, hold: 50 },
   },
   archer: { death: { fb: 'shadow_fade', color: '#8a5cff', size: 1 } },
   priest: {
-    tele: { fb: 'lantern_flare', color: '#ece6d8', size: 0.45, x: 0.3, z: 1.0 },
-    hit: { fb: 'rune_shatter', color: '#cfc8ff', size: 0.5, z: 0.6 },
+    tele: { fb: 'lantern_flare', color: '#ece6d8', size: 0.8, x: 0.3, z: 1.0, follow: true },
+    hit: { fb: 'rune_shatter', color: '#cfc8ff', size: 0.9, z: 0.6 },
     death: { fb: 'candle_smoke', color: '#bfc4cc', size: 1 },
   },
   wing: {
-    tele: { fb: 'ember_crack', color: '#ff3a2e', feintColor: '#ffb347', size: 2.4, z: 0.5, follow: true },
+    tele: { fb: 'ember_crack', color: '#ff3a2e', feintColor: '#ffb347', size: 2.4, z: 0.5, attached: true },
     hit: { fb: 'ember_pop', color: '#ffb347', size: 2.4, z: 0.5 },
-    death: { fb: 'ash_fall', color: '#8a8580', size: 4 },
+    death: { fb: 'ash_fall', color: '#8a8580', size: 3.2 },
   },
 };

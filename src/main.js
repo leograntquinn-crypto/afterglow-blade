@@ -6,7 +6,8 @@
 // 游戏逻辑都按每秒 60 次更新。这样帧数据（招式第几帧出判定）在任何设备上都一致。
 
 import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, FONT_UI, clamp, rand } from './config.js';
-import { typeFx } from './enemy_fx.js';
+import { typeFx, hasTypeFx } from './enemy_fx.js';
+import { prepareEnemyFx } from './fx_art.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -243,6 +244,7 @@ class Game {
   openHub(siteId) {
     prepareBossSprites(null); // 回地图释放首领图集
     prepareEnemySprites([]); // 和按关卡载入的敌人图集
+    prepareEnemyFx([]); // 和敌人各自的特效（fx_enemy_v1 第 2 批）
     this.setScene('world');
     this.resetWorld();
     this.hub.hide();
@@ -412,6 +414,7 @@ class Game {
     this.rules = STAGE_RULES[st.id] ?? null; // 这一关的规则和地形（stage_rules.js）
     prepareBossSprites(this.stage.boss); // 只载入这一关首领的专属图集，别的首领释放
     prepareEnemySprites(stageEnemyTypes(st)); // 烬翼从第 2 关起、灰烛司祭从第 3 关起才载入
+    prepareEnemyFx(stageEnemyTypes(st)); // 敌人各自的出招 / 命中 / 死亡特效：只载这一关有的
     this.refreshStats();
     this.resetWorld();
     this.maxAttackers = 2 + this.D.attackers;
@@ -463,6 +466,7 @@ class Game {
     // 首领层和它前一层才载入首领图集（前一层先载，进首领层时已经准备好）
     prepareBossSprites(isBossFloor(f) ? this.stage.boss : isBossFloor(f + 1) ? trialStage(f + 1).boss : null);
     prepareEnemySprites(trialTypes(f + 1)); // 下一层要出现的新敌人提前一层载入
+    prepareEnemyFx(trialTypes(f + 1)); // 下一层的敌人种类包含这一层的（种类只增不减）
     this.maxAttackers = 2 + this.D.attackers;
     const boss = isBossFloor(f);
     const room = { x: 0, y: 0, type: boss ? 'boss' : 'fight', doors: {}, w: boss ? 1400 : 1200, waves: boss ? [] : trialWaves(f), cleared: false, visited: true };
@@ -528,6 +532,7 @@ class Game {
     WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.trial = null;
     this.stage = { ...STAGES[0], id: 'training', name: '训练场', lv: this.save.lv };
+    prepareEnemyFx(['grunt']); // 木人是腐骨兵的身子：用腐骨兵的命中特效
     this.stageIdx = 0;
     this.diff = 0;
     this.D = DIFFS[0];
@@ -1398,7 +1403,8 @@ class Game {
     this.fx.flip(hf[0], hx, target.y, hz, { color: fromPlayer ? HT.accent ?? this.player.glow : COLORS.blood, scale: hf[1], facing: dir, alpha: extra ? 1 : 0.55, rot: (Math.random() - 0.5) * 0.6 });
     // 材质碎片：骷髅掉骨渣、屠夫冒金属火星、弓手掉布屑
     const chip = target.look?.bone || target.look?.cloak || target.look?.metal || '#cfc3ad';
-    this.fx.chips(hx, target.y, hz, dir, HT.chips, chip);
+    // 敌人各自的命中（骨屑、金属火花、符文碎裂、余烬爆开 —— fx_enemy_v1 第 2 批）放在打中的那一点；没有的（弓手、主角、首领）用通用的材质碎片
+    if (target === this.player || !typeFx(this, target, 'hit', { at: [hx, hz], dir })) this.fx.chips(hx, target.y, hz, dir, HT.chips, chip);
     if (fromPlayer) {
       if (HT.flare && extra) this.fx.flare(hx, target.y, hz, HT.flare, HT.accent ?? this.player.glow, tier === 'crit' || tier === 'break');
       if (HT.lines && extra) this.fx.lines(hx, target.y, hz, HT.lines, HT.accent ?? '#ffffff', dir);
@@ -1487,11 +1493,11 @@ class Game {
 
   onKill(e) {
     this.kills++;
-    typeFx(this, e, 'death'); // 第 2 批：各敌人自己的死亡（素材没到时不画）
     sfx('kill');
     this.addUlt(2.5);
     this.addStyle(40, 'kill');
-    this.fx.chips(e.x, e.y, e.z + e.h * 0.5, Math.sign(e.vx) || 1, 18, e.look?.bone || e.look?.cloak || e.look?.metal || '#cfc3ad');
+    // 击杀的碎片：有自己死亡特效的敌人不再撒通用碎片（尸体落地时播死亡特效，见 enemy.js）
+    if (!hasTypeFx(e, 'death')) this.fx.chips(e.x, e.y, e.z + e.h * 0.5, Math.sign(e.vx) || 1, 18, e.look?.bone || e.look?.cloak || e.look?.metal || '#cfc3ad');
     const xp = Math.round(e.xp * this.D.reward * (1 + this.spoils));
     this.gainXp(xp);
     this.fx.label(e.x, e.y, e.z + e.h + 50, `+${xp} EXP`, '#c8b6ff', 16);

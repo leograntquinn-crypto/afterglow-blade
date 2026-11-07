@@ -1,7 +1,7 @@
 """把特效素材包（afterglow.fxpack.v1）处理成游戏用的图集。
 
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
-python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录>      （只打敌人特效包，不动别的图集）
+python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录> [fx_enemy_v1_types 目录]   （只打敌人特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
@@ -14,6 +14,9 @@ python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录>      （只打�
              和 2 组序列帧（火光 cookie、掉落光柱）。屏幕层（vignette、dim_hole、grain）不裁边：引擎按整张铺满屏幕 / 平铺
   fx_enemy_tex / fx_enemy  敌人特效包第 1 批 fx_enemy_v1_common（docs/ART_FX_ENEMY_V1.md）：7 张贴图（瞄准线、箭、地面光带……；
              可平铺的 aim_line、lane_band 不裁边）和 16 组序列帧（状态光、地面预警、词缀、司祭）。一直载入
+  fx_enemy_<敌人>  敌人特效包第 2 批 fx_enemy_v1_types：五种杂兵各自的预警 / 出招 / 命中 / 死亡序列帧，每种敌人一套
+             （grunt、brute、archer、priest、wing），按关卡里出现的敌人载入。第 2 批唯一的贴图 ember_trail 并进 fx_enemy_tex（一直载入）
+             第 2 批的 zip 多一层顶层目录 fx_enemy_v1_types/，传那一层；fx.json 只列了单帧，没写总图路径，所以直接用单帧（不读 sheets/）
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -25,6 +28,13 @@ TEX, HERO, BOSS = sys.argv[1:4] if sys.argv[1] != "--enemy" else (None,) * 3
 # 敌人特效的序列帧：地面预警圈在游戏里画得比交付尺寸的一半大（rx 115 → 宽约 240 逻辑像素），按 50% 存会被放大发糊，
 # 所以桌面存 60%、手机 30%（只多约 40% 像素）
 ENEMY_FB_SCALE = (0.6, 0.3)
+ENEMY_TYPES = {
+    "grunt": ["grunt_glint", "grunt_slash", "bone_chips", "bone_collapse"],
+    "brute": ["brute_heat", "brute_cleave", "metal_spark", "armor_fall"],
+    "archer": ["shadow_fade"],
+    "priest": ["lantern_flare", "rune_shatter", "candle_smoke"],
+    "wing": ["ember_crack", "ember_pop", "ash_fall"],
+}
 BLADE = sys.argv[4] if len(sys.argv) > 4 else None
 LIGHT = sys.argv[5] if len(sys.argv) > 5 else None
 OUT = os.path.join(os.path.dirname(__file__), "..", "assets", "fx")
@@ -70,13 +80,14 @@ def save_atlas(name, items, width, meta):
 
 
 def build_textures(name, root, m, keep_full=(), opaque=()):
+    """root 可以是一个目录，也可以是 {贴图 id: 目录}（几个包的贴图打进同一张图集）"""
     """单张贴图：桌面原尺寸、手机 50%；keep_full 里的不裁透明边（刀光条带：引擎按整条的 UV 铺）。
     opaque 里的（整张 alpha 是同一个值的，比如颗粒 grain）存成不透明、JSON 里记下原来的 alpha：
     浏览器的画布按「预乘 alpha」存像素，alpha 24 的灰度起伏会被压成三四档，存成不透明才不丢细节"""
     for suffix, sc in (("", 1.0), ("_m", 0.5)):
         items, tex = [], {}
         for t in m["textures"]:
-            im = Image.open(f"{root}/{t['file']}").convert("RGBA")
+            im = Image.open(f"{root[t['id']] if isinstance(root, dict) else root}/{t['file']}").convert("RGBA")
             extra = {}
             if t["id"] in opaque:
                 a = np.asarray(im)[..., 3]
@@ -117,11 +128,20 @@ def build_flipbooks(name, ids, fbs, scales=(0.5, 0.25)):
 
 # ---------- 敌人特效包 fx_enemy_v1（单独打，不需要别的包）----------
 if sys.argv[1] == "--enemy":
-    COMMON = sys.argv[2]
+    COMMON, TYPES = sys.argv[2], (sys.argv[3] if len(sys.argv) > 3 else None)
     em = json.load(open(f"{COMMON}/fx.json"))
-    build_textures("fx_enemy_tex", COMMON, em, keep_full={"aim_line", "lane_band"})
+    tm = json.load(open(f"{TYPES}/fx.json")) if TYPES else {"textures": [], "flipbooks": []}
+    roots = {**{t["id"]: COMMON for t in em["textures"]}, **{t["id"]: TYPES for t in tm["textures"]}}
+    build_textures("fx_enemy_tex", roots, {"textures": em["textures"] + tm["textures"]}, keep_full={"aim_line", "lane_band"})
     efbs = {f["id"]: (COMMON, f) for f in em["flipbooks"]}
     build_flipbooks("fx_enemy", list(efbs), efbs, ENEMY_FB_SCALE)
+    # 第 2 批：每种敌人一套（id 见 docs/ART_FX_ENEMY_V1.md 第三节 E）
+    tfbs = {f["id"]: (TYPES, f) for f in tm["flipbooks"]}
+    for rig, ids in ENEMY_TYPES.items():
+        if TYPES:
+            missing = [i for i in ids if i not in tfbs]
+            assert not missing, f"{rig} 缺 {missing}"
+            build_flipbooks(f"fx_enemy_{rig}", ids, tfbs)
     sys.exit(0)
 
 # ---------- FX-1 单张贴图 ----------
