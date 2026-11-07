@@ -7,7 +7,7 @@
 //      └──闪避──> dash（前 10 帧内被打中 = 极限闪避）──攻击──> 冲刺攻击
 //   被打 → hurt / knock(击飞，空中按跳跃 = 受身) → down(倒地，按任意键快速起身) → idle
 
-import { GRAVITY, DEPTH, world, clamp, lerp, toScreen } from './config.js';
+import { GRAVITY, DEPTH, world, clamp, lerp, toScreen, yLimits } from './config.js';
 import { MOVES, SKILLS, SKILL_KEYS } from './moves.js';
 import { SKILL_TREE } from './progression.js';
 import { hitBox, overlaps } from './combat.js';
@@ -101,6 +101,11 @@ export class Player {
     if (this.sta >= cost) {
       this.spendStamina(cost);
       if (air) this.startAirDash(game); else this.startDash(game);
+      // 第 1 关教耐力（stage_rules.js 的 teach.stamina）：第一次闪避讲规则，第一次快用光时提醒
+      if (game.rules?.teach?.stamina) {
+        game.teachOnce?.('stamina1', '闪避要花耐力（血条下面那条细的）：满耐力能连闪 3 次，停一下就回满；极限闪避会返还耐力', '#b8e88a');
+        if (this.sta < cost) game.teachOnce?.('stamina2', '耐力快空了 —— 再按闪避只是一个没有无敌的侧步。别把闪避一次花光，留一次给真正要躲的那一下', '#b8e88a');
+      }
       return true;
     }
     this.staFlash = STAMINA.flash;
@@ -285,7 +290,7 @@ export class Player {
       }
     }
     this.x = clamp(this.x, 30, world.w - 30);
-    this.y = clamp(this.y, 0, DEPTH);
+    { const [lo, hi] = yLimits(this.x); this.y = clamp(this.y, lo, hi); } // 窄墓道：纵深收窄（terrain.js）
   }
 
   onLand(game) {

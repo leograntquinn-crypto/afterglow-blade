@@ -10,7 +10,7 @@
 // 执行层（预警、出招、受击）还是 enemy.js 原来那一套，这里只决定「下一步做什么」。
 import { STAMINA } from './stamina_data.js';
 import { AI_PROFILES, DIRECTOR, FEINT, HABITS } from './ai_data.js';
-import { VIEW_W, DEPTH, world, clamp, toScreen, FONT_UI } from './config.js';
+import { VIEW_W, DEPTH, world, clamp, clampY, toScreen, FONT_UI } from './config.js';
 
 const HIST = 32;
 
@@ -137,6 +137,14 @@ export class AI {
   // 这次出招要不要是佯攻：概率按难度（读到你爱闪避 / 弹刀时最多 ×1.3），同一个敌人、全场都有冷却（频率上限），连段保护期间不骗
   feintFor(e) {
     const lvl = this.level();
+    // 第 1 关的教学：这间房里第一个出手的近战敌人必定佯攻（只一次，stage_rules.js 的 feintRoom）
+    if (this.g.forceFeint > 0 && e.T?.brain === 'grunt') {
+      this.g.forceFeint--;
+      this.lastFeintF = this.f;
+      e.feintCd = FEINT.cd;
+      e.teachFeint = true;
+      return true;
+    }
     if ((e.feintCd ?? 0) > 0 || this.f - this.lastFeintF < FEINT.global[lvl] || this.guarding) return false;
     if (this.rand() >= FEINT.chance[lvl] * this.habits.mult('feint')) return false;
     this.lastFeintF = this.f;
@@ -315,12 +323,13 @@ class Habits {
   }
 }
 
-export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚', corner: '逼墙角', shove: '甩开', kite: '拉开', cover: '掩体', lane: '找射线', kick: '侧闪踢', feint: '佯攻', fake: '假冲', real: '真冲', scatter: '散开', landdive: '落地俯冲', screen: '躲到同伴后', guard: '格挡', delay: '晚砸', protect: '护同伴', ward: '护咒', trap: '下陷阱', orbit: '盘旋' };
+export const INTENT_NAME = { press: '压上', space: '踩线', retreat: '后撤', strafe: '侧移', flank: '绕位', punish: '惩罚', corner: '逼墙角', shove: '甩开', kite: '拉开', cover: '掩体', lane: '找射线', kick: '侧闪踢', feint: '佯攻', fake: '假冲', real: '真冲', scatter: '散开', landdive: '落地俯冲', screen: '躲到同伴后', guard: '格挡', delay: '晚砸', protect: '护同伴', ward: '护咒', trap: '下陷阱', orbit: '盘旋', riposte: '格挡反击' };
 
 const onScreen = (e, game, m) => e.x > game.camX + m && e.x < game.camX + VIEW_W - m;
 // 走向目标点（纵深方向慢一点，和原来一样）
 function steer(e, tx, ty, k = 1) {
-  const mx = clamp(tx, 30, world.w - 30) - e.x, my = clamp(ty, 8, DEPTH - 8) - e.y, spd = e.T.speed * e.spdMul * k;
+  if (e.game?.terrain) tx = e.game.terrain.steerX(e, tx); // 关卡地形：不往裂口、正在烧的火墙那边走
+  const mx = clamp(tx, 30, world.w - 30) - e.x, my = clampY(ty, 8) - e.y, spd = e.T.speed * e.spdMul * k;
   e.vx = Math.abs(mx) > 6 ? Math.sign(mx) * Math.min(spd, Math.abs(mx)) : 0;
   e.vy = Math.abs(my) > 4 ? Math.sign(my) * Math.min(spd * 0.7, Math.abs(my)) : 0;
   if (e.vx || e.vy) e.walk += 0.2 * spd;
@@ -386,14 +395,14 @@ export const BRAINS = {
       }
 
       // 3. 按意图走位（目标点按「看到的」主角算）
-      let tx = e.x, ty = clamp(s.y + (role === 'ring' ? e.yOff : 0), 8, DEPTH - 8), spdK = 1;
+      let tx = e.x, ty = clampY(s.y + (role === 'ring' ? e.yOff : 0), 8), spdK = 1;
       const intent = ai.intent;
       if (intent === 'press') tx = s.x + side * atk.range * 0.7;
       else if (intent === 'retreat') tx = s.x + side * (atk.range + 170);
-      else if (intent === 'strafe') { tx = s.x + side * (atk.range + 40); ty = clamp(s.y + (e.y >= s.y ? 1 : -1) * 58, 8, DEPTH - 8); }
+      else if (intent === 'strafe') { tx = s.x + side * (atk.range + 40); ty = clampY(s.y + (e.y >= s.y ? 1 : -1) * 58, 8); }
       else if (intent === 'flank' && side !== A.flankSide) {
         // 绕到另一侧：先往纵深让开（不从主角身上穿过去），再横着绕过去
-        const detour = clamp(s.y + (e.y >= s.y ? 1 : -1) * P.flank.depth, 8, DEPTH - 8);
+        const detour = clampY(s.y + (e.y >= s.y ? 1 : -1) * P.flank.depth, 8);
         ty = detour;
         tx = Math.abs(e.y - detour) > 12 && adx < 150 ? e.x : s.x + A.flankSide * (atk.range + 40);
         spdK = 1.15;
@@ -463,7 +472,7 @@ export const BRAINS = {
       let tx = s.x + want * atk.range * 0.8, ty = s.y;
       if (want !== side) {
         // 绕边：先往纵深让开（不穿过你），让开了再横着绕过去
-        const detour = clamp(s.y + (e.y >= s.y ? 1 : -1) * P.corner.depth, 8, DEPTH - 8);
+        const detour = clampY(s.y + (e.y >= s.y ? 1 : -1) * P.corner.depth, 8);
         ty = detour;
         if (Math.abs(e.y - detour) > 12 && adx < 160) tx = e.x;
       }
@@ -504,7 +513,7 @@ export const BRAINS = {
         if (e.evadeCd <= 0) {
           e.setState('hop');
           e.vz = 5; e.z = 0.01; e.vx = 0;
-          e.vy = (e.y > DEPTH / 2 ? -1 : 1) * P.corner.side; // 往开阔的纵深闪
+          e.vy = (e.y > (world.band ? (world.band.y0 + world.band.y1) / 2 : DEPTH / 2) ? -1 : 1) * P.corner.side; // 往开阔的纵深闪
           e.evadeCd = 170;
           ai.kick = true;
           ai.intent = 'kick';
@@ -543,7 +552,7 @@ export const BRAINS = {
         tx = brute.x + cs * P.cover.behind; ty = brute.y + (e.id % 2 ? 14 : -14);
       } else if (intent === 'lane') {
         tx = s.x + side * dist;
-        const opts = [s.y + P.lane.step, s.y - P.lane.step, s.y + P.lane.step * 1.6, s.y - P.lane.step * 1.6].map((y) => clamp(y, 8, DEPTH - 8));
+        const opts = [s.y + P.lane.step, s.y - P.lane.step, s.y + P.lane.step * 1.6, s.y - P.lane.step * 1.6].map((y) => clampY(y, 8));
         ty = opts.find((y) => !this.blocked({ ...e, y }, game, s.y)) ?? opts[0];
       } else tx = s.x + side * dist;
       steer(e, tx, ty);
@@ -561,11 +570,12 @@ export const BRAINS = {
     aimAt(e, s, lvl, P) {
       const flight = Math.abs(s.x - e.x) / 7.5, t = e.T.atk.windup + flight;
       const lead = clamp((s.vy || 0) * t * P.lead.k[lvl], -P.lead.max, P.lead.max);
-      return clamp(s.y + lead, 6, DEPTH - 6);
+      return clampY(s.y + lead, 6);
     },
     // 射线上有没有同伴（箭会从同伴身边擦过去 —— 弓手不会隔着同伴放箭）
     blocked(e, game, aimY) {
       const P = AI_PROFILES.archer, px = game.player.x;
+      if (game.terrain?.lineBlocked(e.x, e.y, px, aimY)) return true; // 立柱挡着射线（第 2 关）：换个纵深再射
       for (const o of game.enemies) {
         if (o === e || !o.alive || o.team === 'prop' || o.z > 30) continue;
         if ((o.x - e.x) * (px - e.x) <= 0 || Math.abs(o.x - e.x) >= Math.abs(px - e.x)) continue; // 不在我和你之间

@@ -4,7 +4,7 @@
 //   狂暴  血量低于一半后移动、出招都变快 → 留好爆发技能收尾
 //   迅影  被连续打中会瞬移到你身后反击 → 连段别贪，看到紫光就闪避
 //   爆裂  死后原地爆炸 → 离开红圈；把它打进敌群里，爆炸也会炸到别的敌人
-import { rand, clamp, world, DEPTH, FONT_UI } from './config.js';
+import { rand, clamp, world, DEPTH, FONT_UI, yLimits } from './config.js';
 import { Hazard } from './combat.js';
 import { sfx } from './audio.js';
 
@@ -97,7 +97,7 @@ function blinkBehind(e, game) {
   game.fx.converge(e.x, e.y, e.z + e.h * 0.5, 10, c);
   const side = -p.facing; // 落到玩家背后
   e.x = clamp(p.x + side * 110, 40, world.w - 40);
-  e.y = clamp(p.y + rand(-10, 10), 0, DEPTH);
+  { const [lo, hi] = yLimits(e.x); e.y = clamp(p.y + rand(-10, 10), lo, hi); }
   e.z = 0;
   e.vx = e.vy = e.vz = 0;
   e.juggle = 0;

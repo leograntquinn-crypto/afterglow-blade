@@ -43,6 +43,14 @@ export class Projectile {
       if (!this.returned && Math.sign(this.vx) === -this.dir0) { this.returned = true; this.hitSet.clear(); }
     }
     if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; return; }
+    // 关卡地形：立柱挡住飞行物（双方的箭、剑气都挡）
+    if (game.terrain?.pillars.length && game.terrain.blocksShot(this, this.x - this.vx)) {
+      this.dead = true;
+      game.terrain.stats.shotsBlocked++;
+      game.fx.chips(this.x, this.y, this.z + 30, -this.facing, 6, '#8a8090');
+      game.fx.dust(this.x, this.y, 4, 1);
+      return;
+    }
     const h = this.hit;
     const box = { cx: this.x, hw: h.box.w / 2, cy: this.y, d: h.box.d, z0: this.z + h.box.z0, z1: this.z + h.box.z1 };
     const targets = this.team === 'player' ? game.enemies : [game.player];

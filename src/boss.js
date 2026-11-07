@@ -11,6 +11,14 @@ import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { heroSprite, shadowFrame, runStep } from './sprite.js';
+import { BOSS_SCALE } from './boss_scale.js';
+
+const READ_TOAST = {
+  dodge: '残影在学你：你爱闪避 —— 它开始用错开时机的多段斩逼你把闪避交早',
+  parry: '残影在学你：你爱弹刀 —— 它改用弹不开的远程',
+  greed: '残影在学你：你爱贪刀 —— 它会瞬移到你背后',
+  whiff: '残影在学你：你常空挥 —— 它会冲过来抓你的空挥',
+};
 import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sprites.js';
 import { sfx } from './audio.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
@@ -72,6 +80,8 @@ export const BOSSES = {
     name: '残影', title: '深渊中的另一个你', base: null, scale: 1, glow: '#b46bff', hp: 2800, armor: 380, bars: 16, speed: 2.6,
     look: HERO_DARK, minion: 'grunt', shot: 'wave',
     channel: '残光逆转',
+    // 读习惯（第 12 项）：你的哪种习惯明显 → 哪些招式的权重加上去（boss.js 的 habitTable）
+    reads: { dodge: ['execution', 'combo'], parry: ['volley', 'rain'], greed: ['teleport'], whiff: ['charge'] },
     phases: [
       { at: 1, attacks: { combo: 3, teleport: 2, volley: 1 } },
       { at: 0.6, line: '残影的剑光变得更加锋利', attacks: { combo: 2, teleport: 2, volley: 2, charge: 2, channel: 1 } },
@@ -109,7 +119,8 @@ const ATTACKS = {
     ok: (b, p) => dist(b, p) < 220 && Math.abs(p.y - b.y) < 40,
     tick(b, g, t, d) {
       const p = g.player, sz = b.B.scale;
-      const swings = [24, 46, 68].map((s) => Math.round(s / b.spd));
+      // 首领动态难度（boss_scale.js）：强化到一定幅度时三连斩多一两刀
+      const swings = Array.from({ length: 3 + (b.dyn?.comboAdd ?? 0) }, (_, k) => Math.round((24 + 22 * k) / b.spd));
       b.tele = t < swings[0] - 4;
       swings.forEach((s, k) => {
         const up = k % 2 === 1;
@@ -127,7 +138,7 @@ const ATTACKS = {
         }
       });
       b.vx *= 0.82;
-      return t >= swings[2] + 26;
+      return t >= swings[swings.length - 1] + 26;
     },
   },
   // 跳劈：前方大范围红圈
@@ -413,7 +424,7 @@ export class Boss extends Enemy {
       if (this.vx || this.vy) this.walk += 0.15 * this.T.speed;
       return;
     }
-    const table = this.B.phases[this.phase].attacks;
+    const table = this.habitTable(game, this.B.phases[this.phase].attacks);
     const opts = Object.entries(table).filter(([n]) => ATTACKS[n].ok(this, p, game));
     if (!opts.length) {
       this.vx = sign(p.x - this.x) * this.T.speed;
@@ -426,6 +437,26 @@ export class Boss extends Enemy {
       r -= w;
       if (r <= 0) return this.startAct(name);
     }
+  }
+
+  // 残影读你的习惯（B.reads，第 12 项）：按 ai.js 的玩家模型调招式权重 —— 爱闪避 → 多用处决（多段、时机错开）和佯攻性的瞬身；
+  // 爱弹刀 → 多用射击 / 箭雨（弹不了）；爱贪刀 → 多瞬移到你背后；爱空挥 → 多冲锋抓空挥。力度随动态难度加强
+  habitTable(game, table) {
+    const R = this.B.reads, H = game.ai?.habits;
+    if (!R || !H) return table;
+    const k = BOSS_SCALE.habit * (1 + (this.dyn?.bonus ?? 0)), out = { ...table };
+    let top = null;
+    for (const [habit, moves] of Object.entries(R)) {
+      const h = H.h(habit);
+      if (h > (top?.h ?? 0.35)) top = { habit, h };
+      for (const m of moves) if (out[m] != null) out[m] *= 1 + h * k;
+    }
+    if (top && !this.readShown?.[top.habit]) {
+      (this.readShown ??= {})[top.habit] = true;
+      game.toast?.(READ_TOAST[top.habit], this.B.glow);
+      game.fx.label(this.x, this.y, this.h + 50, '它在学你', this.B.glow, 22);
+    }
+    return out;
   }
 
   startAct(name) {
@@ -443,7 +474,7 @@ export class Boss extends Enemy {
     a.t++;
     if (done) {
       this.setState('idle');
-      this.restT = (rand(28, 56) / this.spd) | 0;
+      this.restT = (rand(28, 56) / this.spd / (1 + (this.dyn?.bonus ?? 0))) | 0; // 动态难度：出招更频繁
     }
   }
 
