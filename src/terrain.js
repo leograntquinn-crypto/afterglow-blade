@@ -3,7 +3,7 @@
 // 画面全部用现成的素材（场景包的碎石 / 骨堆 / 立柱 / 锁链钩、第 4 关首领包里的魂火序列帧、光照包、第 5 关的深渊远景），
 // 不加代码画的形状。地形的布局按房间坐标生成一次、记在房间上，回到同一间房时不变。
 import { world, DEPTH, GROUND_TOP, VIEW_W, clamp, toScreen } from './config.js';
-import { envImg, ENV_PX, envBackdrop } from './scenery.js';
+import { envImg, ENV_PX } from './scenery.js';
 import { flipbook, lightTex } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { sfx } from './audio.js';
@@ -344,7 +344,6 @@ export class Terrain {
   drawGap(ctx, camX, G, t) {
     const x0 = G.x0 - camX, x1 = G.x1 - camX;
     if (x1 < -40 || x0 > VIEW_W + 40) return;
-    const bd = envBackdrop('stage_05');
     const top = GROUND_TOP - 6, bot = GROUND_TOP + DEPTH + 40, b0 = GROUND_TOP + G.bridge[0], b1 = GROUND_TOP + G.bridge[1];
     ctx.save();
     ctx.beginPath();
@@ -354,18 +353,11 @@ export class Terrain {
     // 裂口本身：没有地面，底下是黑的（这是「没有东西」，不是画出来的效果）
     ctx.fillStyle = '#040208';
     ctx.fillRect(x0, top, x1 - x0, bot - top);
-    // 透过裂口隐约看到的深渊（第 5 关的远景素材，很暗、慢慢往下沉，显得很深）
-    if (bd) {
-      const h = 360, w = (bd.width / bd.height) * h, ox = ((camX * 0.2) % w + w) % w, oy = (t * 0.15) % h;
-      ctx.globalAlpha = 0.3;
-      for (let x = x0 - ox - w; x < x1 + w; x += w) for (const y of [top - oy, top - oy + h]) ctx.drawImage(bd, x, y, w, h);
-      ctx.globalAlpha = 1;
-    }
     // 越往里越黑：光照包的暗雾叠很多层，中间几乎全黑，边上透一点远景
     const fog = lightTex('seal_fog');
     if (fog) {
       const img = tinted(fog, '#040208'), cw = x1 - x0;
-      for (let i = 0; i < 7; i++) ctx.drawImage(img, x0 - cw * 0.15 + (i % 2) * 6, top + i * 34 - 50, cw * 1.3, 180);
+      for (let i = 0; i < 3; i++) ctx.drawImage(img, x0 - cw * 0.15 + (i % 2) * 6, top + i * 70 - 40, cw * 1.3, 200); // 底下已经是黑的，暗雾只负责边缘柔和
     }
     ctx.restore();
     // 裂口的边沿：地裂贴花沿着两边竖着铺
