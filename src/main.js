@@ -17,7 +17,7 @@ import { AI } from './ai.js';
 import { AI_PROFILES } from './ai_data.js';
 import { WORLD_ART } from './world_art.js';
 import { releaseBoot } from './boot.js';
-import { STAMINA } from './stamina_data.js';
+import { STAMINA, MANA } from './stamina_data.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
@@ -1448,6 +1448,7 @@ class Game {
       if (target.z > 20) this.quest('airHit');
       if (r.otg && this.stats.marks.has('otg')) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.02); // 追魂
       this.comboDmg += dmg;
+      if (src === this.player && !this.player.move?.skill && !h.ult) this.player.mp = Math.min(this.player.maxMp, this.player.mp + MANA.onHit); // 普攻打中回一点魔力
       this.comboT = 110;
       this.comboPop = 8;
       this.ai?.onPlayerHit(target);

@@ -15,7 +15,7 @@ import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
 import { heroSprite, heroFrame, bladeOf, runStep } from './sprite.js';
 import { SLASH_FX } from './fx_data.js';
-import { STAMINA } from './stamina_data.js';
+import { STAMINA, MANA } from './stamina_data.js';
 import { ribbonTex, drawRibbon, drawTip } from './ribbon.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
@@ -127,7 +127,8 @@ export class Player {
     if (this.flash > 0) this.flash--;
     if (this.dashCd > 0) this.dashCd--;
     this.updateStamina();
-    this.mp = Math.min(this.maxMp, this.mp + this.S.mpRegen);
+    if (this.mpPause > 0) this.mpPause--; // 放技能后自然回复暂停（stamina_data.js 的 MANA）
+    else this.mp = Math.min(this.maxMp, this.mp + this.S.mpRegen);
     this.hpTrail = this.hpTrail > this.hp ? Math.max(this.hp, this.hpTrail - this.maxHp * 0.004) : this.hp;
     this.readyFlash ??= {};
     for (const k in this.cd) {
@@ -576,6 +577,7 @@ export class Player {
       if (this.cd[key] > 0) { say('冷却中', '#9fb3c8'); continue; }
       if (this.mp < s.mp) { say('魔力不足', '#4fa3ff'); continue; }
       this.mp -= s.mp;
+      this.mpPause = MANA.pauseAfterSkill;
       this.spendStamina(STAMINA.skill); // 技能：扣一点耐力，动作里不回复（updateStamina）
       this.cd[key] = this.cdMax[key] = Math.round(s.cd * (1 - this.S.cdr));
       this.startMove(game, s.move);
