@@ -9,7 +9,9 @@
 import { DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
 import { Enemy, TYPES } from './enemy.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
-import { drawFighter, drawAura } from './rig.js';
+import { drawFighter } from './rig.js';
+import { drawEnemyAura } from './enemy_fx.js';
+import { ENEMY_FX } from './fx_data.js';
 import { heroSprite, shadowFrame, runStep } from './sprite.js';
 import { BOSS_SCALE } from './boss_scale.js';
 
@@ -489,8 +491,12 @@ export class Boss extends Enemy {
     let alpha = this.fade;
     if (this.state === 'dying' && this.z <= 0) alpha *= Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha *= Math.min(1, this.st / 24);
-    if (this.tele) drawAura(ctx, sx, sy, this.h, '#ff2a2a', (1.3 + 0.5 * Math.sin(t * 0.6)) * alpha);
-    else if (this.alive) drawAura(ctx, sx, sy, this.h, this.armor > 0 ? this.B.glow : COLORS.ember, (0.8 + 0.25 * Math.sin(t * 0.1) + this.phase * 0.3) * alpha);
+    // 状态光（fx_enemy_v1）：出招 aura_threat（红），平时 aura_guard（有霸体用首领自己的颜色，否则余烬橙，阶段越高越亮）。素材没载好时不画
+    if (this.tele) drawEnemyAura(ctx, this, sx, sy, 'bossThreat', t, alpha);
+    else if (this.alive) {
+      const I = ENEMY_FX.aura.bossIdle;
+      drawEnemyAura(ctx, this, sx, sy, 'bossIdle', t, alpha * (1 + (this.phase * I.phase) / I.alpha), this.armor > 0 ? this.B.glow : COLORS.ember);
+    }
     const flash = this.game.ticks < (this.flashUntil ?? 0);
     const drawBody = (sx, sy, alpha) => {
       if (this.B === BOSSES.afterimage && heroSprite.ready) {

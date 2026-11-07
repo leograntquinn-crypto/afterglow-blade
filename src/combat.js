@@ -5,6 +5,8 @@ import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
 import { BOSS_SPRITES } from './enemy_sprites.js';
 import { FEINT } from './ai_data.js';
+import { ENEMY_FX } from './fx_data.js';
+import { drawWarn, drawWarnFlash, drawMeteor, drawLaneBand, drawArrow, arrowBreakFx } from './enemy_fx.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -52,6 +54,7 @@ export class Projectile {
       this.dead = true;
       game.terrain.stats.shotsBlocked++;
       this.whiffCheck(game);
+      if (this.kind === 'arrow') arrowBreakFx(game, this.x, this.y, this.z, -this.facing);
       game.fx.chips(this.x, this.y, this.z + 30, -this.facing, 6, '#8a8090');
       game.fx.dust(this.x, this.y, 4, 1);
       return;
@@ -69,6 +72,7 @@ export class Projectile {
       }
       if (game.applyHit(this, t, h, this.facing)) {
         this.hitSet.add(t);
+        if (this.kind === 'arrow') arrowBreakFx(game, this.x, this.y, this.z, this.facing); // 箭杆断成两截
         this.onHit?.(game, t);
         if (!this.pierce) { this.dead = true; return; }
       }
@@ -213,24 +217,7 @@ export class Projectile {
       ctx.drawImage(tinted(T.core, col), -9, -9, 18, 18);
     } else if (this.kind === 'arrow') {
       if (this.vy) ctx.rotate(Math.atan2(this.vy, Math.abs(this.vx))); // 预判过的箭斜着飞
-      ctx.strokeStyle = 'rgba(255,90,70,.35)';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(-40, 0);
-      ctx.lineTo(0, 0);
-      ctx.stroke();
-      ctx.strokeStyle = '#d9c9a8';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(-26, 0);
-      ctx.lineTo(0, 0);
-      ctx.stroke();
-      ctx.fillStyle = '#ff8a6a';
-      ctx.beginPath();
-      ctx.moveTo(6, 0);
-      ctx.lineTo(-2, -4);
-      ctx.lineTo(-2, 4);
-      ctx.fill();
+      drawArrow(ctx); // 箭（fx_enemy_v1 的 arrow + arrow_trail）。素材没载好时不画
     }
     ctx.restore();
   }
@@ -243,6 +230,7 @@ export class Hazard {
   }
   update(game) {
     this.t++;
+    this.ph = (this.ph ?? 0) + 1 + (ENEMY_FX.warn.speedUp * this.t) / Math.max(1, this.delay); // 预警圈的播放相位：越临近爆发播得越快
     // 施法者被打断（比如被破防）→ 取消。普通敌人出招状态叫 windup，Boss 叫 attack
     if (this.t < this.delay && this.owner && this.owner.state !== (this.ownerState || 'windup')) { this.dead = true; return; }
     if (this.t === this.delay) {
@@ -286,37 +274,28 @@ export class Hazard {
       const u = this.t / this.delay, T = tex();
       ctx.globalCompositeOperation = 'lighter';
       ctx.globalAlpha = 0.7 + 0.3 * Math.sin(this.t * (0.35 + u * 0.6));
-      // 屠夫佯攻的红圈：露出破绽后变淡、闪烁（这一下不会砸）
-      if (this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal) ctx.globalAlpha *= 0.3 + 0.2 * Math.sin(this.t * 1.4);
-      ctx.drawImage(tinted(T.ring[2], '#ff4636'), sx - this.rx * 1.04, sy - this.ry * 1.04, this.rx * 2.08, this.ry * 2.08);
-      ctx.globalAlpha = 0.25 + 0.45 * u;
-      ctx.drawImage(tinted(T.glow, '#ff3a2e'), sx - this.rx * u * 1.3, sy - this.ry * u * 1.3, this.rx * u * 2.6, this.ry * u * 2.6);
-      const k = 1 - ((this.t * 0.04) % 1) * 0.85;
-      ctx.globalAlpha = 0.5 * u;
-      ctx.drawImage(tinted(T.ring[0], '#ffb0a0'), sx - this.rx * k, sy - this.ry * k, this.rx * k * 2, this.ry * k * 2);
-      ctx.globalCompositeOperation = 'source-over';
-      ctx.globalAlpha = 1;
-      if (this.kind === 'meteor') {
-        // 从天而降的光球，落地时刚好爆炸
-        const h = (1 - u) * 340;
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = this.color || '#ff6a3d';
-        ctx.globalAlpha = 0.25;
-        ctx.beginPath();
-        ctx.arc(sx, sy - h, 22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(sx, sy - h, 9, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillRect(sx - 2, sy - h - 40, 4, 34);
+      // 素材（fx_enemy_v1）：warn_ring + 从中心放大的 warn_fill；屠夫佯攻露出破绽后换成断开的 warn_ring_fake（琥珀）。没载好时代码画
+      const fake = this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal;
+      this.ringFake = fake; // 测试用
+      if (drawWarn(ctx, sx, sy, this.rx, this.ry, u, this.ph ?? this.t, fake, fake ? 0.75 + 0.25 * Math.sin(this.t * 1.4) : 0.8 + 0.2 * Math.sin(this.t * (0.35 + u * 0.6)))) {
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
+        if (this.kind === 'meteor') drawMeteor(ctx, sx, sy, (1 - u) * 340, this.t, this.color || '#ff6a3d'); // 从天而降的火球，落地时刚好爆炸
+      } else {
+        // 屠夫佯攻的红圈：露出破绽后变淡、闪烁（这一下不会砸）
+        if (this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal) ctx.globalAlpha *= 0.3 + 0.2 * Math.sin(this.t * 1.4);
+        ctx.drawImage(tinted(T.ring[2], '#ff4636'), sx - this.rx * 1.04, sy - this.ry * 1.04, this.rx * 2.08, this.ry * 2.08);
+        ctx.globalAlpha = 0.25 + 0.45 * u;
+        ctx.drawImage(tinted(T.glow, '#ff3a2e'), sx - this.rx * u * 1.3, sy - this.ry * u * 1.3, this.rx * u * 2.6, this.ry * u * 2.6);
+        const k = 1 - ((this.t * 0.04) % 1) * 0.85;
+        ctx.globalAlpha = 0.5 * u;
+        ctx.drawImage(tinted(T.ring[0], '#ffb0a0'), sx - this.rx * k, sy - this.ry * k, this.rx * k * 2, this.ry * k * 2);
+        ctx.globalCompositeOperation = 'source-over';
+        ctx.globalAlpha = 1;
       }
     } else {
-      const u = 1 - (this.t - this.delay) / 14;
-      ctx.fillStyle = `rgba(255,200,120,${0.5 * u})`;
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, this.rx * (1.2 - 0.2 * u), this.ry * (1.2 - 0.2 * u), 0, 0, Math.PI * 2);
-      ctx.fill();
+      // 爆发：整片亮起、碎成放射状光纹再熄灭（fx_enemy_v1 的 warn_flash）。素材没载好时不画（爆发本身还有冲击环、尘土、光柱这些粒子）
+      drawWarnFlash(ctx, sx, sy, this.rx, this.ry, this.t - this.delay, this.color || '#ff8a5a');
     }
     ctx.restore();
   }
@@ -339,12 +318,7 @@ export class Lane {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
     const len = this.facing > 0 ? world.w - this.x : this.x;
     const a = 0.12 + 0.18 * (this.t / this.life) + 0.08 * Math.sin(this.t * 0.6);
-    ctx.save();
-    ctx.fillStyle = this.color;
-    ctx.globalAlpha = a;
-    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - this.half / 2, len, this.half);
-    ctx.globalAlpha = a * 2;
-    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - 1, len, 2);
-    ctx.restore();
+    // 素材（fx_enemy_v1 的 lane_band）：沿路线平铺、往前流。素材没载好时不画
+    drawLaneBand(ctx, sx, sy, this.facing, len, this.half, this.t, this.color, a * 2.2);
   }
 }

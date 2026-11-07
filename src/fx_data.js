@@ -98,3 +98,66 @@ export const SLASH_FX = {
 };
 // 受击分级用哪组命中爆点
 export const HIT_FB = { light: ['hit_light', 1], crit: ['hit_light', 1.35], heavy: ['hit_heavy', 1], break: ['hit_break', 1], kill: ['hit_heavy', 1.15] };
+
+// ---------- 敌人特效（fx_enemy_v1，docs/ART_FX_ENEMY_V1.md）----------
+// 第 1 批（共用）：状态光、弓手的瞄准线和箭、地面预警、词缀、司祭。怎么画见 enemy_fx.js。
+// 素材没载好（载入失败）时这些地方退回原来代码画的样子：预警是玩法信息，不能因为素材没到就不画。
+// passes：叠画几遍（素材本身偏淡、又是重要的玩法提示时加亮）。
+// 大小：身上的东西按「素材 ÷ 身高 260 的人」× 敌人身高缩放（size 是再乘的倍数）；地面 / 箭这类按游戏逻辑像素给（k = 逻辑像素 / 交付像素）
+export const ENEMY_FX = {
+  // 状态光（画在敌人身后，锚点对脚底）。三种形状 = 三种意思：threat 要出手 / feint 假动作 / guard 在防或有霸体
+  aura: {
+    threat: { fb: 'aura_threat', color: '#ff2a2a', alpha: 0.95, size: 1.05 }, // 出招预警
+    feint: { fb: 'aura_feint', color: '#ffb347', alpha: 1, size: 1.1, passes: 2 }, // 佯攻露出破绽
+    guard: { fb: 'aura_guard', color: '#9fd0ff', alpha: 1, size: 1.15, passes: 2 }, // 屠夫举斧格挡
+    armor: { fb: 'aura_guard', color: '#ffb347', alpha: 0.7 }, // 霸体（余烬橙）
+    blink: { fb: 'aura_guard', color: '#c48bff', alpha: 1, size: 1.15, passes: 2 }, // 迅影闪现后
+    frenzy: { fb: 'aura_threat', color: '#ff5a3c', alpha: 0.55 }, // 狂暴
+    elite: { fb: 'aura_guard', color: '#ffd65a', alpha: 0.55 }, // 精英（另外叠冠光 crown）
+    bossThreat: { fb: 'aura_threat', color: '#ff2a2a', alpha: 0.95 }, // 首领出招
+    bossIdle: { fb: 'aura_guard', color: null, alpha: 0.4, phase: 0.15 }, // 首领平时（color null = 首领自己的颜色 / 余烬橙）；每个阶段亮 phase
+  },
+  crown: { fb: 'elite_crown', color: '#ffd65a', alpha: 1 }, // 精英：肩头往上的冠光，叠在身体前面
+  blink: { fb: 'blink_flash', color: '#c48bff' }, // 迅影瞬移：离开和出现的地方各播一次
+  volatile: { fb: 'volatile_core', color: '#ffb347', size: 0.36, z: 0.55, alpha: 0.85 }, // 爆裂：胸口的不稳定核（size × 身高 = 画多大）
+  shield: { fb: 'shield_arc', color: '#8fc4ff', size: 0.8, x: 0.5, alpha: 0.7 }, // 坚盾：按剩余格挡次数选帧（第 0 帧完整）
+  ward: { fb: 'ward_shell', brk: 'ward_break', color: '#cfc8ff', size: 1.3, alpha: 0.85 }, // 司祭的咒盾（灰白偏冷）：size × 身高 = 壳多高
+  trap: { draw: 'trap_draw', rune: 'trap_rune', size: 2.3, alpha: 1, passes: 2 }, // 陷阱符：先画出来再循环；size × rx = 符阵宽
+  // 地面预警圈：环（越临近爆发播得越快）+ 从中心往外放大的填充光 + 爆发闪光。屠夫佯攻露出破绽后换成断开的环（琥珀）
+  warn: { ring: 'warn_ring', fake: 'warn_ring_fake', fill: 'warn_fill', flash: 'warn_flash', color: '#ff4636', fakeColor: '#ffb347', fillColor: '#ff3a2e', speedUp: 1.5, fakePasses: 3, fakeFill: 0.6, ringR: [210, 98], fillR: [189, 87] }, // ringR / fillR：素材里环 / 填充光的半径（交付像素）
+  meteor: { fb: 'meteor', k: 0.5 },
+  lane: { tex: 'lane_band', h: 1.3, scroll: 3, alpha: 1.6 }, // 冲锋 / 齐射路线光带：光带可见的高 = half × h；scroll 每帧往前滚多少逻辑像素
+  aim: { tex: 'aim_line', mark: 'aim_mark', color: '#ff4a3a', k: 0.7, markK: 0.5, scroll: 4 }, // 弓手瞄准线：沿路线平铺、往前流
+  threatBack: { tex: 'threat_back', color: '#ff3b3b', k: 0.5 }, // 背后来袭
+  arrow: { tex: 'arrow', trail: 'arrow_trail', brk: 'arrow_break', k: 0.5, trailColor: '#ff5a7a', trailAt: -12, brkColor: '#e6dccb', brkK: 0.42 },
+};
+
+// 第 2 批（各敌人自己的出招 / 命中 / 死亡，fx_enemy_v1_types）：按敌人（look.rig）查 tele 预警 / attack 出招 / hit 挨打 / death 死亡 →
+//   fb 素材 id、color 染色（带颜色的实物给 null）、size（× 身高 / 260）、x 往前偏移（× 身高）、z 高度（× 身高）、
+//   follow 跟着敌人走（循环的预警）、hold 一次性的播完在最后一帧停多久再淡出、feintColor 假动作用的颜色
+// 素材还没到：查到了也不画（不加代码画的替身），现在的通用粒子照旧。弓手的预警 / 出招就是瞄准线和箭（第 1 批）
+export const ENEMY_TYPE_FX = {
+  grunt: {
+    tele: { fb: 'grunt_glint', color: '#ff6a4a', size: 0.55, x: 0.35, z: 0.62 },
+    attack: { fb: 'grunt_slash', color: '#d8794a', size: 0.6, x: 0.3, z: 0.5 },
+    hit: { fb: 'bone_chips', color: null, size: 0.5, z: 0.55 },
+    death: { fb: 'bone_collapse', color: null, size: 0.8, hold: 50 },
+  },
+  brute: {
+    tele: { fb: 'brute_heat', color: '#ff5a2a', size: 0.5, x: 0.45, z: 0.75, follow: true },
+    attack: { fb: 'brute_cleave', color: '#ffb070', size: 0.7, x: 0.35, z: 0.5 },
+    hit: { fb: 'metal_spark', color: '#ffe0a0', size: 0.55, z: 0.6 },
+    death: { fb: 'armor_fall', color: null, size: 0.9, hold: 50 },
+  },
+  archer: { death: { fb: 'shadow_fade', color: '#8a5cff', size: 1 } },
+  priest: {
+    tele: { fb: 'lantern_flare', color: '#ece6d8', size: 0.45, x: 0.3, z: 1.0 },
+    hit: { fb: 'rune_shatter', color: '#cfc8ff', size: 0.5, z: 0.6 },
+    death: { fb: 'candle_smoke', color: '#bfc4cc', size: 1 },
+  },
+  wing: {
+    tele: { fb: 'ember_crack', color: '#ff3a2e', feintColor: '#ffb347', size: 2.4, z: 0.5, follow: true },
+    hit: { fb: 'ember_pop', color: '#ffb347', size: 2.4, z: 0.5 },
+    death: { fb: 'ash_fall', color: '#8a8580', size: 4 },
+  },
+};

@@ -9,6 +9,7 @@
 //   6. 数据化（ai_data.js）
 // 执行层（预警、出招、受击）还是 enemy.js 原来那一套，这里只决定「下一步做什么」。
 import { STAMINA } from './stamina_data.js';
+import { drawAimLine, drawThreatBack } from './enemy_fx.js';
 import { AI_PROFILES, DIRECTOR, FEINT, HABITS } from './ai_data.js';
 import { VIEW_W, DEPTH, world, clamp, clampY, toScreen, FONT_UI } from './config.js';
 
@@ -216,13 +217,7 @@ export class AI {
       if (!e.alive || e.state !== 'windup' || !e.aim) continue;
       const [x0, y0] = toScreen(e.x + e.facing * 30, e.y, 52, camX), [x1, y1] = toScreen(e.x + e.facing * (30 + e.aim.len), e.y + e.aim.vy * (e.aim.len / e.aim.vx), 52, camX);
       const u = Math.min(1, e.st / Math.max(1, e.windup));
-      ctx.save();
-      ctx.globalAlpha = 0.25 + 0.45 * u;
-      ctx.strokeStyle = '#ff4a3a';
-      ctx.lineWidth = 1 + u * 1.5;
-      ctx.setLineDash([10, 6]);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-      ctx.restore();
+      drawAimLine(ctx, x0, y0, x1, y1, u, t); // fx_enemy_v1 的 aim_line（沿路线平铺往前流）+ 终点 aim_mark。素材没载好时不画
     }
     let behind = null;
     for (const e of g.enemies) {
@@ -232,22 +227,7 @@ export class AI {
     if (!behind) return null;
     const dir = Math.sign(behind.x - p.x);
     const [x, y] = toScreen(p.x + dir * 40, p.y, p.z + 62, camX);
-    ctx.save();
-    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 0.5);
-    ctx.fillStyle = '#ff3b3b';
-    ctx.strokeStyle = '#1a0606';
-    ctx.lineWidth = 2;
-    for (const k of [0, 1]) {
-      const ox = x + dir * k * 9;
-      ctx.beginPath();
-      ctx.moveTo(ox + dir * 9, y);
-      ctx.lineTo(ox - dir * 3, y - 9);
-      ctx.lineTo(ox - dir * 3, y + 9);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fill();
-    }
-    ctx.restore();
+    drawThreatBack(ctx, x + dir * 6, y, dir, 0.7 + 0.3 * Math.sin(t * 0.5)); // fx_enemy_v1 的 threat_back。素材没载好时不画
     return behind;
   }
 }

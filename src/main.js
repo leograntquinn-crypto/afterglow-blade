@@ -6,6 +6,7 @@
 // 游戏逻辑都按每秒 60 次更新。这样帧数据（招式第几帧出判定）在任何设备上都一致。
 
 import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, FONT_UI, clamp, rand } from './config.js';
+import { typeFx } from './enemy_fx.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -1486,6 +1487,7 @@ class Game {
 
   onKill(e) {
     this.kills++;
+    typeFx(this, e, 'death'); // 第 2 批：各敌人自己的死亡（素材没到时不画）
     sfx('kill');
     this.addUlt(2.5);
     this.addStyle(40, 'kill');

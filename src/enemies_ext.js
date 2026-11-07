@@ -4,6 +4,7 @@
 // 只把「怎么想、怎么出招、怎么画」交给这里：Enemy 在对应位置调用 AI[类型].think / doAttack / updateAttack / draw。
 // 专属素材（docs/ART_V6.md）回来之前，用程序画的占位美术。
 import { DEPTH, world, clamp, clampY, yLimits, rand, toScreen, COLORS } from './config.js';
+import { drawWardShell, drawTrapRune } from './enemy_fx.js';
 import { hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
@@ -316,6 +317,8 @@ export class Trap {
   drawFloor(ctx, camX) {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
     const T = tex(), armed = this.t >= this.arm;
+    // 素材（fx_enemy_v1）：先播 trap_draw 把符阵一笔笔画出来，布好以后循环 trap_rune；没载好时代码画
+    if (drawTrapRune(ctx, sx, sy, this.rx, this.t, armed, Math.min(1, (this.life - this.t) / 30), WARD_COLOR)) return;
     const img = tinted(T.rune ? T.rune[1] : T.ring[1], WARD_COLOR);
     const grow = Math.min(1, this.t / 12), fade = Math.min(1, (this.life - this.t) / 30);
     const w = this.rx * 2.3 * grow, h = this.ry * 2.3 * grow;
@@ -340,6 +343,7 @@ export function disarmTraps(game, x, y, r) {
 export function drawWard(ctx, e, sx, sy, t) {
   if (!e.ward) return;
   const T = tex(), k = Math.min(1, e.ward.t / 30);
+  if (drawWardShell(ctx, e, sx, sy, t, k)) return; // 素材（fx_enemy_v1 的 ward_shell）；没载好时代码画
   const w = e.w * 2.2 + 20, h = e.h * 1.3 + 10;
   ctx.save();
   ctx.globalCompositeOperation = 'lighter';
