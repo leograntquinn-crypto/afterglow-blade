@@ -1,7 +1,7 @@
 // 敌人特效的画法（fx_enemy_v1，docs/ART_FX_ENEMY_V1.md）：按 fx_data.js 的 ENEMY_FX / ENEMY_TYPE_FX 表画。
 // 每个函数画成了返回 true；素材没载好返回 false，调用的地方退回原来代码画的样子（预警是玩法信息，不能不画）。
 // 素材是灰度的发光图（add），引擎按状态染色；箭是带颜色的实物（normal）。
-import { enemyTex, enemyFb } from './fx_art.js';
+import { enemyTex, enemyFb, enemyTypeFb } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { ENEMY_FX, ENEMY_TYPE_FX } from './fx_data.js';
 
@@ -197,18 +197,48 @@ export function arrowBreakFx(game, x, y, z, facing) {
   return !!game.fx.flip(A.brk, x, y, z, { color: A.brkColor, size: A.brkK, facing });
 }
 
-// ---------- 第 2 批：各敌人自己的出招 / 命中 / 死亡（素材没到时查到了也不画）----------
-// kind：tele / attack / hit / death。返回画没画
+// ---------- 第 2 批：各敌人自己的预警 / 出招 / 命中 / 死亡（fx_enemy_v1_types，按关卡里有的敌人载入）----------
+// 一次性的交给粒子系统播（跟着敌人走的用 follow）；跟着状态走的（屠夫烧红的斧刃、烬翼发亮的裂纹）在 Enemy.draw 里每帧画（drawTypeTele），
+// 这样佯攻露出破绽的那一刻能换成琥珀色、被打断马上消失。返回画没画（素材没到 / 这种敌人没有这一项 → false，调用的地方再决定用不用通用的）
+export const typeFxEntry = (e, kind) => (!e.isBoss && e.look && ENEMY_TYPE_FX[e.look.rig]?.[kind]) || null;
+export const hasTypeFx = (e, kind) => { const E = typeFxEntry(e, kind); return !!(E?.fb && enemyTypeFb(e.look.rig, E.fb)); };
+// o.at = [x, z]：放在别的位置（命中放在打中的那一点）；o.dir：朝向（命中按打过来的方向）
 export function typeFx(game, e, kind, o = {}) {
-  if (e.isBoss || !e.look) return false;
-  const E = ENEMY_TYPE_FX[e.look.rig]?.[kind];
-  if (!E?.fb) return false;
+  const E = typeFxEntry(e, kind);
+  if (!E?.fb || E.attached || !enemyTypeFb(e.look.rig, E.fb)) return false;
   const color = (o.feint && E.feintColor) || E.color || '#ffffff';
-  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0);
-  return !!game.fx.flip(E.fb, e.x + e.facing * ox, e.y, e.z + oz, {
-    color, size: (e.h / FIG) * (E.size ?? 1), facing: e.facing, hold: E.hold,
+  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0), facing = o.dir ?? e.facing;
+  const [x, z] = o.at ?? [e.x + facing * ox, e.z + oz];
+  return !!game.fx.flip(E.fb, x, e.y, z, {
+    color, size: (e.h / FIG) * (E.size ?? 1), facing, hold: E.hold, holdFade: !!E.hold,
     follow: E.follow ? e : null, ox, oz, life: o.life,
   });
+}
+// 跟着状态走的预警（屠夫 brute_heat、烬翼 ember_crack）：出招预警期间每帧画，佯攻露出破绽后换 feintColor
+export function drawTypeTele(ctx, e, sx, sy, t, feint) {
+  const E = typeFxEntry(e, 'tele');
+  if (!E?.attached || e.state !== 'windup') return false;
+  const fb = enemyTypeFb(e.look.rig, E.fb);
+  if (!fb) return false;
+  const k = (e.h / FIG) * (E.size ?? 1);
+  ctx.save();
+  ctx.globalAlpha *= Math.min(1, e.st / 6); // 预警开始的头几帧淡入
+  put(ctx, fb.frames[fbIndex(fb, e.st)], sx + e.facing * e.h * (E.x ?? 0), sy - e.h * (E.z ?? 0), k * e.facing, k, feint && E.feintColor ? E.feintColor : E.color, true);
+  ctx.restore();
+  e.teleColor = feint && E.feintColor ? E.feintColor : E.color; // 测试用
+  return true;
+}
+// 烬翼俯冲的火星拖尾（ember_trail，右端最亮、往后拉长）：沿屏幕上的俯冲方向转过去，假冲用琥珀色
+export function drawEmberTrail(ctx, e, sx, sy, fake) {
+  const W = ENEMY_FX.emberTrail, img = enemyTex(W.tex), d = e.dive;
+  if (!img || !d) return false;
+  const ang = Math.atan2(d.vy - d.vz, d.vx); // 屏幕上 y = 纵深 - 高度
+  const k = (e.h * W.len) / 256;
+  ctx.save();
+  ctx.globalAlpha *= W.alpha;
+  put(ctx, img, sx, sy - e.h * 0.5, k, k * W.thick, fake ? W.fakeColor : W.color, true, ang);
+  ctx.restore();
+  return true;
 }
 
 // ---------- 司祭的陷阱符（加在「地面」一节的意思，放在这里是因为它用第 1 批的 trap_draw / trap_rune）----------

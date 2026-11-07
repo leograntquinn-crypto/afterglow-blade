@@ -252,7 +252,7 @@ export class FX {
     if (!p) return false;
     const color = o.color ?? '#ffffff';
     p.fb = fb; p.add = fb.add; p.color = color; p.facing = o.facing ?? 1; p.w = o.flipY ?? 1; p.rot = o.rot ?? 0;
-    p.size = o.size ?? (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); // size：直接给「逻辑像素 / 交付像素」（敌人特效按身高算） p.alpha = o.alpha ?? 1; p.ground = !!o.ground;
+    p.size = o.size ?? (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); p.alpha = o.alpha ?? 1; p.ground = !!o.ground; p.holdFade = !!o.holdFade; // size：直接给「逻辑像素 / 交付像素」（敌人特效按身高算）；holdFade 见 drawFlip
     p.tx = fb.frames.map((c) => c && tinted(c, color, fb.add ? 'fill' : 'mul'));
     if (o.follow) { p.follow = o.follow; p.ox = o.ox ?? 0; p.oz = o.oz ?? 0; }
     return p;
@@ -384,7 +384,7 @@ export class FX {
     const fb = p.fb, n = fb.frames.length, age = p.max - p.life, step = 60 / fb.fps;
     let i = Math.floor(age / step), a = p.alpha;
     if (fb.loop) i %= n;
-    else if (i >= n) { i = n - 1; a *= 0.85 + 0.15 * Math.sin(age * 0.15); }
+    else if (i >= n) { i = n - 1; a *= p.holdFade ? Math.max(0, 1 - (age - n * step) / Math.max(1, p.max - n * step)) : 0.85 + 0.15 * Math.sin(age * 0.15); } // holdFade：停在最后一帧慢慢淡出（骨堆、甲片）
     if (fb.loop && p.life < 10) a *= p.life / 10;
     const img = p.tx[i];
     if (!img) return;

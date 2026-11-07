@@ -98,6 +98,9 @@ export const FX_ART = {
   // 每一关都用得到，一直载入（第 2 批 fx_enemy_v1_types 到了以后按关卡里有的敌人载入）
   enemyTex: new FxPack('fx_enemy_tex'),
   enemy: new FxPack('fx_enemy'),
+  // 第 2 批 fx_enemy_v1_types：五种杂兵各自的预警 / 出招 / 命中 / 死亡，每种一套，按关卡里出现的敌人载入（prepareEnemyFx）。
+  // 第 2 批唯一的贴图 ember_trail（烬翼俯冲拖尾）在 fx_enemy_tex 里
+  enemyType: Object.fromEntries(['grunt', 'brute', 'archer', 'priest', 'wing'].map((k) => [k, new FxPack(`fx_enemy_${k}`)])),
 };
 FX_ART.light.load();
 FX_ART.lightFb.load();
@@ -118,9 +121,20 @@ export function prepareBossFx(key) {
   }
 }
 
+// 敌人各自的特效：只载入这一关出现的敌人那几套，释放其他的（和 enemy_sprites.js 的 prepareEnemySprites 同一时机）。types 用敌人类型名
+export function prepareEnemyFx(types) {
+  const need = new Set(types);
+  for (const [k, pack] of Object.entries(FX_ART.enemyType)) {
+    if (need.has(k)) pack.load();
+    else if (pack.ready || pack.loading) pack.release();
+  }
+}
+// 某种敌人自己的一组序列帧（没载好返回 null）
+export const enemyTypeFb = (rig, id) => (FX_ART.enemyType[rig]?.ready && FX_ART.enemyType[rig].items[id]) || null;
+
 // 取一组序列帧（没载好返回 null）
 export function flipbook(id) {
   // 刀光包排在最前：它的五组刀光覆盖 fx_hero 里的旧组（fx_hero 打包时已经不含这几组）
-  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.warden, FX_ART.enemy]) if (p.ready && p.items[id]) return p.items[id];
+  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.warden, FX_ART.enemy, ...Object.values(FX_ART.enemyType)]) if (p.ready && p.items[id]) return p.items[id];
   return null;
 }

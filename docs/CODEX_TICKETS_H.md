@@ -1,0 +1,149 @@
+# 子轮 H 工单（第一批，可派 Codex）
+
+按 Quinn 的常驻规则 2（2026-11-07）：我做设计、写工单、终审、接入合并；Codex 按工单写代码，**只交代码（补丁 / 改过的文件），不碰仓库**；Muse 先做机械核验（文件和 diff 对照工单、能跑的检查先跑），再交给我终审。审查不过打回重做，仍走 Muse。
+
+通用约定（每张工单都适用）：
+- 仓库：`leograntquinn-crypto/afterglow-blade`，基于 main 最新版。原生 JS ES 模块 + Canvas，没有构建步骤；中文注释风格照现有代码（「做什么 + 为什么」，不写废话）。
+- 调效果的数值一律放数据表（`src/fx_data.js` 这类），代码只按表执行。
+- **第 14 项永久规则**：不许新加代码画的特效形状（`arc / lineTo / ellipse / 渐变 / fillRect` 画出来的特效本体）；素材没载好时新加的部分**不画**。
+- 不许改玩法数值、AI、关卡规则；不许动和工单无关的文件。
+- 跑测试：仓库根目录 `python3 -m http.server 8765`，另开终端 `bash tests/run_all.sh`（见 `tests/README.md`）。交付时附上全套的输出。
+
+| 工单 | 内容 | 依赖 | 难度 | 可派 |
+|---|---|---|---|---|
+| H-0 | 测试运行器整理：统一端口、自动起服务器、汇总、退出码 | 无，**现在就能做** | 机械 | ✓ |
+| H-1 | 夜鸦特效包的构建脚本 + 按首领载入 | 无（先用自己造的假包），素材到了再跑真包 | 机械 | ✓ |
+| H-2 | 夜鸦特效接入（查表 + 替换各招式的调用点），分三个检查点 | H-1；素材包 | 复杂（按指导执行） | ✓ |
+| H-3 | 夜鸦特效的确定性测试 | H-1；和 H-2 同步 | 中 | ✓ |
+| H-4 | 通用特效截图工具（逐格截图、定格、拼图） | 无，**现在就能做** | 机械 | ✓ |
+| — | 夜鸦机制补强（第二阶段夜幕压暗、只在羽毛闪光时现身）的设计和手感 | — | — | ✗ 我自己做 |
+| — | 第 2 包 `fx_boss_ironjaw_v1` 规格、所有大小 / 亮度的手感调校、最终审查和测试结论 | — | — | ✗ 我自己做 |
+
+---
+
+## H-0 测试运行器整理（现在就能做）
+
+**目标**：`tests/` 里的 30 个脚本是从开发会话的临时目录搬过来的，各自硬写了端口、只靠人看输出判断。整理成一条命令跑完、给出明确结论。
+
+**改哪些文件**：新建 `tests/run_all.js`；改 `tests/*.js` 里写死 `localhost:8765` 的地方（16 个脚本、17 处）；`tests/run_all.sh` 改成调用 `run_all.js`；`tests/README.md` 更新用法。
+
+**确切行为**：
+1. `node tests/run_all.js [--only a,b] [--skip soakd,soakd60] [--port N]`：自己在仓库根目录起静态服务器（Node 内置 `http` 模块，正确的 MIME：`.js` → `text/javascript`、`.webp`、`.json`），找一个空闲端口（默认 8765，被占就往后找），把端口用环境变量 `PORT` 传给每个测试。
+2. 按 `tests/run_all.sh` 现在的顺序、参数、超时时间跑（`LV=7 channeltest`、`DIFF=0 soakd`、`DIFF=2 soakd60`、`worldtest` 等带 `m` 参数的跑两次）。
+3. 每个测试的判定（和现在人工判定的规则一致）：
+   - 超时、进程非零退出 → 不过；
+   - 输出里有 `FAIL` 或 `FAILED`（区分大小写，整词）→ 不过；
+   - 有 `ERR ` 或 `PAGE ERRORS ` 开头的行而后面不是 `none` → 不过；
+   - `soakd` / `soakd60`：每行 JSON 的 `scene` 必须是 `"clear"`、`err` 必须是 `null`，而且要有 5 行。
+4. 每个测试的完整输出写到 `tests/out/<name>.log`；最后打印汇总表（名字、通过 / 不过、用时、不过的原因第一行），任何一个不过 → 退出码 1。
+5. 测试脚本本身的断言**一行都不改**（只改端口的读法：`process.env.PORT || 8765`）。
+
+**验收**：
+- 在当前 main 上 `node tests/run_all.js` 全部通过、退出码 0（附汇总表）；
+- 故意把 `tests/efx2test.js` 里一个期望值改错再跑 `--only efx2test` → 不过、退出码 1（演示完改回来，不要提交这个改动）；
+- `--port 9000` 时所有测试连的都是 9000（日志里能看到）。
+
+---
+
+## H-1 夜鸦特效包的构建 + 按首领载入
+
+**规格**：`docs/ART_FX_BOSS_RAVEN_V1.md`（第三节内容、第五节文件结构、第八节接入）。
+
+**改哪些文件**：`tools/build_fx.py`、`src/fx_art.js`。
+
+**确切行为**：
+1. `python3 -I tools/build_fx.py --boss raven <fx_boss_raven_v1 目录>`：只打这一包，不动别的图集（照现有 `--enemy` 模式的写法）。输出 `assets/fx/fx_boss_raven.{webp,json}`（桌面）和 `fx_boss_raven_m.{webp,json}`（手机）：
+   - 贴图：桌面原尺寸 / 手机 50%，`night_veil` 不裁边（`keep_full`），其余裁透明边；
+   - 序列帧：桌面 50% / 手机 25%，每帧裁透明边（`build_flipbooks` 现有逻辑）；
+   - 贴图和序列帧放进**同一套图集**（JSON 同时有 `tex` 和 `fb` 两个键——`FxPack.load()` 两个都支持）。
+   - 兼容两种 zip 结构：传入目录下直接有 `fx.json`，或者多一层子目录（自动找到 `fx.json` 所在层）。帧用 `frames` 列表里的单帧路径，不依赖 `sheet` 字段。
+   - 检查：每项的画布尺寸和 `fx.json` 写的一致、帧数和规格第三节一致，不一致就报错退出（不要静默打包）。
+2. `src/fx_art.js`：
+   - `FX_ART.raven = new FxPack('fx_boss_raven')`；
+   - `BOSS_FX` 映射加 `nightRaven: 'raven'`（`prepareBossFx` 现有逻辑就会只在夜鸦那一关载入、离开释放）；
+   - `flipbook(id)` 的查找列表加上 `FX_ART.raven`；
+   - 新导出 `bossTex(packName, id)`：返回那一套里的贴图（没载好返回 `null`），写法照 `enemyTex`。
+
+**验收**：
+- 素材包还没到：自己按规格第三节的 id / 画布 / 帧数造一个假包（纯色占位图，只用来测脚本；**不要提交**），跑通构建，贴出输出的图集尺寸和 JSON 里的键；把假包故意改错一项尺寸 → 脚本报错退出；
+- 在浏览器里：进第 2 关（夜鸦）`FX_ART.raven.ready` 变成 true；进第 1 关它被释放（`ready` false）；
+- 全套测试通过。
+
+---
+
+## H-2 夜鸦特效接入（复杂件：按指导执行，三个检查点）
+
+**规格**：`docs/ART_FX_BOSS_RAVEN_V1.md` 第一节的替换表就是要做的全部内容。照 `src/enemy_fx.js`（敌人特效）的模式写：数据在表里，画法集中在一个文件，调用点只调函数。
+
+**改哪些文件**：`src/fx_data.js`（加表）、新建 `src/boss_fx.js`（画法）、`src/boss.js`、`src/boss_moves.js`、`src/combat.js`（只动 `kind === 'feather'` 和箭的分支）。
+
+**数据表**（`fx_data.js`，先照这个写，大小和亮度我接入时调）：
+```js
+export const BOSS_FX = {
+  nightRaven: {
+    feather: { fb: 'feather_blade_spin', trail: 'feather_trail', k: 0.42, trailColor: '#ff4dd2' },   // 回旋羽：k = 逻辑像素 / 交付像素
+    burst: { fb: 'feather_burst', color: '#ff4dd2', size: 1 },      // 化作黑羽（size × 身高 / 260）
+    appear: { fb: 'raven_appear', color: '#ff4dd2', size: 1 },      // 浮现
+    wisps: { fb: 'split_wisps', color: '#c070ff', size: 1, alpha: 0.8 },
+    arrow: { tex: 'raven_arrow', k: 0.5, trailColor: '#ff4dd2' },
+    glint: { fb: 'bow_glint', color: '#ff4dd2', size: 0.6, x: 0.35, z: 0.62 }, // 弓上闪光的位置（× 身高）
+    rain: { fb: 'arrow_rain', impact: 'rain_impact', color: '#ff4dd2', k: 0.45 },
+    sigil: { tex: 'raven_sigil', color: '#ff4dd2', spin: 0.004 },
+    gather: { fb: 'channel_gather', color: '#ff4dd2', size: 1 },
+    veil: { tex: 'night_veil' },                                     // H-2 只做读条结束的一闪；第二阶段常驻压暗是机制，我来做
+    death: { fb: 'raven_death', color: '#ff4dd2', size: 1.2 },
+  },
+};
+```
+
+**指导要点（关键取舍）**：
+- **分身不许泄露真身**：分身期间三个身影的特效必须完全一样（`split_wisps` 三个都画，同样的大小、相位规则、透明度）；分辨真身的线索只能是现在已有的「脚下有影子」。
+- **箭**：夜鸦射出的所有箭（齐射、分身、读条）用 `raven_arrow`。区分办法：`Projectile` 的 `owner?.key === 'nightRaven'`，不要加新的 `kind`（别的代码按 `kind === 'arrow'` 判断命中、立柱挡箭等，不能断）。假箭照样用这张图。
+- **天降**：只有夜鸦的 `rain` 换成 `arrow_rain` + 落地 `rain_impact`；`Hazard` 的预警圈不变；别的首领（残影、祭坛守护者）的 `rain` 照旧用 `meteor`。在 `Hazard` 上加一个可选字段（比如 `art: 'raven'`）由 `boss.js` 的 `rain` 按首领传入，不要在 `combat.js` 里写死首领名。
+- **画在哪一层**：身上的（`split_wisps`、`channel_gather`、`bow_glint`）在 `Boss.draw` 里每帧画（照 `drawTypeTele` 的写法）；一次性的（`feather_burst`、`raven_appear`、`rain_impact`、`raven_death`）交给粒子 `game.fx.flip(...)`（`size` 参数直接给逻辑像素 / 交付像素）；地面的（`raven_sigil`）在 `drawFloor` 那一层画。
+- **素材没载好**：新加的部分不画；被替换的部分保留现在的画法作为退路（羽刃的静止图、通用箭、火球、通用符文圈都是成品贴图，不算代码画的形状）。
+- **不做**：第二阶段常驻压暗、飘落黑羽、「只在羽毛闪光时现身」这些机制（我来设计）；不调任何数值手感。
+
+**三个检查点**（每个检查点交一次，Muse 核验后转我看，我回话再做下一段）：
+1. 表 + `boss_fx.js` 骨架 + 回旋羽（羽刃 + 拖尾 + 掉头的小 `feather_burst`）+ 夜鸦的箭 + 齐射的 `bow_glint`；
+2. 鸦影分身（化作黑羽 → 三处浮现 → 三个身影的丝缕 → 识破 / 散掉的 `feather_burst`）+ 瞬移（消失 `feather_burst`、出现 `raven_appear`）+ 天降箭雨；
+3. 读条（脚下 `raven_sigil` + 身上 `channel_gather` + 结束时 `night_veil` 一闪）+ 召唤（`raven_sigil`）+ 死亡（`raven_death`）。
+
+**验收**：H-3 的测试全过 + 全套测试通过 + 每个检查点附截图（用 H-4 的工具，每个招式的关键时刻，桌面 + 手机）。
+
+---
+
+## H-3 夜鸦特效的确定性测试
+
+**改哪些文件**：新建 `tests/bossfxtest.js`，加进 `tests/run_all.js` 的列表。照 `tests/efx2test.js` 的写法（在页面里用 `__game` 直接摆出场景、推进帧、检查粒子和标记）。
+
+**要测的**（每条一个 `ok(...)`，输出格式和 `efx2test` 一样，最后一行 `BOSSFXTEST ok` 或 `BOSSFXTEST FAIL n`）：
+1. 进第 2 关 `fx_boss_raven` 载入；进第 1 关释放；
+2. 回旋羽飞行中画的是 `feather_blade_spin`（在 `boss_fx.js` 里留一个测试用的标记，照 `enemy_fx.js` 里 `e.teleColor` 的做法）；掉头那一帧有一次 `feather_burst`；
+3. 齐射预警期间有 `bow_glint`；射出的箭 `owner.key === 'nightRaven'`、画的是 `raven_arrow`；
+4. 分身：开始时一次 `feather_burst`、三处 `raven_appear`；分身期间**真身和两个分身的丝缕参数完全一样**（大小、透明度、帧号规则）；识破时两个分身位置各一次 `feather_burst`；
+5. 瞬移：消失一次 `feather_burst`、出现一次 `raven_appear`；
+6. 夜鸦的天降：`Hazard` 画 `arrow_rain`、爆发时有 `rain_impact`；**残影的天降仍然是 `meteor`**；
+7. 读条：脚下 `raven_sigil`、身上 `channel_gather`；读条结束 `night_veil` 一闪；被打断时这些马上消失；
+8. 死亡：一次 `raven_death`；
+9. 夜鸦的素材没载好（`FX_ART.raven.ready = false`）：新加的都不画、被替换的退回原来的画法，页面没有报错；
+10. 页面报错为 none。
+
+**验收**：在 H-2 每个检查点上跑，已经做了的部分全过；全部做完后全过。
+
+---
+
+## H-4 通用特效截图工具（现在就能做）
+
+**目标**：给每次特效接入做「旧版 vs 新版」逐格对比图（我审查用）。现在的做法是一次性脚本，要做成可复用的工具。
+
+**改哪些文件**：新建 `tools/fxsheet.js`、`tools/fxsheet_cases/enemy_types.json`（示例配置）。
+
+**确切行为**：
+1. `node tools/fxsheet.js <配置.json> <输出.png> [--port N] [--mobile]`：配置是格子列表，每格 `{ "label", "stage": 关卡序号, "spawn": "敌人类型" 或首领 key, "moment": "tele|attack|hit|death|move:<招式名>", "frames": 推进帧数 }`。
+2. 每格：清场（敌人、飞行物、地面效果、掉落、粒子、飘字）→ 摆出主角和目标 → 触发时刻 → 推进指定帧数 → **把游戏自己的循环停住**（替换 `update`，截完还原；不停住的话截图前一次性特效就播完了）→ 渲染 → 按目标位置裁一块（逻辑画面是 960×540，按画布实际尺寸换算）。
+3. 截图前关伤害数字（`settings.numbers = 'off'`）、清横幅；去掉敌人的「大脑」（`e.T = { ...e.T, brain: null }`），不然不在距离内会收招。
+4. 出图：按配置的列数拼成一张，每格左上角标 `label`；`--compare <另一个端口>` 时左右两半分别是两个版本。
+5. 首领招式（`move:<名字>`）：调首领的 `startAct`（或 `boss.js` 里等价的入口）直接开始那个招式。
+
+**验收**：用 `enemy_types.json`（五种敌人 × 四个时刻）在当前 main 上出图，和 `docs/fx_enemy_v1_types_cmp.jpg` 右半边内容一致；`--compare` 能出左右对比；`--mobile` 用手机视口和手机图集。
