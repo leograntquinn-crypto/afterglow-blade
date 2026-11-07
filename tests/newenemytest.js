@@ -1,10 +1,11 @@
 // 新敌人机制测试：灰烛司祭（护咒、打断、陷阱、破咒）和烬翼（盘旋高度、俯冲、被打落、重新起飞）
 const { chromium } = require('playwright');
+const PORT = process.env.PORT || 8765;
 (async () => {
   const b = await chromium.launch();
   const p = await (await b.newContext({ viewport: { width: 1280, height: 720 } })).newPage();
   const errs = []; p.on('pageerror', e => errs.push(e.message + ' ' + e.stack));
-  await p.goto('http://localhost:8765/index.html'); await p.waitForTimeout(1000);
+  await p.goto(`http://localhost:${PORT}/index.html`); await p.waitForTimeout(1000);
   await p.keyboard.press('KeyJ'); await p.waitForTimeout(200);
   const r = await p.evaluate(async () => {
     const g = __game; for (const s of ['s1', 's2', 's3']) g.save.cleared[s] = true; g.startStage(2);

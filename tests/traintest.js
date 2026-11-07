@@ -1,9 +1,10 @@
 const { chromium } = require('playwright');
+const PORT = process.env.PORT || 8765;
 (async () => {
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 1280, height: 720 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message + '\n' + e.stack)); p.on('console', m => { if (m.type() === 'error') errs.push(m.text()); });
-  await p.goto('http://localhost:8765/index.html');
+  await p.goto(`http://localhost:${PORT}/index.html`);
   await p.evaluate(() => localStorage.clear()); await p.reload(); await p.waitForTimeout(1200);
   await p.keyboard.press('KeyJ'); await p.waitForTimeout(400);
   await p.screenshot({ path: process.argv[2] + '/t0-hub.png' });

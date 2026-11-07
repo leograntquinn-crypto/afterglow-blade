@@ -1,9 +1,10 @@
 const { chromium } = require('playwright');
+const PORT = process.env.PORT || 8765;
 (async () => {
   const b = await chromium.launch();
   const p = await b.newPage({ viewport: { width: 960, height: 540 } });
   const errs = []; p.on('pageerror', e => errs.push(e.message));
-  await p.goto('http://localhost:8765/index.html'); await p.waitForTimeout(1500);
+  await p.goto(`http://localhost:${PORT}/index.html`); await p.waitForTimeout(1500);
   await p.keyboard.press('KeyJ'); await p.waitForTimeout(300);
   const r = await p.evaluate(async () => {
     const g = __game; g.startStage(0); for (let i = 0; i < 100; i++) g.update();
