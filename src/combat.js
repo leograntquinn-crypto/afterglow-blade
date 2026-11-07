@@ -32,6 +32,10 @@ export class Projectile {
     this.age = 0;
     this.dir0 = this.facing; // 回旋镖：出手时的方向
   }
+  // 主角的剑气一个都没打中就消失了 → 告诉敌人的 AI（弓手会抓这个后摇，ai.js 的 punishSkill）
+  whiffCheck(game) {
+    if (this.team === 'player' && this.kind === 'wave' && !this.hitSet.size) game.ai?.onWaveWhiff();
+  }
   update(game) {
     this.x += this.vx;
     this.y += this.vy || 0; // 弓手预判过的箭会斜着飞一点
@@ -42,11 +46,12 @@ export class Projectile {
       this.facing = Math.sign(this.vx) || this.facing;
       if (!this.returned && Math.sign(this.vx) === -this.dir0) { this.returned = true; this.hitSet.clear(); }
     }
-    if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; return; }
+    if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; this.whiffCheck(game); return; }
     // 关卡地形：立柱挡住飞行物（双方的箭、剑气都挡）
     if (game.terrain?.pillars.length && game.terrain.blocksShot(this, this.x - this.vx)) {
       this.dead = true;
       game.terrain.stats.shotsBlocked++;
+      this.whiffCheck(game);
       game.fx.chips(this.x, this.y, this.z + 30, -this.facing, 6, '#8a8090');
       game.fx.dust(this.x, this.y, 4, 1);
       return;

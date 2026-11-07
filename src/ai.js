@@ -66,8 +66,9 @@ export class AI {
       recovering: attacking && p.mf >= activeEnd,
       // 挥空：地面普攻（不是技能、不是空中招）的有效帧已经过了，一个敌人都没打中
       whiff: attacking && !m.skill && !m.air && m.hits.length > 0 && p.mf >= activeEnd && !p.landed,
-      // 技能放空：近战技能的有效帧过了一个都没打中（弓手抓这个，第 12 项「只按技能」的错误时机）
-      skillWhiff: attacking && !!m.skill && m.hits.length > 0 && p.mf >= activeEnd && !p.landed,
+      // 技能放空（弓手抓这个，第 12 项「只按技能」的错误时机）：近战技能的有效帧过了一个都没打中，或者剑气飞完一个都没打中（被立柱挡掉也算）
+      skillWhiff: (attacking && !!m.skill && m.hits.length > 0 && p.mf >= activeEnd && !p.landed) || (this.waveWhiffF != null && this.f - this.waveWhiffF < 10),
+      skillWhiffId: attacking && m.skill && p.mf >= activeEnd && !p.landed ? this.f - p.mf : this.waveWhiffF ?? -1,
       // 重击 / 技能正在打过来（还没过有效帧）
       heavy: attacking && (m.heavy || m.skill) && p.mf < activeEnd,
       dodging: p.state === 'dash' || p.state === 'airdash',
@@ -153,6 +154,8 @@ export class AI {
     e.feintCd = FEINT.cd;
     return true;
   }
+  // 主角的剑气飞完一个都没打中（combat.js）
+  onWaveWhiff() { this.waveWhiffF = this.f; }
   onPlayerHit(target) {
     this.lastHit = { e: target, f: this.f };
     if (target.hitLog) { target.hitLog.push(this.f); if (target.hitLog.length > 12) target.hitLog.shift(); } // 屠夫判断「贪刀」
@@ -562,8 +565,8 @@ export const BRAINS = {
       const dyAim = Math.abs(aimY - e.y);
       // 抓技能放空：看到你的技能打空（技能后摇里耐力不回复、动不了），冷却快好了就马上放一箭，抬手更短（伤害不变）
       const SP = P.punishSkill;
-      if (s.skillWhiff && s.moveStart !== ai.seenSkillWhiff) {
-        ai.seenSkillWhiff = s.moveStart;
+      if (s.skillWhiff && s.skillWhiffId !== ai.seenSkillWhiff) {
+        ai.seenSkillWhiff = s.skillWhiffId;
         if (e.attackCd <= SP.cdLeft && token && may && vis && rdx > 120 && rdx < 560 && dyAim < P.lane.maxDy && !blocked && A.rand() < SP.chance[lvl]) {
           const flight = rdx / 7.5;
           e.startWindup(game, { ...T.atk, windup: SP.windup[lvl], punish: true });
