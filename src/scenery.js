@@ -525,6 +525,17 @@ function useStage(st) {
   for (const d of env.decals) if (d.stage === st) loadImg(d.id);
 }
 
+// 地形（terrain.js）用的场景素材：按 id 取一张（第一次取时开始载入；没载好返回 null），ENV_PX = 图片像素 → 逻辑像素
+export const ENV_PX = PX;
+export function envImg(id) {
+  if (!env) return null;
+  loadImg(id);
+  return got(id);
+}
+export const envMeta = () => env;
+// 某一关的远景（深渊裂口里能看到的那一层）
+export const envBackdrop = (st) => (env ? envImg(st) : null);
+
 // 给调试和测试用：envDebug.wall 强制用某一面后墙
 export const envDebug = { wall: null };
 export function envStatus() {

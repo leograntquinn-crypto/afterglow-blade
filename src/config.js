@@ -10,7 +10,17 @@ export const VIEW_H = 540;
 export const GROUND_TOP = 318; // 纵深 y=0 在屏幕上的位置
 export const DEPTH = 170; // 可走动的纵深范围 0..DEPTH
 // 当前房间的宽度。每个房间大小不同，进入房间时修改 world.w
-export const world = { w: 1800 };
+export const world = { w: 1800, band: null };
+// 房间的可走纵深：默认 0..DEPTH；窄墓道（地形，见 terrain.js）收成一条带，南北门附近敞开
+//   world.band = { y0, y1, open: [[x0, x1], ...] }
+export function yLimits(x) {
+  const b = world.band;
+  if (!b) return [0, DEPTH];
+  for (const [a, c] of b.open) if (x > a && x < c) return [0, DEPTH];
+  return [b.y0, b.y1];
+}
+// AI 选目标点用：按纵深带收一收（m = 离边缘留多少）
+export const clampY = (y, m = 8) => (world.band ? Math.max(world.band.y0 + m, Math.min(world.band.y1 - m, y)) : Math.max(m, Math.min(DEPTH - m, y)));
 export const GRAVITY = 0.6;
 
 export const FONT_NUM = '"Teko", "Arial Narrow", Impact, sans-serif';

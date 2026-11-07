@@ -39,7 +39,10 @@ export const AI_PROFILES = {
     shove: { hits: [6, 5, 4], window: 110, near: 120, windup: 24, r: [124, 50], recover: 34, cd: [300, 240, 180],
       hit: { dmg: 8, kb: 12, stun: 22, stop: 5, shake: 6 } },
     // 正面格挡：看到你面向它蓄力、或者重击 / 技能正朝它打过来 → 举斧格挡 time 帧：正面来的攻击全挡（必杀除外），背后照样打得到
-    guard: { range: 230, time: 50, cd: [260, 220, 180] },
+    guard: { range: 230, time: 50, cd: [260, 220, 180],
+      // 格挡反击（第 12 项）：举斧挡住了你的技能 / 重击 → 立刻砸回来（同一记重砸，伤害不变，只是抬手短、红圈就在面前）
+      //   对正面放技能变成错的选择；背后打、或者等它格挡结束再放就没事
+      riposte: { windup: [26, 22, 18], slamX: 70 } },
     // 延迟重砸：重砸预警过半时看到你在闪避 → 斧头多举 extra 帧再砸（红圈位置不变，看圈不看节奏就不会被骗）
     delay: { extra: [14, 16, 18], chance: [0.6, 0.8, 1] },
   },
@@ -59,6 +62,8 @@ export const AI_PROFILES = {
     lane: { clear: 22, step: 46, maxDy: 40 },
     // 预判：按看到的你的纵深移动方向，把箭往你要去的位置偏（偏多少乘 k、最多 max）。预警时红线就是箭的真实路线
     lead: { k: [0.55, 0.75, 0.95], max: 60 },
+    // 抓技能放空（第 12 项）：你的近战技能打空 → 冷却剩不到 cdLeft 的弓手按 chance 马上放一箭，抬手 windup（平时 38）；伤害不变
+    punishSkill: { cdLeft: 70, windup: [24, 20, 16], chance: [0.75, 0.9, 1] },
     // 被逼到墙边：后面 wall 以内是墙、你在 near 以内 → 先往纵深侧闪 side，再接一记飞踢把你踢开
     corner: { wall: 90, near: 130, side: 5, kick: { kind: 'kick', range: 90, windup: 16, hitAt: 3, dur: 6, recover: 30, speed: 5, cd: [140, 120, 100],
       hit: { box: { x: 34, w: 64, d: 24, z0: 0, z1: 80 }, dmg: 6, kb: 11, stun: 18, stop: 4, shake: 4 } } },

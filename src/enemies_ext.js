@@ -3,7 +3,7 @@
 // 它们复用 Enemy 的状态机（idle → windup → attack → idle、受击、浮空、倒地），
 // 只把「怎么想、怎么出招、怎么画」交给这里：Enemy 在对应位置调用 AI[类型].think / doAttack / updateAttack / draw。
 // 专属素材（docs/ART_V6.md）回来之前，用程序画的占位美术。
-import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
+import { DEPTH, world, clamp, clampY, yLimits, rand, toScreen, COLORS } from './config.js';
 import { hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
@@ -46,7 +46,7 @@ const priest = {
     e.facing = sign(dx);
     const ai = (e.ai ??= { intent: 'kite' });
     // 站位：离你 220～340，太近就往后退，躲在同伴后面
-    let tx = e.x, ty = clamp(p.y + e.yOff * 0.6, 8, DEPTH - 8);
+    let tx = e.x, ty = clampY(p.y + e.yOff * 0.6, 8);
     if (adx < 220) tx = e.x - e.facing * 90;
     else if (adx > 340) tx = p.x - e.facing * 290;
     ai.intent = 'kite';
@@ -56,7 +56,7 @@ const priest = {
     if (wall) {
       tx = clamp(wall.x - sign(p.x - wall.x) * P.screen.behind, 40, world.w - 40);
       // 纵深错开一点（不和同伴挤在同一条线上，绕得过去），但仍在同伴的掩护范围里
-      const off = wall.y + 24 > DEPTH - 8 ? -1 : wall.y - 24 < 8 ? 1 : e.y >= wall.y ? 1 : -1;
+      const [blo, bhi] = yLimits(e.x), off = wall.y + 24 > bhi - 8 ? -1 : wall.y - 24 < blo + 8 ? 1 : e.y >= wall.y ? 1 : -1;
       ty = wall.y + off * 24;
       ai.intent = 'screen';
     }
@@ -98,6 +98,7 @@ const priest = {
         game.fx.label(o.x, o.y, o.h + 26, '咒 盾', WARD_COLOR, 18);
       }
       game.fx.flare(e.x + e.facing * 10, e.y, e.h + 14, 0.9, WARD_COLOR);
+      if (list.length && game.rules?.teach?.priority) game.teachOnce?.('priority', '灰烛司祭给同伴加了咒盾：盾会吸收伤害、让它不吃硬直 —— 先切后面的司祭（读条时打它会被打断）', WARD_COLOR);
       sfx('witch');
     } else if (A.kind === 'trap') {
       const p = game.player;
@@ -110,7 +111,7 @@ const priest = {
         x = p.x + L.ax * away; y = p.y + L.dy;
         game.fx.label(x, y, 40, '堵落点', '#c9a4ff', 16);
       }
-      const trap = new Trap({ x: clamp(x, 40, world.w - 40), y: clamp(y, 8, DEPTH - 8), owner: e });
+      const trap = new Trap({ x: clamp(x, 40, world.w - 40), y: clampY(y, 8), owner: e });
       trap.read = !!L;
       trap.arm = Math.round(40 * (game.D?.windup ?? 1)); // 难度越高点亮越快
       game.hazards.push(trap);
@@ -195,7 +196,7 @@ const wing = {
     // 绕着你飘：每只有自己的角度和半径
     const a = game.ticks * 0.012 + e.id * 2.1;
     const R = 150 + (e.id % 3) * 30;
-    let tx = clamp(p.x + Math.cos(a) * R, 40, world.w - 40), ty = clamp(p.y + Math.sin(a * 1.7) * 40, 8, DEPTH - 8);
+    let tx = clamp(p.x + Math.cos(a) * R, 40, world.w - 40), ty = clampY(p.y + Math.sin(a * 1.7) * 40, 8);
     ai.intent = 'orbit';
     // 第 3 轮：看到你起跳 → 离你近的往外散开（不在你空中时俯冲，你的空中招打不到一群）
     if (s?.air && Math.abs(e.x - s.x) < P.scatter.near && !ai.scatterT) ai.scatterT = 36, ai.scatterX = clamp(e.x + sign(e.x - s.x) * P.scatter.away, 40, world.w - 40);
@@ -228,8 +229,13 @@ const wing = {
     if (wings.some((o) => o.state === 'windup' || (o.state === 'attack' && o.st < o.atk.dur))) return;
     if (e.attackCd > 0 || !near) return;
     // 一只假冲（「?」琥珀色、只冲一半、不伤人）引你闪避，搭档在假冲预警进行到 pair 时开始真冲
-    const mate = wings.find((o) => o.state === 'idle' && o.attackCd <= 40 && o.z > HOVER - BOB - 6 && Math.abs(p.x - o.x) < 300 && o.ai?.realAt == null);
-    if (mate && A.feintFor(e)) {
+    // 第 2 关（stage_rules.js 的 wingPair）：有搭档就成对俯冲，不受佯攻概率限制 —— 逼你留一次闪避给真冲（搭档的冷却也不用等）
+    const WP = game.rules?.wingPair;
+    const mate = wings.find((o) => o.state === 'idle' && (WP || o.attackCd <= 40) && o.z > HOVER - BOB - 6 && Math.abs(p.x - o.x) < 300 && o.ai?.realAt == null);
+    const pairNow = WP && mate && A.f - (A.lastPairF ?? -9999) >= WP.gap;
+    if (pairNow) A.lastPairF = A.f;
+    if (mate && (pairNow || A.feintFor(e))) {
+      if (pairNow) game.teachOnce?.('wingPair', '烬翼成对俯冲：琥珀色「?」那只是假冲，红色「!」那只紧跟着真冲 —— 留一次闪避给它', '#ffb347');
       e.startWindup(game, { ...T.atk, feint: true, noCancel: true, fake: true });
       ai.intent = 'fake';
       (mate.ai ??= {}).realAt = A.f + Math.round(e.windup * P.pair);

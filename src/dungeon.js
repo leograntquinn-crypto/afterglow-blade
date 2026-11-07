@@ -48,6 +48,8 @@ export function generateDungeon(stage) {
     path.push(r);
   }
 
+  path.forEach((r, i) => (r.idx = i)); // 主线序号（关卡地形按它挑，见 stage_rules.js）
+
   // 支线：挂在主线中间的房间旁边（不挂在起点和 Boss 房）
   for (const type of stage.side) {
     for (let tries = 0; tries < 30; tries++) {

@@ -1,5 +1,5 @@
 // 敌人：类型表 + 简单 AI + 受击反应（硬直 / 浮空 / 倒地 / 霸体破防）
-import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE } from './config.js';
+import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE, yLimits } from './config.js';
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
 import { drawFighter, drawAura } from './rig.js';
 import { sfx } from './audio.js';
@@ -118,6 +118,7 @@ export class Enemy {
     if (this.evadeCd > 0) this.evadeCd--;
     if (this.punishCd > 0) this.punishCd--;
     if (this.guardT > 0) this.guardT--;
+    else this.riposteLock = false;
     if (this.guardCd > 0) this.guardCd--;
     if (this.shoveCd > 0) this.shoveCd--;
     if (this.feintCd > 0) this.feintCd--;
@@ -143,6 +144,7 @@ export class Enemy {
           this.setState('idle');
           this.attackCd = FEINT.follow;
           game.fx.label(this.x, this.y, this.h + 30, '虚晃', '#ffb347', 16);
+          if (this.teachFeint) { this.teachFeint = false; game.teachOnce?.('feint', '假动作！「!」变成琥珀色的「?」就是要收招 —— 别急着闪，等紧接着的那一下真的再躲', '#ffb347'); }
           if (this.ai) { this.ai.intent = 'press'; this.ai.t = 0; } // 收招后坚持「压上」一小段，紧接着真打
           break;
         }
@@ -399,7 +401,7 @@ export class Enemy {
       game.onWallBounce(this);
     }
     this.x = clamp(this.x, 20, world.w - 20);
-    this.y = clamp(this.y, 0, DEPTH);
+    { const [lo, hi] = yLimits(this.x); this.y = clamp(this.y, lo, hi); }
   }
 
   onLand(game, v) {

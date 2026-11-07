@@ -14,9 +14,10 @@ import { GLPost } from './glpost.js';
 import { StoryUI, stageIntro, bossIntro, endingDue, ENDING, PREMISE, storyLog, storyLogHtml } from './story.js';
 import { World, drawWorldTitle, site } from './world.js';
 import { AI } from './ai.js';
+import { AI_PROFILES } from './ai_data.js';
 import { WORLD_ART } from './world_art.js';
 import { releaseBoot } from './boot.js';
-import { STAMINA } from './stamina_data.js';
+import { STAMINA, MANA } from './stamina_data.js';
 import { NPCS, CHOICES, talkFor, worldSave, heardLogHtml, nextGoal } from './world_story.js';
 import { Player } from './player.js';
 import { Enemy } from './enemy.js';
@@ -35,7 +36,7 @@ import { generateDungeon, DIRS } from './dungeon.js';
 import { Boss, BOSSES } from './boss.js';
 import { Chest, Shrine, Urn } from './props.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
-import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX } from './progression.js';
+import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX, power } from './progression.js';
 import { RARITY, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
@@ -44,6 +45,9 @@ import { lightTex } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { THEMES, drawScenery, drawFog, drawForeground } from './scenery.js';
 import { Post } from './post.js';
+import { makeTerrain } from './terrain.js';
+import { STAGE_RULES } from './stage_rules.js';
+import { bossBonus, BOSS_SCALE } from './boss_scale.js';
 import { music } from './music.js';
 import { drawHUD, drawDead, drawClear } from './hud.js';
 
@@ -404,6 +408,7 @@ class Game {
     this.bossSpoils = null;
     // 高难度：关卡等级提高（敌人等级、掉落装备等级跟着涨），名字后面标上难度
     this.stage = d ? { ...st, lv: st.lv + this.D.lvAdd, name: `${st.name}·${this.D.name}` } : st;
+    this.rules = STAGE_RULES[st.id] ?? null; // 这一关的规则和地形（stage_rules.js）
     prepareBossSprites(this.stage.boss); // 只载入这一关首领的专属图集，别的首领释放
     prepareEnemySprites(stageEnemyTypes(st)); // 烬翼从第 2 关起、灰烛司祭从第 3 关起才载入
     this.refreshStats();
@@ -548,6 +553,12 @@ class Game {
     this.room = room;
     room.visited = true;
     world.w = room.w;
+    // 关卡地形（stage_rules.js / terrain.js）：试炼和训练场没有
+    world.band = null;
+    if (this.trial || this.run?.training) this.rules = null;
+    this.terrain = this.rules && this.stage ? makeTerrain(this, this.stage, room) : null;
+    this.forceFeint = 0;
+    if (this.rules && !room.cleared) this.teachRoom(room);
     this.enemies = [];
     this.projectiles = [];
     this.hazards = [];
@@ -628,10 +639,18 @@ class Game {
     }
     const elite = spec.endsWith('*');
     this.spawnSide = -this.spawnSide;
-    const x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
-    const y = rand(20, DEPTH - 20);
+    let x = clamp(this.spawnSide > 0 ? this.camX + VIEW_W - 70 : this.camX + 70, 60, world.w - 60);
+    let y = rand(20, DEPTH - 20);
+    if (this.terrain) { x = this.terrain.spawnX(x); y = this.terrain.spawnY(x, y); } // 不刷在裂口里、窄墓道外
     const type = spec.replace('*', '');
-    const affixes = rollAffixes(type, elite, this.stageIdx, this.D);
+    let affixes = rollAffixes(type, elite, this.stageIdx, this.D);
+    // 第 4 关（stage_rules.js 的 affixSets）：精英的词缀按组合出，每种组合第一次出现时提示解法；难度多给的词缀照常往上加
+    const sets = elite && this.rules?.affixSets?.filter((S) => S.set.every((k) => AFFIXES[k].types.includes(type)));
+    if (sets?.length) {
+      const S = sets[Math.floor(Math.random() * sets.length)];
+      affixes = [...S.set, ...affixes.filter((k) => !S.set.includes(k))].slice(0, Math.max(S.set.length, affixes.length));
+      this.teachOnce('aff_' + S.set.join('_'), S.tip, AFFIXES[S.set[0]].color);
+    }
     const e = new Enemy(type, x, y, this, { lv: this.stage.lv, elite, affixes });
     // 第一次遇到某个词缀时提示打法
     for (const k of affixes) if (!this.seenAffix.has(k)) { this.seenAffix.add(k); this.toast(`${AFFIXES[k].name}：${AFFIXES[k].tip}`, AFFIXES[k].color); }
@@ -655,6 +674,15 @@ class Game {
       this.bossAt = null;
       this.boss = new Boss(this.stage.boss, world.w - 300, DEPTH / 2, this, this.stage.lv);
       this.boss.facing = -1;
+      // 首领动态难度（boss_scale.js）：按你的战力强化 +10%～50%，先加行为强度，血量最多 +25%，伤害不加
+      if (!this.trial) {
+        const bonus = bossBonus(power(this.stats), this.stage.lv), bo = this.boss;
+        bo.dyn = { bonus, comboAdd: BOSS_SCALE.comboAt.filter((a) => bonus >= a).length, power: power(this.stats) };
+        if (bonus > 0) {
+          bo.maxHp = bo.hp = bo.hpTrail = Math.round(bo.maxHp * (1 + bonus * BOSS_SCALE.hp));
+          if (this.banner?.boss) this.banner.sub = `${this.banner.sub}（按你的战力强化 +${Math.round(bonus * 100)}%：出招更频繁${bo.dyn.comboAdd ? '、连斩更长' : ''}）`;
+        }
+      }
       this.enemies.push(this.boss);
       // 战前台词：首领站着不出手，说完再开打
       const lines = this.run.story && bossIntro(this, this.stage.boss);
@@ -1153,6 +1181,38 @@ class Game {
     }
   }
 
+  riposte(e) {
+    const R = AI_PROFILES.brute.guard.riposte, lvl = Math.min(2, this.diff ?? 0);
+    e.guardT = 0;
+    e.riposteLock = true; // 同一次格挡只反击一次（挡住的同一招后面几下不再触发）
+    e.facing = Math.sign(this.player.x - e.x) || e.facing;
+    e.startWindup(this, { ...e.T.atk, windup: R.windup[lvl], slamX: R.slamX, riposte: true });
+    if (e.ai) e.ai.intent = 'riposte';
+    this.fx.label(e.x, e.y, e.h + 40, '反 击 !', '#ff6a3c', 24);
+    this.teachOnce('riposte', '铁甲屠夫举斧挡住了技能，马上会砸回来 —— 别对着它的正面放技能：绕到背后，或者等格挡的冷光消失', '#ff6a3c');
+  }
+
+  // 进房间时的关卡教学：这间房有什么地形 / 规则，第一次遇到时提示怎么打
+  teachRoom(room) {
+    const R = this.rules, T = this.terrain, teach = R.teach ?? {};
+    if (R.feintRoom === room.idx && !room.feintTaught) { room.feintTaught = true; this.forceFeint = 1; }
+    if (!T) return;
+    if (T.band && teach.narrow !== false) this.teachOnce('narrow', '墓道很窄，没法往旁边躲：被前后夹住时，用闪避穿过去换位（闪避有无敌帧）', '#e8e0d0');
+    if (T.pillars.length) this.teachOnce('pillars', '回廊的立柱挡得住箭 —— 躲到柱子后面，弓手会换位置找射线；你的剑气也会被柱子挡住', '#9fd0ff');
+    if (T.hooks.length) this.teachOnce('hooks0', '刑台上挂着绞索钩：地上出现红圈就会落下，钩住下面的人 —— 别站在下面，把敌人引过去', '#ff6a5a');
+    if (T.flames.length) this.teachOnce('flames0', '祭坛的火墙会周期性烧起来封路：先冒火星预警，烧起来以后等它熄灭，或者跳过去', '#ff8a3a');
+    if (T.gaps.length) this.teachOnce('gaps0', '深渊裂口：自己走到边上会停住，被打飞、闪避冲过去才会掉下去 —— 走窄桥或者助跑跳过去；把敌人打下去直接摔死', '#b49aff');
+  }
+
+  // 关卡教学提示：每个存档只出一次（stage_rules.js 的 teach）
+  teachOnce(key, text, color = '#e8e0d0') {
+    const tips = (this.save.tips ??= {});
+    if (tips['t_' + key]) return false;
+    tips['t_' + key] = 1;
+    this.toast(text, color);
+    return true;
+  }
+
   // ---------------- 残光·终焉（必杀）----------------
   startUltimate() {
     this.tr('ult');
@@ -1292,6 +1352,9 @@ class Game {
       target.shakeAmp = 2;
       this.hitstop = Math.max(this.hitstop, 3);
       if (src === this.player) this.player.vx = target.facing * 2.5; // 玩家在盾的正前方，往外推
+      // 铁甲屠夫举斧挡住了技能 / 重击 → 格挡反击（ai_data.js 的 brute.guard.riposte）
+      const skillHit = (src === this.player && (this.player.move?.skill || this.player.move?.heavy)) || (src.team === 'player' && src.kind === 'wave') || h.heavy;
+      if (target.guardT > 0 && target.T?.brain === 'brute' && skillHit && target.alive && !target.riposteLock) this.riposte(target);
       if (this.frame - (this.blockLabelAt ?? -99) > 40) {
         this.blockLabelAt = this.frame;
         this.fx.label(target.x, target.y, target.z + target.h + 30, '格挡', AFFIXES.shield.color, 20);
@@ -1385,6 +1448,7 @@ class Game {
       if (target.z > 20) this.quest('airHit');
       if (r.otg && this.stats.marks.has('otg')) this.player.hp = Math.min(this.player.maxHp, this.player.hp + this.player.maxHp * 0.02); // 追魂
       this.comboDmg += dmg;
+      if (src === this.player && !this.player.move?.skill && !h.ult) this.player.mp = Math.min(this.player.maxMp, this.player.mp + MANA.onHit); // 普攻打中回一点魔力
       this.comboT = 110;
       this.comboPop = 8;
       this.ai?.onPlayerHit(target);
@@ -1520,11 +1584,17 @@ class Game {
     const enemyTick = !this.ultSeq && (this.witch <= 0 || this.frame % 4 === 0);
     if (this.witch > 0) this.witch--;
 
+    // 地形（窄墓道、立柱、裂口、火墙）：记下移动前的位置，动完以后再按地形修正
+    const T = this.terrain, before = T ? [this.player, ...this.enemies].map((a) => [a, a.x, a.y]) : null;
     this.player.update(this);
     if (enemyTick) this.ai.tick(); // 记下主角这一帧的样子、导演分工（敌人看到的是 N 帧以前的这份）
     for (const e of this.enemies) if (enemyTick || e.team === 'prop') e.update(this);
     this.training?.update();
     this.separate();
+    if (T) {
+      if (enemyTick) T.update();
+      for (const [a, px, py] of before) if (a.team !== 'prop') T.constrain(a, px, py);
+    }
     this.pinball();
     for (const p of this.projectiles) if (enemyTick || p.team === 'player') p.update(this);
     if (enemyTick) for (const h of this.hazards) h.update(this);
@@ -1642,12 +1712,13 @@ class Game {
     const torches = drawScenery(ctx, camX, t, themeName, inWorld ? this.room : null);
     if (inWorld) {
       drawDoors(ctx, camX, this.room, t);
+      this.terrain?.drawGround(ctx, camX, t); // 地形的地面一层：深渊裂口、窄墓道边的碎石
       this.fx.drawFloor(ctx, camX);
       for (const h of this.hazards) h.drawFloor(ctx, camX);
       const actors = this.scene === 'title' ? [] : [this.player, ...this.enemies];
       for (const a of actors) drawShadow(ctx, a, camX);
       // 按纵深排序：靠前（y 大）的后画，挡住靠后的
-      const list = [...actors, ...this.projectiles, ...this.loots].sort((a, b) => a.y - b.y);
+      const list = [...actors, ...this.projectiles, ...this.loots, ...(this.terrain?.sortables(camX, t) ?? [])].sort((a, b) => a.y - b.y);
       for (const o of list) o.draw(ctx, camX, t);
     }
     if (this.quality > 0) drawFog(ctx, camX, t, themeName);
@@ -1666,6 +1737,7 @@ class Game {
       for (const pr of this.projectiles) post.addLight(...at(pr.x, pr.y, pr.z + 30), 110, 0.8);
       for (const l of this.loots) post.addLight(...at(l.x, l.y, 20), l.item ? 70 + l.item.rar * 30 : 50, 0.65);
       for (const hl of this.hitLights) post.addLight(...at(hl.x, hl.y, hl.z), hl.r, hl.life / 8);
+      this.terrain?.lights(post, at);
       if (this.room?.cleared) {
         if (this.room.doors.e) post.addLight(...at(world.w - 40, DEPTH / 2), 200, 0.7);
         if (this.room.doors.w) post.addLight(...at(40, DEPTH / 2), 200, 0.7);
