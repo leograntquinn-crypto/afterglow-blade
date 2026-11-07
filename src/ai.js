@@ -217,14 +217,7 @@ export class AI {
       if (!e.alive || e.state !== 'windup' || !e.aim) continue;
       const [x0, y0] = toScreen(e.x + e.facing * 30, e.y, 52, camX), [x1, y1] = toScreen(e.x + e.facing * (30 + e.aim.len), e.y + e.aim.vy * (e.aim.len / e.aim.vx), 52, camX);
       const u = Math.min(1, e.st / Math.max(1, e.windup));
-      if (drawAimLine(ctx, x0, y0, x1, y1, u, t)) continue; // 素材（fx_enemy_v1 的 aim_line 平铺往前流 + 终点 aim_mark）；没载好时红色虚线
-      ctx.save();
-      ctx.globalAlpha = 0.25 + 0.45 * u;
-      ctx.strokeStyle = '#ff4a3a';
-      ctx.lineWidth = 1 + u * 1.5;
-      ctx.setLineDash([10, 6]);
-      ctx.beginPath(); ctx.moveTo(x0, y0); ctx.lineTo(x1, y1); ctx.stroke();
-      ctx.restore();
+      drawAimLine(ctx, x0, y0, x1, y1, u, t); // fx_enemy_v1 的 aim_line（沿路线平铺往前流）+ 终点 aim_mark。素材没载好时不画
     }
     let behind = null;
     for (const e of g.enemies) {
@@ -234,23 +227,7 @@ export class AI {
     if (!behind) return null;
     const dir = Math.sign(behind.x - p.x);
     const [x, y] = toScreen(p.x + dir * 40, p.y, p.z + 62, camX);
-    if (drawThreatBack(ctx, x + dir * 6, y, dir, 0.7 + 0.3 * Math.sin(t * 0.5))) return behind; // 素材 threat_back；没载好时两个描边三角
-    ctx.save();
-    ctx.globalAlpha = 0.65 + 0.35 * Math.sin(t * 0.5);
-    ctx.fillStyle = '#ff3b3b';
-    ctx.strokeStyle = '#1a0606';
-    ctx.lineWidth = 2;
-    for (const k of [0, 1]) {
-      const ox = x + dir * k * 9;
-      ctx.beginPath();
-      ctx.moveTo(ox + dir * 9, y);
-      ctx.lineTo(ox - dir * 3, y - 9);
-      ctx.lineTo(ox - dir * 3, y + 9);
-      ctx.closePath();
-      ctx.stroke();
-      ctx.fill();
-    }
-    ctx.restore();
+    drawThreatBack(ctx, x + dir * 6, y, dir, 0.7 + 0.3 * Math.sin(t * 0.5)); // fx_enemy_v1 的 threat_back。素材没载好时不画
     return behind;
   }
 }

@@ -129,31 +129,8 @@ export function onAffixDeath(e, game) {
 export function drawAffixes(ctx, e, sx, sy, top) {
   if (!e.aff || !e.alive) return;
   // 盾：面朝方向的一面半透明弧形
-  // 素材（fx_enemy_v1 的 shield_arc）：按已经挡掉的次数选帧；没载好时代码画
-  if (e.aff.has('shield') && e.guardBrokenT <= 0 && e.state !== 'spawn' && !drawShieldArc(ctx, e, sx, sy, GUARD_MAX - e.guard)) {
-    const fx = sx + e.facing * (e.w * 0.55), fy = sy - e.h * 0.5;
-    const a = 0.35 + 0.15 * (e.guard / GUARD_MAX);
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.strokeStyle = `rgba(143,196,255,${a + 0.3})`;
-    ctx.fillStyle = `rgba(143,196,255,${a * 0.35})`;
-    ctx.lineWidth = 3;
-    ctx.beginPath();
-    ctx.ellipse(fx, fy, 9, e.h * 0.42, 0, -Math.PI / 2, Math.PI / 2, e.facing < 0);
-    ctx.fill();
-    ctx.stroke();
-    // 盾上的裂纹：每挡一下多一道
-    ctx.lineWidth = 1.5;
-    for (let i = 0; i < GUARD_MAX - e.guard; i++) {
-      const yy = fy - e.h * 0.3 + i * e.h * 0.18;
-      ctx.beginPath();
-      ctx.moveTo(fx + e.facing * 2, yy);
-      ctx.lineTo(fx + e.facing * 8, yy + 6);
-      ctx.lineTo(fx + e.facing * 3, yy + 12);
-      ctx.stroke();
-    }
-    ctx.restore();
-  }
+  // 盾：面朝方向的一面弧形光盾（fx_enemy_v1 的 shield_arc），按已经挡掉的次数选帧（越往后裂纹越多）。素材没载好时不画
+  if (e.aff.has('shield') && e.guardBrokenT <= 0 && e.state !== 'spawn') drawShieldArc(ctx, e, sx, sy, GUARD_MAX - e.guard);
   ctx.save();
   ctx.font = `600 12px ${FONT_UI}`;
   ctx.textAlign = 'center';

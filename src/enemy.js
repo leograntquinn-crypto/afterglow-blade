@@ -1,14 +1,13 @@
 // 敌人：类型表 + 简单 AI + 受击反应（硬直 / 浮空 / 倒地 / 霸体破防）
 import { GRAVITY, DEPTH, world, clamp, lerp, rand, toScreen, COLORS, FONT_NUM, FONT_TITLE, yLimits } from './config.js';
 import { hitBox, overlaps, Projectile, Hazard } from './combat.js';
-import { drawFighter, drawAura } from './rig.js';
+import { drawFighter } from './rig.js';
 import { sfx } from './audio.js';
 import { AFFIXES, GUARD_MAX, updateAffixes, onAffixHit, drawAffixes } from './affix.js';
 import { ENEMY_SPRITES, enemyFrame, stepWalk } from './enemy_sprites.js';
 import { EXT_TYPES, AI, drawWard } from './enemies_ext.js';
 import { BRAINS, feintRevealed } from './ai.js';
 import { FEINT } from './ai_data.js';
-import { ENEMY_FX } from './fx_data.js';
 import { drawEnemyAura, drawCrown, drawVolatile, wardBreakFx, typeFx } from './enemy_fx.js';
 
 export const TYPES = {
@@ -469,18 +468,13 @@ export class Enemy {
     if (this.state === 'dying' && this.z <= 0) alpha = Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha = Math.min(1, this.st / 24);
 
-    // 状态光（fx_enemy_v1 的 aura_threat / aura_feint / aura_guard，染色见 fx_data.js 的 ENEMY_FX.aura）；素材没载好时退回代码画的径向光
-    // strength：代码画的那种的亮度（素材本身会跳动 / 呼吸，不再额外闪）
+    // 状态光（fx_enemy_v1 的 aura_threat / aura_feint / aura_guard，染色见 fx_data.js 的 ENEMY_FX.aura）。素材没载好时不画（第 14 项：不用代码画的替身）
     const feint = feintRevealed(this); // 佯攻露出破绽：光变成琥珀色、断断续续，「!」变成「?」、武器抖动
-    let aura = null, strength = 1;
-    if (feint) { aura = 'feint'; strength = 0.9 + 0.5 * Math.sin(this.st * 1.3); }
-    else if (this.state === 'windup') { aura = 'threat'; strength = 1.2 + 0.5 * Math.sin(this.st * 0.6); }
-    else if (this.guardT > 0 && this.alive) { aura = 'guard'; strength = 1.1 + 0.3 * Math.sin(this.st * 0.5); } // 屠夫举斧格挡：冷色光
-    else if (this.armor > 0 && this.alive) { aura = 'armor'; strength = 0.8; }
-    else if (this.blinkFlash > 0) { aura = 'blink'; strength = 1.4; }
-    else if (this.enraged && this.alive) { aura = 'frenzy'; strength = 0.9 + 0.3 * Math.sin(t * 0.3); }
-    else if (this.elite && this.alive) { aura = 'elite'; strength = 0.8 + 0.2 * Math.sin(t * 0.1); }
-    if (aura && !drawEnemyAura(ctx, this, sx, sy, aura, t, alpha)) drawAura(ctx, sx, sy, this.h, ENEMY_FX.aura[aura].color, strength);
+    const aura = feint ? 'feint' : this.state === 'windup' ? 'threat'
+      : !this.alive ? (this.blinkFlash > 0 ? 'blink' : null)
+      : this.guardT > 0 ? 'guard' // 屠夫举斧格挡：冷蓝
+      : this.armor > 0 ? 'armor' : this.blinkFlash > 0 ? 'blink' : this.enraged ? 'frenzy' : this.elite ? 'elite' : null;
+    if (aura) drawEnemyAura(ctx, this, sx, sy, aura, t, alpha);
     this.auraKey = aura; // 测试用：这一帧画的是哪种状态光
     if (feint) sx += Math.sin(this.st * 2.1) * 1.6;
     // 受击时挤压一下（横向撑开、纵向压扁），让打击有「肉感」

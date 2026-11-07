@@ -217,25 +217,7 @@ export class Projectile {
       ctx.drawImage(tinted(T.core, col), -9, -9, 18, 18);
     } else if (this.kind === 'arrow') {
       if (this.vy) ctx.rotate(Math.atan2(this.vy, Math.abs(this.vx))); // 预判过的箭斜着飞
-      if (drawArrow(ctx)) { ctx.restore(); return; } // 素材（fx_enemy_v1 的 arrow + arrow_trail）；没载好时代码画
-      ctx.strokeStyle = 'rgba(255,90,70,.35)';
-      ctx.lineWidth = 6;
-      ctx.beginPath();
-      ctx.moveTo(-40, 0);
-      ctx.lineTo(0, 0);
-      ctx.stroke();
-      ctx.strokeStyle = '#d9c9a8';
-      ctx.lineWidth = 2.5;
-      ctx.beginPath();
-      ctx.moveTo(-26, 0);
-      ctx.lineTo(0, 0);
-      ctx.stroke();
-      ctx.fillStyle = '#ff8a6a';
-      ctx.beginPath();
-      ctx.moveTo(6, 0);
-      ctx.lineTo(-2, -4);
-      ctx.lineTo(-2, 4);
-      ctx.fill();
+      drawArrow(ctx); // 箭（fx_enemy_v1 的 arrow + arrow_trail）。素材没载好时不画
     }
     ctx.restore();
   }
@@ -298,7 +280,7 @@ export class Hazard {
       if (drawWarn(ctx, sx, sy, this.rx, this.ry, u, this.ph ?? this.t, fake, fake ? 0.75 + 0.25 * Math.sin(this.t * 1.4) : 0.8 + 0.2 * Math.sin(this.t * (0.35 + u * 0.6)))) {
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
-        if (this.kind === 'meteor' && drawMeteor(ctx, sx, sy, (1 - u) * 340, this.t, this.color || '#ff6a3d')) { ctx.restore(); return; }
+        if (this.kind === 'meteor') drawMeteor(ctx, sx, sy, (1 - u) * 340, this.t, this.color || '#ff6a3d'); // 从天而降的火球，落地时刚好爆炸
       } else {
         // 屠夫佯攻的红圈：露出破绽后变淡、闪烁（这一下不会砸）
         if (this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal) ctx.globalAlpha *= 0.3 + 0.2 * Math.sin(this.t * 1.4);
@@ -311,28 +293,9 @@ export class Hazard {
         ctx.globalCompositeOperation = 'source-over';
         ctx.globalAlpha = 1;
       }
-      if (this.kind === 'meteor') {
-        // 从天而降的光球，落地时刚好爆炸
-        const h = (1 - u) * 340;
-        ctx.globalCompositeOperation = 'lighter';
-        ctx.fillStyle = this.color || '#ff6a3d';
-        ctx.globalAlpha = 0.25;
-        ctx.beginPath();
-        ctx.arc(sx, sy - h, 22, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.arc(sx, sy - h, 9, 0, Math.PI * 2);
-        ctx.fill();
-        ctx.fillRect(sx - 2, sy - h - 40, 4, 34);
-      }
-    } else if (!drawWarnFlash(ctx, sx, sy, this.rx, this.ry, this.t - this.delay, this.color || '#ff8a5a')) {
-      // 爆发：素材 warn_flash（整片亮起、碎成放射状光纹再熄灭）；没载好时一个渐隐的椭圆
-      const u = 1 - (this.t - this.delay) / 14;
-      ctx.fillStyle = `rgba(255,200,120,${0.5 * u})`;
-      ctx.beginPath();
-      ctx.ellipse(sx, sy, this.rx * (1.2 - 0.2 * u), this.ry * (1.2 - 0.2 * u), 0, 0, Math.PI * 2);
-      ctx.fill();
+    } else {
+      // 爆发：整片亮起、碎成放射状光纹再熄灭（fx_enemy_v1 的 warn_flash）。素材没载好时不画（爆发本身还有冲击环、尘土、光柱这些粒子）
+      drawWarnFlash(ctx, sx, sy, this.rx, this.ry, this.t - this.delay, this.color || '#ff8a5a');
     }
     ctx.restore();
   }
@@ -355,14 +318,7 @@ export class Lane {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
     const len = this.facing > 0 ? world.w - this.x : this.x;
     const a = 0.12 + 0.18 * (this.t / this.life) + 0.08 * Math.sin(this.t * 0.6);
-    // 素材（fx_enemy_v1 的 lane_band）：沿路线平铺、往前流；没载好时两个矩形
-    if (drawLaneBand(ctx, sx, sy, this.facing, len, this.half, this.t, this.color, a * 2.2)) return;
-    ctx.save();
-    ctx.fillStyle = this.color;
-    ctx.globalAlpha = a;
-    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - this.half / 2, len, this.half);
-    ctx.globalAlpha = a * 2;
-    ctx.fillRect(this.facing > 0 ? sx : sx - len, sy - 1, len, 2);
-    ctx.restore();
+    // 素材（fx_enemy_v1 的 lane_band）：沿路线平铺、往前流。素材没载好时不画
+    drawLaneBand(ctx, sx, sy, this.facing, len, this.half, this.t, this.color, a * 2.2);
   }
 }
