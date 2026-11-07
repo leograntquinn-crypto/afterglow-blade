@@ -351,10 +351,13 @@ export class Terrain {
     ctx.rect(x0, top, x1 - x0, b0 - top);
     ctx.rect(x0, b1, x1 - x0, bot - b1);
     ctx.clip();
-    // 透过裂口看到的深渊（第 5 关的远景素材，压暗、慢慢往下沉，显得很深）
+    // 裂口本身：没有地面，底下是黑的（这是「没有东西」，不是画出来的效果）
+    ctx.fillStyle = '#040208';
+    ctx.fillRect(x0, top, x1 - x0, bot - top);
+    // 透过裂口隐约看到的深渊（第 5 关的远景素材，很暗、慢慢往下沉，显得很深）
     if (bd) {
       const h = 360, w = (bd.width / bd.height) * h, ox = ((camX * 0.2) % w + w) % w, oy = (t * 0.15) % h;
-      ctx.globalAlpha = 0.55;
+      ctx.globalAlpha = 0.3;
       for (let x = x0 - ox - w; x < x1 + w; x += w) for (const y of [top - oy, top - oy + h]) ctx.drawImage(bd, x, y, w, h);
       ctx.globalAlpha = 1;
     }
