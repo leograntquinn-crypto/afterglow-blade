@@ -66,6 +66,8 @@ export class AI {
       recovering: attacking && p.mf >= activeEnd,
       // 挥空：地面普攻（不是技能、不是空中招）的有效帧已经过了，一个敌人都没打中
       whiff: attacking && !m.skill && !m.air && m.hits.length > 0 && p.mf >= activeEnd && !p.landed,
+      // 技能放空：近战技能的有效帧过了一个都没打中（弓手抓这个，第 12 项「只按技能」的错误时机）
+      skillWhiff: attacking && !!m.skill && m.hits.length > 0 && p.mf >= activeEnd && !p.landed,
       // 重击 / 技能正在打过来（还没过有效帧）
       heavy: attacking && (m.heavy || m.skill) && p.mf < activeEnd,
       dodging: p.state === 'dash' || p.state === 'airdash',
@@ -558,6 +560,20 @@ export const BRAINS = {
       steer(e, tx, ty);
       // 3. 射：冷却、令牌、在画面内、距离合适、纵深差不太大、射线没被同伴挡 → 预警时画出瞄准线（预判过的真实路线）
       const dyAim = Math.abs(aimY - e.y);
+      // 抓技能放空：看到你的技能打空（技能后摇里耐力不回复、动不了），冷却快好了就马上放一箭，抬手更短（伤害不变）
+      const SP = P.punishSkill;
+      if (s.skillWhiff && s.moveStart !== ai.seenSkillWhiff) {
+        ai.seenSkillWhiff = s.moveStart;
+        if (e.attackCd <= SP.cdLeft && token && may && vis && rdx > 120 && rdx < 560 && dyAim < P.lane.maxDy && !blocked && A.rand() < SP.chance[lvl]) {
+          const flight = rdx / 7.5;
+          e.startWindup(game, { ...T.atk, windup: SP.windup[lvl], punish: true });
+          e.aim = { vx: 7.5, vy: (aimY - e.y) / flight, len: rdx + 120 };
+          ai.intent = 'punish';
+          game.fx.label(e.x, e.y, e.h + 34, '破绽', '#ff6a5a', 16);
+          if (game.rules?.teach) game.teachOnce?.('skillWhiff', '技能打空了 —— 影弓手会抓你技能的后摇放箭。技能对准了再放', '#ff6a5a');
+          return true;
+        }
+      }
       if (e.attackCd <= 0 && token && may && vis && rdx > 120 && rdx < 520 && dyAim < P.lane.maxDy && !blocked) {
         const flight = rdx / 7.5;
         e.startWindup(game);
