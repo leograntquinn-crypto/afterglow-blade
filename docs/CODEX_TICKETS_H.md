@@ -293,3 +293,59 @@ export const BOSS_FX = {
 新建 `tests/bonefxtest.js` 并加进 `tests/run_all.js`。要测：第 1 关两套都载入、换关都释放；骨牢预警期间 `cage_tighten` 在画、**光丝的段数 = 存在的相邻骨刺对数、缺口两侧没有光丝**；拖地火星只在裂地追斩 / 冲锋期间画；重击后有 3～5 片骨片、最后都回到首领身边并消失；第二阶段一次 `bone_reform`；读条两段 + 结束 `bone_call_burst`、被打断马上消失；召唤每只小怪一次 `summon_rise`；死亡一次 `bonelord_death`；**`bone_spikes`、`bone_rend` 原有的触发次数不变**；素材没载好时新加的不画、页面无报错。最后一行 `BONEFXTEST ok` / `BONEFXTEST FAIL n`。
 
 **模块测试**（H-10 ～ H-12 全做完后统一一次）：`node tests/run_all.js` 全过 + `tools/fxsheet.js` 骸骨统领各招式关键时刻的对比截图（`--compare` 对照 main，桌面 + 手机）；问题汇总成一张清单、集中改完再测。
+
+---
+
+# 第五批工单（2026-11-08）：祭坛守护者补充包 `fx_boss_warden_v2`
+
+素材包已验货上架（`assets-v8/fx_boss_warden_v2.zip`，sha256 `7a9c7030…`，5 685 469 字节）。规格 `docs/ART_FX_BOSS_WARDEN_V2.md`。**模块级测试**：H-13 + H-14 + H-15 一个模块，做完统一测一次。
+
+| 工单 | 内容 | 依赖 | 难度 | 可派 |
+|---|---|---|---|---|
+| H-13 | `--boss warden` 加进 `BOSS_PACKS`；第 4 关同时载两套（`fx_warden` + `fx_boss_warden_v2`） | H-10（「一关载两套」的写法在 H-10 里做） | 机械 | ✓ |
+| H-14 | 祭坛守护者补充特效接入（规格第一、八节），两个检查点 | H-13；排在 H-10 ～ H-12（骸骨统领）之后 | 复杂（按指导执行） | ✓ |
+| H-15 | 祭坛守护者补充特效的确定性测试 | 和 H-14 同一模块 | 中 | ✓ |
+
+## H-13 构建 + 一关载两套
+
+- `BOSS_PACKS` 加 `warden`：`out = "fx_boss_warden_v2"`，`textures = { fire_lane: (256, 64) }`，`flipbooks = { brazier: (128, 192, 4), brazier_flame: (128, 192, 8), brazier_break: (192, 192, 8), judgment_sweep: (512, 256, 8), warden_flame: (256, 384, 8), phase_ignite: (384, 384, 10), inferno_gather: (256, 384, 8), inferno_burst: (512, 384, 8), warden_death: (384, 384, 10) }`，`keep_full = { fire_lane }`。
+- `src/fx_art.js`：`FX_ART.wardenv2 = new FxPack('fx_boss_warden_v2')`；`BOSS_FX.warden = ['warden', 'wardenv2']`；`flipbook()` 查找列表加上。`fx_warden`（`soul_fire`、`summon_circle`）一字不改。
+- 验收（并进模块测试）：真包打出图集；其他四套首领图集重打逐像素不变；`tests/bosspacktest.js` 期望改成第 4 关同时载 `warden` 和 `wardenv2`。
+
+## H-14 祭坛守护者补充特效接入
+
+**指导要点**：
+- **按阶段染色**：`BOSS_FX.warden` 表写三个阶段的颜色 `['#ffb347', '#6fe38a', '#d6ffe0']`，`warden_flame`、`brazier_flame`、`fire_lane`、`judgment_sweep`、`phase_ignite`、`inferno_*`、`warden_death` 都按 `b.phase` 取色。第 3 阶段（`phase === 2`）`warden_flame` 播放速度 × 1.6、每隔 20～40 帧随机亮跳一下（倍数、间隔写进表）。
+- **火舌方向要镜像对**：`warden_flame` 素材往左上拉、`brazier_flame` 往左拉、`fire_lane` 往右倾——引擎按「拉向谁」镜像：守护者的火拉向最近的魂火炉（没有炉子时拉向它背后），炉口的火拉向守护者，`fire_lane` 倾向长戟扫过来的方向。
+- **魂火炉**（`boss_moves.js` 的 `Brazier`）：`draw()` 里代码画的石墩（`fillRect` / `arc` / `stroke`）**删掉**，换成 `brazier`（4 帧轮换）+ 炉口 `brazier_flame`；被打碎时 `brazier_break` 代替通用爆点 / 碎片（`soul` 粒子可以保留）。素材没载好时不画炉身（第 14 项）——**炉子的判定、血量照旧**，标出炉子位置的办法我在机制设计里定，这一单不做替身。
+- **审判长戟**：两条地面光带改用 `fire_lane` 平铺（代替 `lane_band`，只对守护者）；两道横扫用 `judgment_sweep`（按光带长度横向拉伸）代替那道半径 220 的通用新月（`fx.arc`）。
+- **身上的火**：`warden_flame` 每帧画（活着的时候一直在）；**它代替通用的首领状态光**（`bossIdle`），出招预警时的红色 `bossThreat` 照旧。
+- **换阶段**（咆哮时）：`phase_ignite` 一次，颜色用新阶段的颜色。
+- **读条「祭坛炎狱」**：身上 `inferno_gather`（每帧画）；结束 `inferno_burst`；被打断马上消失。`summon_circle` 原来的用法不动。
+- **死亡**：`warden_death` 一次。
+- 素材没载好：新加的不画，被替换的退回现在的画法（炉身除外：代码画的已删）。
+- **不做**：第 9 项「借来的火」三阶段机制真正不同 / 第 3 阶段火焰失控的玩法（我来设计）；不调数值。
+
+**检查点**（只交代码看方向，不跑测试）：
+1. 表 + 按阶段染色 + 身上的火（含第 3 阶段失控）+ 魂火炉（本体、炉口火、打碎）；
+2. 审判长戟（火带 + 横扫）+ 换阶段 + 读条 + 死亡。
+
+## H-15 祭坛守护者补充特效的确定性测试
+
+新建 `tests/wardenfxtest.js` 并加进 `tests/run_all.js`。要测：第 4 关两套都载、换关释放；三个阶段 `warden_flame` 的颜色依次是表里的三色、第 3 阶段播放加快；魂火炉画的是 `brazier` + `brazier_flame`、**`Brazier.draw` 里不再调用 `fillRect` / `arc` / `stroke`**（包一层 ctx 计数）、打碎一次 `brazier_break`；审判长戟两条 `fire_lane`、两次 `judgment_sweep`、**不再有半径 220 的 `fx.arc`**；**其他首领的 `bossIdle` 状态光和光带不受影响**；换阶段各一次 `phase_ignite`；读条两段、被打断马上消失；死亡一次 `warden_death`；**`soul_fire`、`summon_circle` 的触发次数不变**；素材没载好时新加的不画、页面无报错。最后一行 `WARDENFXTEST ok` / `WARDENFXTEST FAIL n`。
+
+**模块测试**（H-13 ～ H-15 全做完后统一一次）：`node tests/run_all.js` 全过 + `tools/fxsheet.js` 守护者各招式关键时刻 × 三个阶段的对比截图（`--compare` 对照 main，桌面 + 手机）；问题汇总成一张清单、集中改完再测。
+
+---
+
+# 子轮 H 派单总顺序（2026-11-08）
+
+H-0、H-1、H-4、H-5 已接入（v50）。剩下的按顺序，一次只开一个改 `src/boss_fx.js` 的模块：
+
+1. **H-2 + H-3**（夜鸦特效 + 测试）——第一个建立 `src/boss_fx.js`；
+2. **H-6 + H-7**（铁颚）；
+3. **H-8 + H-9**（残影）；
+4. **H-10 ～ H-12**（骸骨统领；H-10 是纯构建，可以提前插空做）；
+5. **H-13 ～ H-15**（祭坛守护者；H-13 依赖 H-10 的「一关载两套」）。
+
+每个模块交回后我终审 + 模块级全套测试 + 合并发布；第 9 项每名首领的机制补强（我做）跟着对应模块一起验收。
