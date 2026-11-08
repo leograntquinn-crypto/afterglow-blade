@@ -8,6 +8,7 @@
 import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_TITLE, FONT_NUM, FONT_UI, clamp, rand } from './config.js';
 import { typeFx, hasTypeFx } from './enemy_fx.js';
 import { prepareEnemyFx } from './fx_art.js';
+import { NIGHT, nightRaven, nightLights, nightAmbient, drawVeil, drawDrift } from './raven_night.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -1735,9 +1736,11 @@ class Game {
     // 2. 光照：收集这一帧的所有光源，然后压暗其余部分
     for (const [tx, ty, fl] of torches) post.addLight(...toView(tx, ty), 240 * fl, 0.8, 'flame');
     if (inWorld) {
-      const p = this.player;
-      post.addLight(...at(p.x, p.y, p.z + 45), 270, 0.95);
+      const p = this.player, raven = nightRaven(this); // 夜鸦第二阶段的夜色（raven_night.js）：主角的光圈收小、夜鸦只在现身时发光
+      post.addLight(...at(p.x, p.y, p.z + 45), raven ? 270 + (NIGHT.playerLight - 270) * raven.night : 270, 0.95);
+      if (raven) nightLights(this, raven, post, at);
       for (const e of this.enemies) {
+        if (e === raven) continue;
         if (e.isBoss && e.alive) post.addLight(...at(e.x, e.y, e.h * 0.5), 230, 0.7);
         else if (e.alive || e.team === 'prop') post.addLight(...at(e.x, e.y, (e.z || 0) + 40), 120, 0.45); // 跟着高度走（飞在空中的烬翼）
       }
@@ -1752,7 +1755,9 @@ class Game {
       }
     }
     if (this.scene === 'title') post.addLight(VIEW_W * 0.3, 360, 340, 1, 'lantern');
-    post.applyLighting(ctx, th.ambient, t);
+    const raven = inWorld ? nightRaven(this) : null;
+    post.applyLighting(ctx, raven ? nightAmbient(th.ambient, raven.night) : th.ambient, t);
+    if (raven) { drawVeil(ctx, raven, ...at(this.player.x, this.player.y, this.player.z + 45)); drawDrift(ctx, raven, camX); } // 夜幕和飘落的黑羽（夜鸦素材包载好了才画）
     // 技能演出的压暗：主角（或演出对象）身边留一圈光，特效画在压暗之上
     const cf = this.cine.focus ?? this.player;
     const [cfx, cfy] = at(cf.x, cf.y, (cf.z ?? 0) + 45);

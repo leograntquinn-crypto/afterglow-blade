@@ -23,6 +23,7 @@ const READ_TOAST = {
 };
 import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sprites.js';
 import { sfx } from './audio.js';
+import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
 
 const sign = (v) => Math.sign(v) || 1;
@@ -396,6 +397,7 @@ export class Boss extends Enemy {
       this.startAct('roar');
     }
     super.update(game);
+    updateNight(this, game); // 夜鸦第二阶段的夜色（raven_night.js）
     // 出招预警的一瞬间：脚下的红圈往里收、红光往身上聚（和「!」一起出现，告诉你要闪了）
     if (this.tele && !this.wasTele && this.alive) {
       game.fx.gwarn(this.x, this.y, '#ff3b3b', this.w * 1.4 + 70, this.w * 0.45, 24);
