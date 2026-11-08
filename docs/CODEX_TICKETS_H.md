@@ -202,3 +202,50 @@ export const BOSS_FX = {
 ## H-7 铁颚特效的确定性测试
 
 照 H-3（夜鸦）的写法，新建 `tests/ironjawfxtest.js` 并加进 `tests/run_all.js`。要测：进第 3 关载入 / 进第 1 关释放；锁链钩四个时刻各自的素材；**骸骨统领的重砸仍然是 `bone_spikes`、普通的通用招式不受影响，只有铁颚换**；三震的三次 `stomp_quake` 大小依次变大、第三震有 `stomp_wave`；读条三个素材、被打断马上消失；第二阶段 `chain_break` 一次；死亡 `ironjaw_death` 一次；素材没载好时新加的不画、页面无报错。输出格式同 `efx2test`，最后一行 `IRONJAWFXTEST ok` / `IRONJAWFXTEST FAIL n`。
+
+---
+
+# 第三批工单（2026-11-08，H-5 接入后）：残影
+
+三包图集都已经在仓库里（`fx_boss_raven`、`fx_boss_ironjaw`、`fx_boss_afterimage`，`FX_ART.raven / ironjaw / afterimage`，按关卡载入，见 `tests/bosspacktest.js`）。
+
+| 工单 | 内容 | 依赖 | 难度 | 可派 |
+|---|---|---|---|---|
+| H-8 | 残影特效接入（规格 `docs/ART_FX_BOSS_AFTERIMAGE_V1.md` 第一、八节），两个检查点 | H-2 合并后（共用 `src/boss_fx.js`） | 复杂（按指导执行） | ✓ |
+| H-9 | 残影特效的确定性测试 | 和 H-8 同步 | 中 | ✓ |
+
+派单顺序建议：H-2（夜鸦）→ H-6 / H-7（铁颚）→ H-8 / H-9（残影），一次只开一个改 `src/boss_fx.js` 的工单，避免合并冲突。
+
+## H-8 残影特效接入
+
+**指导要点**：
+- **刀光条带**：残影的三连斩 / 瞬移斩现在走 `game.fx.arc(...)`（铺的是 `fx_blade_v1` 的条带）。给 `fx.arc` 加一个可选参数（条带贴图，默认现在的），残影传 `rev_ribbon`（从 `FX_ART.afterimage` 取，`bossTex('afterimage', 'rev_ribbon')`）；**别的首领、主角的刀光一律不变**。另外在出刀那一帧叠一个 `rev_slash`。
+- **剑气**：`Projectile` 的 `kind === 'wave'` 且 `owner?.key === 'afterimage'` 时画 `rev_wave`；主角自己的剑气（`wave_crescent`）不变。不要加新的 `kind`。
+- **镜像**：`mirror` 招式开始时头顶 `mirror_sigil`（每帧画，招式结束消失）；镜像·风（旋风）用 `rev_slash` 连播代替主角的 `slash_spin`；镜像·千刃的 `fx.arc` 同样传 `rev_ribbon`。
+- **瞬移**：消失 `shadow_step_out`、出现 `shadow_step_in`，代替通用能量环。
+- **残光处决**：`boss_moves.js` 里 `Streak.drawFloor` 的代码直线**删掉**，换成 `streak_line` 沿路线平铺（照 `src/enemy_fx.js` 的 `tileAlong`）+ 每个折点 `exec_mark`；每一段冲刺 `exec_dash` 沿这一段方向转过去、按长度拉伸，代替主角的 `slash_sweep`。素材没载好时路线不画（第 14 项）——判定不变。
+- **读习惯**：`boss.js` 的 `habitTable` 弹出 `READ_TOAST` 的那一刻，在残影身上播一次 `habit_read`。
+- **读条「残光逆转」**：身上 `reversal_gather`（每帧画）；结束 `reversal_burst`；被打断马上消失。
+- **死亡**：`afterimage_death` 一次，**朝向主角所在的一边**（素材里光点往左飘：主角在右边时镜像）。
+- 素材没载好：新加的不画，被替换的退回现在的画法（处决路线除外：代码直线已经删掉，不画）。
+- **不做**：残影「用你的连段 / 闪避时机反制你」的机制（我来设计）；不调数值。
+
+**检查点**：
+1. 刀光条带（`fx.arc` 的可选条带参数）+ `rev_slash` + `rev_wave` + 瞬移两段 + 镜像（印记、风、千刃）；
+2. 残光处决（路线平铺、折点、冲刺斩，删掉代码直线）+ 读习惯 + 读条两段 + 死亡。
+
+**验收**：H-9 全过 + 全套通过 + 每个检查点 `tools/fxsheet.js` 截图（`--compare` 对照 main，桌面 + 手机）。
+
+## H-9 残影特效的确定性测试
+
+新建 `tests/afterimagefxtest.js` 并加进 `tests/run_all.js`。要测：
+- 残影的刀光用 `rev_ribbon`、**主角和其他首领的刀光仍是原来的条带**；
+- 残影的剑气画 `rev_wave`、主角的剑气仍是 `wave_crescent`；
+- 镜像期间头顶有 `mirror_sigil`、结束后没有；
+- 瞬移各一次 `shadow_step_out` / `shadow_step_in`；
+- 处决：路线画的是 `streak_line` 贴图、**`Streak.drawFloor` 里不再有 `stroke()` 调用**（在测试里包一层 `ctx.stroke` 计数）；五段各一次 `exec_dash`；
+- 读到习惯时一次 `habit_read`；读条两段、被打断马上消失；
+- 死亡一次 `afterimage_death`，主角在右边时朝向镜像；
+- 素材没载好时新加的不画、页面无报错。
+
+最后一行 `AFTERIMAGEFXTEST ok` / `AFTERIMAGEFXTEST FAIL n`。
