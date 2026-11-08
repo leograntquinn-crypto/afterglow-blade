@@ -25,7 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
-import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, drawRavenVeil, updateRavenDeathFx } from './boss_fx.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -555,6 +555,5 @@ export class Boss extends Enemy {
       for (const [sx, sy] of spots) ctx.fillText('破防', sx, sy - this.h - 28);
     }
     ctx.restore();
-    drawRavenVeil(ctx, this, camX);
   }
 }
