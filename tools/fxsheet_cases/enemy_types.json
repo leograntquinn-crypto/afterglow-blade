@@ -1,0 +1,25 @@
+{
+  "columns": 4,
+  "cells": [
+    {"label": "腐骨兵 · 预警", "stage": 1, "spawn": "grunt", "moment": "tele", "frames": 3},
+    {"label": "腐骨兵 · 出招", "stage": 1, "spawn": "grunt", "moment": "attack", "frames": 8},
+    {"label": "腐骨兵 · 命中", "stage": 1, "spawn": "grunt", "moment": "hit", "frames": 5},
+    {"label": "腐骨兵 · 死亡", "stage": 1, "spawn": "grunt", "moment": "death", "frames": 40},
+    {"label": "铁甲屠夫 · 预警", "stage": 1, "spawn": "brute", "moment": "tele", "frames": 10},
+    {"label": "铁甲屠夫 · 出招", "stage": 1, "spawn": "brute", "moment": "attack", "frames": 3},
+    {"label": "铁甲屠夫 · 命中", "stage": 1, "spawn": "brute", "moment": "hit", "frames": 5},
+    {"label": "铁甲屠夫 · 死亡", "stage": 1, "spawn": "brute", "moment": "death", "frames": 40},
+    {"label": "影弓手 · 预警", "stage": 1, "spawn": "archer", "moment": "tele", "frames": 12},
+    {"label": "影弓手 · 出招", "stage": 1, "spawn": "archer", "moment": "attack", "frames": 4},
+    {"label": "影弓手 · 命中", "stage": 1, "spawn": "archer", "moment": "hit", "frames": 5},
+    {"label": "影弓手 · 死亡", "stage": 1, "spawn": "archer", "moment": "death", "frames": 40},
+    {"label": "灰烛司祭 · 预警", "stage": 2, "spawn": "priest", "moment": "tele", "frames": 4},
+    {"label": "灰烛司祭 · 出招", "stage": 2, "spawn": "priest", "moment": "attack", "frames": 8},
+    {"label": "灰烛司祭 · 命中", "stage": 2, "spawn": "priest", "moment": "hit", "frames": 5},
+    {"label": "灰烛司祭 · 死亡", "stage": 2, "spawn": "priest", "moment": "death", "frames": 40},
+    {"label": "烬翼 · 预警", "stage": 1, "spawn": "wing", "moment": "tele", "frames": 10},
+    {"label": "烬翼 · 出招", "stage": 1, "spawn": "wing", "moment": "attack", "frames": 6},
+    {"label": "烬翼 · 命中", "stage": 1, "spawn": "wing", "moment": "hit", "frames": 5},
+    {"label": "烬翼 · 死亡", "stage": 1, "spawn": "wing", "moment": "death", "frames": 42}
+  ]
+}
