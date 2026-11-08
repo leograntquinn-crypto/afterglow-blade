@@ -147,3 +147,58 @@ export const BOSS_FX = {
 5. 首领招式（`move:<名字>`）：调首领的 `startAct`（或 `boss.js` 里等价的入口）直接开始那个招式。
 
 **验收**：用 `enemy_types.json`（五种敌人 × 四个时刻）在当前 main 上出图，和 `docs/fx_enemy_v1_types_cmp.jpg` 右半边内容一致；`--compare` 能出左右对比；`--mobile` 用手机视口和手机图集。
+
+---
+
+# 第二批工单（2026-11-08，H-1 接入后）
+
+| 工单 | 内容 | 依赖 | 难度 | 可派 |
+|---|---|---|---|---|
+| H-5 | `--boss` 模式通用化：夜鸦、铁颚、残影三包按一张规格表构建 + 按首领载入 | H-1（已接入） | 机械 | ✓ |
+| H-6 | 铁颚特效接入（规格 `docs/ART_FX_BOSS_IRONJAW_V1.md` 第一、八节），两个检查点 | H-5；铁颚包（已在 assets-v8） | 复杂（按指导执行） | ✓ |
+| H-7 | 铁颚特效的确定性测试 | H-5；和 H-6 同步 | 中 | ✓ |
+
+## H-5 `--boss` 模式通用化
+
+**目标**：H-1 的 `--boss raven` 是夜鸦专用的（`validate_raven`、`build_raven`）。铁颚包已经到了、残影包在排队，改成一张表驱动，以后每包只加一行表。
+
+**改哪些文件**：`tools/build_fx.py`、`src/fx_art.js`。
+
+**确切行为**：
+1. `BOSS_PACKS = { raven: {...}, ironjaw: {...}, afterimage: {...} }`：每项写 `out`（图集名：`fx_boss_raven` / `fx_boss_ironjaw` / `fx_boss_afterimage`）、`textures`（id → (宽, 高)）、`flipbooks`（id → (宽, 高, 帧数)）、`keep_full`（不裁边的贴图 id）。三包的数值分别照各自规格第三节：
+   - `docs/ART_FX_BOSS_RAVEN_V1.md`（现有 `validate_raven` 的表原样搬过去，`keep_full = {night_veil}`）；
+   - `docs/ART_FX_BOSS_IRONJAW_V1.md`（`keep_full = {chain_glow}`：可平铺）；
+   - `docs/ART_FX_BOSS_AFTERIMAGE_V1.md`（`keep_full = {rev_ribbon, streak_line}`：条带 / 可平铺）。
+2. `python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage> <包目录>`：`validate_raven` / `build_raven` 改成通用的 `validate_boss(name, root, m)` / `build_boss(name, root)`，校验和打包逻辑不变（id 缺 / 多 / 重复、画布、帧数、单帧实际尺寸不符 → 报错退出，不覆盖已有图集）。未知的名字 → 报错并列出可用的。
+3. `src/fx_art.js`：`FX_ART.ironjaw = new FxPack('fx_boss_ironjaw')`、`FX_ART.afterimage = new FxPack('fx_boss_afterimage')`；`BOSS_FX` 加 `ironJaw: 'ironjaw'`、`afterimage: 'afterimage'`；`flipbook()` 查找列表加上这两套。
+4. **不要提交图集**（我接入时用真包打）；铁颚的真包在 `assets-v8`（`fx_boss_ironjaw_v1.zip`）。
+
+**验收**：
+- `--boss raven` 用真包打出的 `fx_boss_raven*.{webp,json}` 和仓库里现在的**逐字节一致**；
+- `--boss ironjaw` 用真包跑通，贴出图集尺寸和 JSON 的键；改错一项画布 → 报错退出、已有图集不变；
+- `--boss afterimage`：包还没到，用按规格造的假包跑通（不要提交假包）；
+- 浏览器里：进第 3 关（铁颚）`FX_ART.ironjaw.ready` 为 true、进第 1 关被释放；
+- `node tests/run_all.js` 全过。
+
+## H-6 铁颚特效接入（两个检查点）
+
+**规格**：`docs/ART_FX_BOSS_IRONJAW_V1.md` 第一节的替换表就是全部内容；照 H-2（夜鸦）的写法：数据在 `fx_data.js` 的 `BOSS_FX.ironJaw` 表、画法在 `src/boss_fx.js`（H-2 建立的文件；H-2 还没合并的话等它合并后再开始，避免两边同时新建这个文件）。
+
+**指导要点**：
+- **只有铁颚换**：重砸 / 冲击波的地面爆发用 `Hazard` 现有的可选字段 `art`（骸骨统领的 `bone_spikes` 就是这么接的），由 `boss.js` / `boss_moves.js` 按首领传入；`combat.js` 里不许写首领名。别的首领的重砸照旧。
+- **刑台三震一下比一下大**：三震的 `stomp_quake` 按 1 / 1.2 / 1.5 放大；第三震炸开 `stomp_wave`。
+- **锁链光** `chain_glow`：沿锁链平铺（照 `src/enemy_fx.js` 里 `tileAlong` 的写法，叠在现有链环图上）；拖拽 `chain_drag` 跟着主角的脚（被拉的那十几帧）。
+- **读条「断头重锤」**：脚下 `execution_mark`、举斧时 `headsman_glint`、结束 `execution_drop`；被打断时这些马上消失。
+- 第二阶段咆哮时 `chain_break`、死亡 `ironjaw_death`。
+- 素材没载好：新加的部分不画；被替换的部分退回现在的画法。
+- **不做**：去掉铁颚的三连斩、「锁链把你拉到刑台上」这些机制（我来设计）；不调数值手感。
+
+**检查点**：
+1. 表 + 锁链钩（链光、钩中火星、拖拽火星、拉近那一锤的 `heavy_cleave` + `stomp_quake`）+ 重砸 / 冲击波 / 刑台三震（`stomp_quake`、`stomp_wave`，只有铁颚）+ 冲锋 `charge_sparks`；
+2. 读条（`execution_mark`、`headsman_glint`、`execution_drop`）+ 召唤（`execution_mark`）+ 第二阶段 `chain_break` + 死亡 `ironjaw_death`。
+
+**验收**：H-7 全过 + 全套通过 + 每个检查点用 `tools/fxsheet.js` 出截图（铁颚各招式的关键时刻，加 `--compare` 对照 main，桌面 + 手机）。
+
+## H-7 铁颚特效的确定性测试
+
+照 H-3（夜鸦）的写法，新建 `tests/ironjawfxtest.js` 并加进 `tests/run_all.js`。要测：进第 3 关载入 / 进第 1 关释放；锁链钩四个时刻各自的素材；**骸骨统领的重砸仍然是 `bone_spikes`、普通的通用招式不受影响，只有铁颚换**；三震的三次 `stomp_quake` 大小依次变大、第三震有 `stomp_wave`；读条三个素材、被打断马上消失；第二阶段 `chain_break` 一次；死亡 `ironjaw_death` 一次；素材没载好时新加的不画、页面无报错。输出格式同 `efx2test`，最后一行 `IRONJAWFXTEST ok` / `IRONJAWFXTEST FAIL n`。
