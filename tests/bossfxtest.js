@@ -87,6 +87,9 @@ async function exercise() {
   const draw = (fn) => { draws = []; ctx.clearRect(0, 0, cv.width, cv.height); fn(); return draws; };
   const has = (rows, id) => rows.some((q) => q.id === id);
   const body = (boss) => draw(() => boss.draw(ctx, 0, g.ticks));
+  // 读条结束的夜幕一闪画在光照之后（main.js 调 drawRavenVeil），不在首领身体那一层
+  const { drawRavenVeil } = await import('./src/boss_fx.js');
+  const veil = (boss) => draw(() => drawRavenVeil(ctx, boss, 0));
   const shotArt = (shot) => draw(() => shot.draw(ctx, 0));
   const floor = (hazards = g.hazards) => draw(() => hazards.forEach((h) => h.drawFloor(ctx, 0)));
 
@@ -215,15 +218,15 @@ async function exercise() {
     check('channel', () => {
       let b = scene('channel'); step(8);
       const sigil = has(floor(), R.sigil.tex), gather = has(body(b), R.gather.fb);
-      const before = has(body(b), R.veil.tex);
+      const before = has(veil(b), R.veil.tex);
       finishChannel(b);
-      const flash = has(body(b), R.veil.tex);
-      step(16); const faded = !has(body(b), R.veil.tex);
+      const flash = has(veil(b), R.veil.tex);
+      step(16); const faded = !has(veil(b), R.veil.tex);
       b = scene('channel'); step(8);
       const active = has(floor(), R.sigil.tex) && has(body(b), R.gather.fb);
       b.setState('hurt'); // 同一帧就重画，不能等 Hazard.update 清队列。
-      const stopped = !has(floor(), R.sigil.tex) && !has(body(b), R.gather.fb) && !has(body(b), R.veil.tex);
-      step(16); const stayedOff = !has(body(b), R.veil.tex);
+      const stopped = !has(floor(), R.sigil.tex) && !has(body(b), R.gather.fb) && !has(veil(b), R.veil.tex);
+      step(16); const stayedOff = !has(veil(b), R.veil.tex);
       return { ok: sigil && gather && !before && flash && faded && active && stopped && stayedOff,
         sigil, gather, before, flash, faded, active, stopped, stayedOff };
     });
@@ -268,7 +271,7 @@ async function exercise() {
         b = scene('channel'); step(8);
         const rune = called('rune') && !has(floor(), R.sigil.tex) && !has(body(b), R.gather.fb);
         finishChannel(b);
-        const channel = rune && called('flash') && !has(body(b), R.veil.tex);
+        const channel = rune && called('flash') && !has(veil(b), R.veil.tex);
 
         b = scene(); kill(b);
         const death = !at(R.death.fb).length && called('emit', 'dissolve');
