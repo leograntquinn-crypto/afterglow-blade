@@ -165,3 +165,20 @@ export const ENEMY_TYPE_FX = {
     death: { fb: 'ash_fall', color: '#8a8580', size: 3.2 },
   },
 };
+
+// ---------- 首领专属特效（画法见 boss_fx.js）----------
+export const BOSS_FX = {
+  nightRaven: {
+    feather: { fb: 'feather_blade_spin', trail: 'feather_trail', k: 0.42, trailColor: '#ff4dd2' },   // 回旋羽：k = 逻辑像素 / 交付像素
+    burst: { fb: 'feather_burst', color: '#ff4dd2', size: 1 },      // 化作黑羽（size × 身高 / 260）
+    appear: { fb: 'raven_appear', color: '#ff4dd2', size: 1 },      // 浮现
+    wisps: { fb: 'split_wisps', color: '#c070ff', size: 1, alpha: 0.8 },
+    arrow: { tex: 'raven_arrow', k: 0.5, trailColor: '#ff4dd2' },
+    glint: { fb: 'bow_glint', color: '#ff4dd2', size: 0.6, x: 0.35, z: 0.62 }, // 弓上闪光的位置（× 身高）
+    rain: { fb: 'arrow_rain', impact: 'rain_impact', color: '#ff4dd2', k: 0.45 },
+    sigil: { tex: 'raven_sigil', color: '#ff4dd2', spin: 0.004 },
+    gather: { fb: 'channel_gather', color: '#ff4dd2', size: 1 },
+    veil: { tex: 'night_veil' },                                     // H-2 只做读条结束的一闪；第二阶段常驻压暗是机制，我来做
+    death: { fb: 'raven_death', color: '#ff4dd2', size: 1.2 },
+  },
+};

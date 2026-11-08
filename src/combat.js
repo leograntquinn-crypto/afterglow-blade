@@ -7,6 +7,7 @@ import { BOSS_SPRITES } from './enemy_sprites.js';
 import { FEINT } from './ai_data.js';
 import { ENEMY_FX } from './fx_data.js';
 import { drawWarn, drawWarnFlash, drawMeteor, drawLaneBand, drawArrow, arrowBreakFx } from './enemy_fx.js';
+import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact } from './boss_fx.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -46,7 +47,11 @@ export class Projectile {
     if (this.boomerang) {
       this.vx -= this.dir0 * this.boomerang;
       this.facing = Math.sign(this.vx) || this.facing;
-      if (!this.returned && Math.sign(this.vx) === -this.dir0) { this.returned = true; this.hitSet.clear(); }
+      if (!this.returned && Math.sign(this.vx) === -this.dir0) {
+        this.returned = true;
+        this.hitSet.clear();
+        if (this.kind === 'feather') ravenFeatherTurn(game, this);
+      }
     }
     if (--this.life <= 0 || this.x < -50 || this.x > world.w + 50) { this.dead = true; this.whiffCheck(game); return; }
     // 关卡地形：立柱挡住飞行物（双方的箭、剑气都挡）
@@ -114,7 +119,8 @@ export class Projectile {
         }
       }
     } else if (this.kind === 'feather') {
-      // 羽刃：旋转的长条锋利黑羽，边缘带首领的颜色。夜鸦的素材（feather_blade）载入了就用素材，否则程序画
+      if (drawRavenFeather(ctx, this)) { ctx.restore(); return; }
+      // 回旋羽专属包没到时，沿用旧的羽刃贴图和残影。
       const T = tex(), col = this.color || '#ff4dd2', BS = BOSS_SPRITES[this.owner?.key]?.sheet, img = BS?.ready && BS.feather;
       ctx.rotate(this.age * 0.5);
       ctx.globalCompositeOperation = 'lighter';
@@ -217,7 +223,7 @@ export class Projectile {
       ctx.drawImage(tinted(T.core, col), -9, -9, 18, 18);
     } else if (this.kind === 'arrow') {
       if (this.vy) ctx.rotate(Math.atan2(this.vy, Math.abs(this.vx))); // 预判过的箭斜着飞
-      drawArrow(ctx); // 箭（fx_enemy_v1 的 arrow + arrow_trail）。素材没载好时不画
+      if (!drawRavenArrow(ctx, this)) drawArrow(ctx); // 通用箭也是夜鸦素材未载好时的退路
     }
     ctx.restore();
   }
@@ -226,7 +232,7 @@ export class Projectile {
 // 地面范围攻击：先显示红圈预警，延迟后爆发。施法者被打断则取消。
 export class Hazard {
   constructor(o) {
-    Object.assign(this, { t: 0, dead: false, team: 'enemy' }, o);
+    Object.assign(this, { t: 0, dead: false, team: 'enemy', rainArt: null }, o);
   }
   update(game) {
     this.t++;
@@ -248,18 +254,20 @@ export class Hazard {
       }
       game.fx.shake(this.hit.shake ?? 8, 18);
       game.fx.dust(this.x, this.y, 16, 2.5);
-      game.fx.ring(this.x, this.y, 2, this.color || '#ff6a3d', 20, 10, 16, 6);
-      // 爆发：贴地冲击波 + 光柱 + 火星
-      const col = this.color || '#ff6a3d';
-      game.fx.gring(this.x, this.y, col, this.rx * 0.4, this.rx * 1.5, 20, 7);
-      game.fx.shock(this.x, this.y, 10, this.rx * 1.6, 0.016, 18);
-      game.fx.pillar(this.x, this.y, col, Math.min(90, this.rx * 0.7), 260 + this.rx, 18);
-      game.fx.spark(this.x, this.y, 10, 1, 8, col);
-      game.fx.spark(this.x, this.y, 10, -1, 8, col);
-      game.fx.dustburst(this.x, this.y, Math.min(1.4, this.rx / 120));
-      // 首领专属的地面特效（骸骨统领的骨刺）；没有或还没载好时用通用的地面爆发
-      if (!this.art || !game.fx.flip(this.art, this.x, this.y, 0, { color: '#d8cbb8', scale: Math.min(1.3, this.rx / 120), facing: Math.random() < 0.5 ? -1 : 1 })) {
-        game.fx.flip('impact_ground', this.x, this.y, 0, { color: col, scale: Math.min(1.2, this.rx / 140) });
+      if (!ravenRainImpact(game, this)) {
+        game.fx.ring(this.x, this.y, 2, this.color || '#ff6a3d', 20, 10, 16, 6);
+        // 爆发：贴地冲击波 + 光柱 + 火星
+        const col = this.color || '#ff6a3d';
+        game.fx.gring(this.x, this.y, col, this.rx * 0.4, this.rx * 1.5, 20, 7);
+        game.fx.shock(this.x, this.y, 10, this.rx * 1.6, 0.016, 18);
+        game.fx.pillar(this.x, this.y, col, Math.min(90, this.rx * 0.7), 260 + this.rx, 18);
+        game.fx.spark(this.x, this.y, 10, 1, 8, col);
+        game.fx.spark(this.x, this.y, 10, -1, 8, col);
+        game.fx.dustburst(this.x, this.y, Math.min(1.4, this.rx / 120));
+        // 首领专属的地面特效（骸骨统领的骨刺）；没有或还没载好时用通用的地面爆发
+        if (!this.art || !game.fx.flip(this.art, this.x, this.y, 0, { color: '#d8cbb8', scale: Math.min(1.3, this.rx / 120), facing: Math.random() < 0.5 ? -1 : 1 })) {
+          game.fx.flip('impact_ground', this.x, this.y, 0, { color: col, scale: Math.min(1.2, this.rx / 140) });
+        }
       }
       if (this.rx > 90) game.fx.crack(this.x, this.y);
       sfx('heavy');
@@ -277,11 +285,8 @@ export class Hazard {
       // 素材（fx_enemy_v1）：warn_ring + 从中心放大的 warn_fill；屠夫佯攻露出破绽后换成断开的 warn_ring_fake（琥珀）。没载好时代码画
       const fake = this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal;
       this.ringFake = fake; // 测试用
-      if (drawWarn(ctx, sx, sy, this.rx, this.ry, u, this.ph ?? this.t, fake, fake ? 0.75 + 0.25 * Math.sin(this.t * 1.4) : 0.8 + 0.2 * Math.sin(this.t * (0.35 + u * 0.6)))) {
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
-        if (this.kind === 'meteor') drawMeteor(ctx, sx, sy, (1 - u) * 340, this.t, this.color || '#ff6a3d'); // 从天而降的火球，落地时刚好爆炸
-      } else {
+      const drawn = drawWarn(ctx, sx, sy, this.rx, this.ry, u, this.ph ?? this.t, fake, fake ? 0.75 + 0.25 * Math.sin(this.t * 1.4) : 0.8 + 0.2 * Math.sin(this.t * (0.35 + u * 0.6)));
+      if (!drawn) {
         // 屠夫佯攻的红圈：露出破绽后变淡、闪烁（这一下不会砸）
         if (this.feint && this.owner && this.owner.state === 'windup' && this.owner.st >= Math.round(this.owner.windup * FEINT.cancelAt) - FEINT.reveal) ctx.globalAlpha *= 0.3 + 0.2 * Math.sin(this.t * 1.4);
         ctx.drawImage(tinted(T.ring[2], '#ff4636'), sx - this.rx * 1.04, sy - this.ry * 1.04, this.rx * 2.08, this.ry * 2.08);
@@ -290,8 +295,14 @@ export class Hazard {
         const k = 1 - ((this.t * 0.04) % 1) * 0.85;
         ctx.globalAlpha = 0.5 * u;
         ctx.drawImage(tinted(T.ring[0], '#ffb0a0'), sx - this.rx * k, sy - this.ry * k, this.rx * k * 2, this.ry * k * 2);
-        ctx.globalCompositeOperation = 'source-over';
-        ctx.globalAlpha = 1;
+      }
+      ctx.globalCompositeOperation = 'source-over';
+      ctx.globalAlpha = 1;
+      if (this.kind === 'meteor') {
+        const h = (1 - u) * 340;
+        if (!drawRavenRain(ctx, this.rainArt, sx, sy, h, this.t) && (drawn || this.rainArt)) {
+          drawMeteor(ctx, sx, sy, h, this.t, this.color || '#ff6a3d');
+        }
       }
     } else {
       // 爆发：整片亮起、碎成放射状光纹再熄灭（fx_enemy_v1 的 warn_flash）。素材没载好时不画（爆发本身还有冲击环、尘土、光柱这些粒子）

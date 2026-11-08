@@ -9,6 +9,7 @@ import { VIEW_W, VIEW_H, GROUND_TOP, REDUCED_MOTION, world, DEPTH, COLORS, FONT_
 import { typeFx, hasTypeFx } from './enemy_fx.js';
 import { prepareEnemyFx } from './fx_art.js';
 import { NIGHT, nightRaven, nightLights, nightAmbient, drawVeil, drawDrift } from './raven_night.js';
+import { drawRavenVeil } from './boss_fx.js';
 import { Input } from './input.js';
 import { initAudio, sfx } from './audio.js';
 import { FX } from './fx.js';
@@ -1758,6 +1759,8 @@ class Game {
     const raven = inWorld ? nightRaven(this) : null;
     post.applyLighting(ctx, raven ? nightAmbient(th.ambient, raven.night) : th.ambient, t);
     if (raven) { drawVeil(ctx, raven, ...at(this.player.x, this.player.y, this.player.z + 45)); drawDrift(ctx, raven, camX); } // 夜幕和飘落的黑羽（夜鸦素材包载好了才画）
+    // 夜鸦读条「夜幕箭雨」结束时的夜幕一闪（boss_fx.js）：画在光照之后，不被角色层挡住、也不挡后画的角色
+    if (inWorld) for (const e of this.enemies) if (e.key === 'nightRaven') drawRavenVeil(ctx, e, camX);
     // 技能演出的压暗：主角（或演出对象）身边留一圈光，特效画在压暗之上
     const cf = this.cine.focus ?? this.player;
     const [cfx, cfy] = at(cf.x, cf.y, (cf.z ?? 0) + 45);

@@ -1,0 +1,17 @@
+{
+  "columns": 4,
+  "cells": [
+    {"label": "夜鸦 · 回旋羽", "stage": 1, "spawn": "nightRaven", "moment": "move:featherRang", "frames": 42},
+    {"label": "夜鸦 · 齐射闪光", "stage": 1, "spawn": "nightRaven", "moment": "move:volley", "frames": 36},
+    {"label": "夜鸦 · 齐射出箭", "stage": 1, "spawn": "nightRaven", "moment": "move:volley", "frames": 46},
+    {"label": "夜鸦 · 分身浮现", "stage": 1, "spawn": "nightRaven", "moment": "move:ravenSplit", "frames": 14},
+    {"label": "夜鸦 · 分身期间", "stage": 1, "spawn": "nightRaven", "moment": "move:ravenSplit", "frames": 30},
+    {"label": "夜鸦 · 瞬移消失", "stage": 1, "spawn": "nightRaven", "moment": "move:teleport", "frames": 6},
+    {"label": "夜鸦 · 瞬移出现", "stage": 1, "spawn": "nightRaven", "moment": "move:teleport", "frames": 26},
+    {"label": "夜鸦 · 天降箭雨", "stage": 1, "spawn": "nightRaven", "moment": "move:rain", "frames": 52},
+    {"label": "夜鸦 · 读条", "stage": 1, "spawn": "nightRaven", "moment": "move:channel", "frames": 60},
+    {"label": "夜鸦 · 召唤", "stage": 1, "spawn": "nightRaven", "moment": "move:summon", "frames": 10},
+    {"label": "夜鸦 · 死亡", "stage": 1, "spawn": "nightRaven", "moment": "death", "frames": 40},
+    {"label": "夜鸦 · 死亡后段", "stage": 1, "spawn": "nightRaven", "moment": "death", "frames": 70}
+  ]
+}
