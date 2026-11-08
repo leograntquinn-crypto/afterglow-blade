@@ -251,3 +251,45 @@ export const BOSS_FX = {
 - 素材没载好时新加的不画、页面无报错。
 
 最后一行 `AFTERIMAGEFXTEST ok` / `AFTERIMAGEFXTEST FAIL n`。
+
+---
+
+# 第四批工单（2026-11-08）：骸骨统领补充包 `fx_boss_bone_v2`
+
+素材包已验货上架（`assets-v8/fx_boss_bone_v2.zip`，sha256 `e238f1ee…`，8 725 167 字节）。规格 `docs/ART_FX_BOSS_BONE_V2.md`。**模块级测试**：H-10 + H-11 + H-12 作为一个模块，做完统一测一次（见本文件开头的测试节奏）。
+
+| 工单 | 内容 | 依赖 | 难度 | 可派 |
+|---|---|---|---|---|
+| H-10 | `--boss bone` 加进 `BOSS_PACKS`；骸骨统领那一关同时载两套（`fx_bone` + `fx_boss_bone_v2`） | 无（H-5 已接入） | 机械 | ✓ |
+| H-11 | 骸骨统领补充特效接入（规格第一、八节），两个检查点 | H-10；排在 H-8 / H-9（残影）之后（共用 `src/boss_fx.js`） | 复杂（按指导执行） | ✓ |
+| H-12 | 骸骨统领补充特效的确定性测试 | 和 H-11 同一模块 | 中 | ✓ |
+
+## H-10 构建 + 一关载两套
+
+- `tools/build_fx.py` 的 `BOSS_PACKS` 加 `bone`：`out = "fx_boss_bone_v2"`，`textures = { bone_sigil: (512, 256), marrow_tether: (256, 32) }`，`flipbooks = { cage_tighten: (512, 256, 8), drag_sparks: (256, 128, 6), shard_return: (128, 128, 8), bone_reform: (256, 384, 10), marrow_glow: (256, 384, 8), bone_call_burst: (512, 384, 8), summon_rise: (256, 256, 8), bonelord_death: (384, 384, 10) }`，`keep_full = { marrow_tether }`。
+- `src/fx_art.js`：`FX_ART.bonev2 = new FxPack('fx_boss_bone_v2')`；`BOSS_FX` 的值允许是数组，`boneLord: ['bone', 'bonev2']`（`prepareBossFx` 对数组里每一套 load，其他首领的照旧 release）；`flipbook()` 查找列表加上 `FX_ART.bonev2`。现有 `fx_bone`（`bone_spikes`、`bone_rend`）一字不改。
+- 验收（并进模块测试）：真包打出图集；`--boss raven / ironjaw / afterimage` 打出的和仓库现有图集逐像素一致；`tests/bosspacktest.js` 的期望改成第 1 关同时载 `bone` 和 `bonev2`、其他关两套都释放。
+
+## H-11 骸骨统领补充特效接入
+
+**指导要点**：
+- **只补缺的**：`bone_spikes`、`bone_rend` 现有的用法一律不动。
+- **骨牢**（`boss_moves.js` 的 `boneCage`）：预警期间，以牢中心画 `cage_tighten`（随预警进度从 1 缩到 0.6 倍）；七个骨刺位置里**相邻且都存在的两根之间**用 `marrow_tether` 平铺连线（照 `src/enemy_fx.js` 的 `tileAlong`）。**缺口两边那一段不连**——缺口是逃生路线，必须一眼看得出来。
+- **拖地火星**：裂地追斩的预警和出刺阶段、冲锋期间，剑尖位置画 `drag_sparks`（循环，跟着首领；剑尖位置 = 首领前方 0.55 × 身高、贴地）。
+- **骨片飞回**：骸骨统领受重击（`heavy`）或破防时，生成 3～5 片 `shard_return`：先往外飞散（约 18 帧，带重力），停 10 帧，再沿弧线飞回首领胸口（约 24 帧），飞回途中身后拖一段 `marrow_tether`。纯表现：不改判定、不改血量、不影响别的东西。数量和时长写进 `BOSS_FX.boneLord` 表。
+- **第二阶段**（咆哮时）：首领身上一次 `bone_reform`。
+- **读条「亡骨号令」**：脚下 `bone_sigil`（慢慢转）、身上 `marrow_glow`（每帧画）；读条结束 `bone_call_burst`；被打断时这些马上消失。
+- **召唤**：脚下 `bone_sigil`；每只小怪出现的位置一次 `summon_rise`（替换现在的通用符文圈；`summon_circle` 是祭坛守护者的，不要碰）。
+- **死亡**：`bonelord_death` 一次，停在骨堆后淡出（`holdFade`，照 `fx_enemy_v1` 的 `bone_collapse`）。
+- 素材没载好：新加的不画，被替换的退回现在的画法。
+- **不做**：第 9 项骸骨统领的机制补强（我来设计）；不调数值。
+
+**检查点**（只交代码看方向，不跑测试）：
+1. 骨牢（收紧 + 光丝，缺口不连）+ 拖地火星 + 骨片飞回；
+2. 第二阶段重组 + 读条三段 + 召唤 + 死亡。
+
+## H-12 骸骨统领补充特效的确定性测试
+
+新建 `tests/bonefxtest.js` 并加进 `tests/run_all.js`。要测：第 1 关两套都载入、换关都释放；骨牢预警期间 `cage_tighten` 在画、**光丝的段数 = 存在的相邻骨刺对数、缺口两侧没有光丝**；拖地火星只在裂地追斩 / 冲锋期间画；重击后有 3～5 片骨片、最后都回到首领身边并消失；第二阶段一次 `bone_reform`；读条两段 + 结束 `bone_call_burst`、被打断马上消失；召唤每只小怪一次 `summon_rise`；死亡一次 `bonelord_death`；**`bone_spikes`、`bone_rend` 原有的触发次数不变**；素材没载好时新加的不画、页面无报错。最后一行 `BONEFXTEST ok` / `BONEFXTEST FAIL n`。
+
+**模块测试**（H-10 ～ H-12 全做完后统一一次）：`node tests/run_all.js` 全过 + `tools/fxsheet.js` 骸骨统领各招式关键时刻的对比截图（`--compare` 对照 main，桌面 + 手机）；问题汇总成一张清单、集中改完再测。
