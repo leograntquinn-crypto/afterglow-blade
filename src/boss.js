@@ -25,6 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, drawRavenVeil, updateRavenDeathFx } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -220,6 +221,7 @@ const ATTACKS = {
       const fire = (offsets) => {
         b.facing = sign(p.x - b.x);
         d.lanes = offsets.map((o) => clamp(p.y + o, 6, DEPTH - 6));
+        cueRavenVolley(b, d, t + T0);
         for (const y of d.lanes) g.hazards.push(new Lane({ x: b.x, y, facing: b.facing, life: T0, half: 14 }));
       };
       if (t === 0) fire([-55, 0, 55]);
@@ -253,7 +255,7 @@ const ATTACKS = {
         for (let i = 0; i < n; i++) {
           const x = i === 0 ? p.x : clamp(p.x + rand(-420, 420), 40, world.w - 40);
           const y = i === 0 ? p.y : rand(10, DEPTH - 10);
-          g.hazards.push(new Hazard({ x, y, rx: 62, ry: 26, delay: 56 + i * 6, kind: 'meteor', color: b.B.glow, hit: { dmg: 16, kb: 5, launch: 6, stop: 5, shake: 6 } }));
+          g.hazards.push(new Hazard({ x, y, rx: 62, ry: 26, delay: 56 + i * 6, kind: 'meteor', rainArt: b.key === 'nightRaven' ? 'raven' : null, color: b.B.glow, hit: { dmg: 16, kb: 5, launch: 6, stop: 5, shake: 6 } }));
         }
         sfx('warn');
       }
@@ -266,7 +268,8 @@ const ATTACKS = {
     tick(b, g, t) {
       b.pa = -1.4;
       b.pc = 0.2;
-      if (t === 0 && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: 30, color: b.B.glow, scale: 0.65 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
+      if (t === 0 && !ravenSigil(g, b, 120, 54)
+        && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: 30, color: b.B.glow, scale: 0.65 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
       if (t === 24) {
         for (const s of [-1, 1]) g.spawnMinion(b.B.minion, clamp(b.x + s * 170, 60, world.w - 60), clamp(b.y + rand(-40, 40), 10, DEPTH - 10));
         g.fx.flash(b.B.glow, 0.15);
@@ -280,13 +283,16 @@ const ATTACKS = {
     ok: () => true,
     tick(b, g, t, d) {
       const p = g.player;
-      if (t === 0) { g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4); sfx('dash'); }
+      if (t === 0) {
+        if (!ravenBodyFx(g, b, 'burst')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
+        sfx('dash');
+      }
       if (t < 22) { b.fade = 1 - t / 22; b.invuln = 2; }
       if (t === 22) {
         b.x = clamp(p.x - p.facing * 110, 40, world.w - 40);
         b.y = p.y;
         b.facing = sign(p.x - b.x);
-        g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
+        if (!ravenBodyFx(g, b, 'appear')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
       }
       if (t >= 22 && t < 44) { b.fade = (t - 22) / 22; b.tele = true; b.pa = -2.3; b.pc = 0.3; }
       if (t === 44) {
@@ -318,17 +324,18 @@ const ATTACKS = {
         g.hazards.push(new Hazard({ x: b.x, y: b.y, rx: 900, ry: 260, delay: d.T, owner: b, ownerState: 'attack', color: b.B.glow,
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
-        if (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 })) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
+        if (!ravenSigil(g, b, 170, d.T)
+          && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
       }
       b.tele = true;
       b.vx = b.vy = 0;
       b.pa = -2.6; b.pc = 0.3; b.pl = -4;
-      if (t % 20 === 0) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t % 20 === 0 && !hasRavenChannelFx(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
       if (t >= d.T) {
         b.channel = null;
-        g.fx.flash(b.B.glow, 0.45);
+        if (!flashRavenVeil(b, g)) g.fx.flash(b.B.glow, 0.45);
         g.fx.shake(18, 34);
         return true;
       }
@@ -381,7 +388,10 @@ export class Boss extends Enemy {
   get spd() { return (1 + this.phase * 0.18) * (this.game.D?.bossSpd ?? 1); } // 阶段越高、难度越高，出招越快
 
   setState(s) {
-    if (s !== 'attack') { this.act = null; this.tele = false; this.fade = 1; this.split = null; } // 被打断时分身也散了
+    if (s !== 'attack') {
+      if (this.split) disperseRavenCopies(this.game, this, 8);
+      this.act = null; this.tele = false; this.fade = 1; this.split = null;
+    }
     super.setState(s);
   }
 
@@ -398,8 +408,10 @@ export class Boss extends Enemy {
     }
     super.update(game);
     updateNight(this, game); // 夜鸦第二阶段的夜色（raven_night.js）
+    updateRavenDeathFx(game, this);
     // 出招预警的一瞬间：脚下的红圈往里收、红光往身上聚（和「!」一起出现，告诉你要闪了）
-    if (this.tele && !this.wasTele && this.alive) {
+    // 分身已有三条地面预警带，不叠只跟着真身走的通用预警粒子。
+    if (this.tele && !this.wasTele && this.alive && !this.split) {
       game.fx.gwarn(this.x, this.y, '#ff3b3b', this.w * 1.4 + 70, this.w * 0.45, 24);
       game.fx.converge(this.x, this.y, this.h * 0.6, 8, '#ff4d4d');
     }
@@ -409,7 +421,7 @@ export class Boss extends Enemy {
       this.soulFx = game.fx.flip('soul_fire', this.x, this.y, 0, { follow: this, ox: this.h * 0.03, oz: this.h * 0.31, color: this.B.glow, life: 240, scale: this.h / 200 }) || null;
     }
     // 首领身上不断往上飘的气：阶段越高越密
-    if (this.alive && this.state !== 'spawn' && game.ticks % (this.phase >= 1 ? 3 : 5) === 0) {
+    if (this.alive && this.state !== 'spawn' && !this.split && game.ticks % (this.phase >= 1 ? 3 : 5) === 0) {
       game.fx.emit('aura', this.x + rand(-this.w * 0.5, this.w * 0.5), this.y + rand(-6, 6), rand(0, this.h * 0.5), { color: this.B.glow, n: 1 });
     }
   }
@@ -488,17 +500,16 @@ export class Boss extends Enemy {
   }
 
   draw(ctx, camX, t) {
-    let [sx, sy] = toScreen(this.x, this.y, this.z, camX);
-    if (this.game.ticks < (this.shakeUntil ?? 0)) sx += (Math.random() - 0.5) * 2 * (this.shakeAmp ?? 3);
+    const shake = this.game.ticks < (this.shakeUntil ?? 0) ? (Math.random() - 0.5) * 2 * (this.shakeAmp ?? 3) : 0;
+    // 身影重叠时按纵深和 x 排序，叠画顺序也不能暴露真身。
+    const bodies = this.split ? [this, ...this.split.spots].sort((a, b) => a.y - b.y || a.x - b.x) : [this];
+    const spots = bodies.map((s) => {
+      const [x, y] = toScreen(s.x, s.y, this.z, camX);
+      return [x + shake, y];
+    });
     let alpha = this.fade;
     if (this.state === 'dying' && this.z <= 0) alpha *= Math.max(0, 1 - this.deadT / 45);
     if (this.state === 'spawn') alpha *= Math.min(1, this.st / 24);
-    // 状态光（fx_enemy_v1）：出招 aura_threat（红），平时 aura_guard（有霸体用首领自己的颜色，否则余烬橙，阶段越高越亮）。素材没载好时不画
-    if (this.tele) drawEnemyAura(ctx, this, sx, sy, 'bossThreat', t, alpha);
-    else if (this.alive) {
-      const I = ENEMY_FX.aura.bossIdle;
-      drawEnemyAura(ctx, this, sx, sy, 'bossIdle', t, alpha * (1 + (this.phase * I.phase) / I.alpha), this.armor > 0 ? this.B.glow : COLORS.ember);
-    }
     const flash = this.game.ticks < (this.flashUntil ?? 0);
     const drawBody = (sx, sy, alpha) => {
       if (this.B === BOSSES.afterimage && heroSprite.ready) {
@@ -515,16 +526,16 @@ export class Boss extends Enemy {
         drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash, alpha, t });
       }
     };
-    drawBody(sx, sy, alpha);
-    // 鸦影分身：另外两个身影（没有脚下的影子 —— 这是分辨真身的线索）
-    if (this.split) {
-      const k = Math.min(1, this.split.t / 10) * 0.85;
-      for (const sp of this.split.spots) {
-        const [dx, dy] = toScreen(sp.x, sp.y, this.z, camX);
-        drawBody(dx, dy, alpha * k);
+    // 三个身影共享身体淡入和所有身上特效。脚下的影子仍由游戏原来的影子层绘制。
+    for (const [sx, sy] of spots) {
+      if (this.tele) drawEnemyAura(ctx, this, sx, sy, 'bossThreat', t, alpha);
+      else if (this.alive) {
+        const I = ENEMY_FX.aura.bossIdle;
+        drawEnemyAura(ctx, this, sx, sy, 'bossIdle', t, alpha * (1 + (this.phase * I.phase) / I.alpha), this.armor > 0 ? this.B.glow : COLORS.ember);
       }
+      drawBody(sx, sy, alpha);
+      drawRavenBodyFx(ctx, this, sx, sy, alpha);
     }
-    const top = sy - this.h - 18;
     ctx.save();
     ctx.textAlign = 'center';
     ctx.textBaseline = 'middle';
@@ -533,14 +544,17 @@ export class Boss extends Enemy {
       ctx.font = `600 ${38 * s}px ${FONT_NUM}`;
       ctx.lineWidth = 4;
       ctx.strokeStyle = '#1a0606';
-      ctx.strokeText('!', sx, top - 10);
       ctx.fillStyle = '#ff3b3b';
-      ctx.fillText('!', sx, top - 10);
+      for (const [sx, sy] of spots) {
+        ctx.strokeText('!', sx, sy - this.h - 28);
+        ctx.fillText('!', sx, sy - this.h - 28);
+      }
     } else if (this.brokenT > 0 && this.alive) {
       ctx.font = `22px ${FONT_TITLE}`;
       ctx.fillStyle = COLORS.ember;
-      ctx.fillText('破防', sx, top - 10);
+      for (const [sx, sy] of spots) ctx.fillText('破防', sx, sy - this.h - 28);
     }
     ctx.restore();
+    drawRavenVeil(ctx, this, camX);
   }
 }

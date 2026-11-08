@@ -5,6 +5,7 @@ import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
+import { ravenBodyFx, disperseRavenCopies } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const dist = (b, p) => Math.abs(p.x - b.x);
@@ -98,7 +99,7 @@ export const SIGNATURE = {
       const p = g.player, D = Math.round(44 / b.spd);
       if (t === 0) {
         d.hp0 = b.hp;
-        g.fx.emit('soul', b.x, b.y, b.h * 0.5, { color: '#2a1a30', n: 14 });
+        if (!ravenBodyFx(g, b, 'burst')) g.fx.emit('soul', b.x, b.y, b.h * 0.5, { color: '#2a1a30', n: 14 });
         g.fx.label(b.x, b.y, b.h + 40, '鸦 影', b.B.glow, 26);
         sfx('dash');
       }
@@ -110,13 +111,16 @@ export const SIGNATURE = {
         b.x = spots[real].x; b.y = spots[real].y;
         b.split = { spots: spots.filter((_, i) => i !== real), t: 0 };
         b.facing = sign(p.x - b.x);
-        for (const s of [spots[real], ...b.split.spots]) g.hazards.push(new Lane({ x: s.x, y: s.y, facing: b.facing, life: D, half: 12, color: b.B.glow }));
+        for (const s of spots) {
+          ravenBodyFx(g, b, 'appear', s);
+          g.hazards.push(new Lane({ x: s.x, y: s.y, facing: b.facing, life: D, half: 12, color: b.B.glow }));
+        }
       }
       if (b.split) b.split.t++;
       b.fade = t < 8 ? 1 - t / 8 : Math.min(1, (t - 8) / 10); // 化作黑羽 → 在新位置浮现
       // 识破：打中真身
       if (b.split && b.hp < d.hp0) {
-        for (const s of b.split.spots) g.fx.emit('soul', s.x, s.y, b.h * 0.5, { color: '#2a1a30', n: 10 });
+        disperseRavenCopies(g, b, 10);
         g.fx.label(b.x, b.y, b.h + 40, '识 破', '#ffffff', 26);
         b.split = null;
         b.tele = false;
@@ -134,7 +138,7 @@ export const SIGNATURE = {
       b.tele = t >= 8 && t < 8 + D;
       b.pa = 0;
       if (t >= 8 + D + 50) {
-        if (b.split) for (const s of b.split.spots) g.fx.emit('soul', s.x, s.y, b.h * 0.5, { color: '#2a1a30', n: 8 });
+        disperseRavenCopies(g, b, 8);
         b.split = null;
         return true;
       }
