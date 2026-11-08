@@ -6,3 +6,5 @@
   由 `tools/build_fx.py --enemy <fx_enemy_v1_common>` 处理成 `fx_enemy_tex`（贴图：桌面原尺寸 / 手机 50%，可平铺的两张不裁边）和 `fx_enemy`（序列帧：桌面 60% / 手机 30%，地面预警圈画得大，比别的序列帧多存一点）
 - 敌人特效第 2 批（贴图 1 张、序列帧 15 组 100 帧：五种杂兵的预警 / 出招 / 命中 / 死亡）：项目作者提供（GitHub Release `assets-v8`：`fx_enemy_v1_types.zip`，sha256 `684fdd33…dfd7e7`）。原创手绘设计；并非任何现有游戏的特效或提取素材。
   由 `tools/build_fx.py --enemy <fx_enemy_v1_common> <fx_enemy_v1_types>` 处理成每种敌人一套 `fx_enemy_<grunt|brute|archer|priest|wing>`（桌面 50% / 手机 25%，按关卡里有的敌人载入），贴图 `ember_trail` 并进 `fx_enemy_tex`
+- 首领「夜鸦」专属特效（贴图 4 张、序列帧 10 组 76 帧）：项目作者提供（GitHub Release `assets-v8`：`fx_boss_raven_v1.zip`，sha256 `4c6fadb5…`，规格 `docs/ART_FX_BOSS_RAVEN_V1.md`）。原创手绘设计；并非任何现有游戏的特效或提取素材。
+  由 `tools/build_fx.py --boss raven <fx_boss_raven_v1>` 处理成 `fx_boss_raven`（贴图和序列帧同一套图集：贴图桌面原尺寸 / 手机 50%、`night_veil` 不裁边；序列帧桌面 50% / 手机 25%），只在夜鸦那一关载入
