@@ -2,7 +2,7 @@
 
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
 python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录> [fx_enemy_v1_types 目录]   （只打敌人特效包，不动别的图集）
-python3 -I tools/build_fx.py --boss raven <fx_boss_raven_v1 目录>   （只打夜鸦特效包，不动别的图集）
+python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage> <包目录>   （只打指定首领特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
@@ -18,7 +18,8 @@ python3 -I tools/build_fx.py --boss raven <fx_boss_raven_v1 目录>   （只打�
   fx_enemy_<敌人>  敌人特效包第 2 批 fx_enemy_v1_types：五种杂兵各自的预警 / 出招 / 命中 / 死亡序列帧，每种敌人一套
              （grunt、brute、archer、priest、wing），按关卡里出现的敌人载入。第 2 批唯一的贴图 ember_trail 并进 fx_enemy_tex（一直载入）
              第 2 批的 zip 多一层顶层目录 fx_enemy_v1_types/，传那一层；fx.json 只列了单帧，没写总图路径，所以直接用单帧（不读 sheets/）
-  fx_boss_raven  夜鸦专属贴图与序列帧共用图集，只在第 2 关载入；night_veil 保留整张画布
+  fx_boss_raven / fx_boss_ironjaw / fx_boss_afterimage  首领专属贴图与序列帧共用图集，按首领载入。
+             night_veil、chain_glow、rev_ribbon、streak_line 保留整张画布
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -132,31 +133,66 @@ def build_flipbooks(name, ids, fbs, scales=(0.5, 0.25)):
         save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
 
 
-# 夜鸦交付画布和帧数（docs/ART_FX_BOSS_RAVEN_V1.md 第三节）
-RAVEN_TEXTURES = {
-    "feather_trail": (256, 64), "raven_arrow": (128, 32),
-    "raven_sigil": (512, 256), "night_veil": (1024, 512),
-}
-RAVEN_FLIPBOOKS = {
-    "feather_blade_spin": (128, 128, 8), "feather_burst": (256, 256, 8),
-    "raven_appear": (256, 384, 8), "split_wisps": (256, 384, 8),
-    "feather_drift": (64, 64, 8), "bow_glint": (128, 128, 6),
-    "arrow_rain": (128, 384, 6), "rain_impact": (192, 96, 6),
-    "channel_gather": (256, 384, 8), "raven_death": (384, 384, 10),
+# 各包的交付画布和帧数见对应的 docs/ART_FX_BOSS_*_V1.md 第三节
+BOSS_PACKS = {
+    "raven": {
+        "out": "fx_boss_raven",
+        "textures": {
+            "feather_trail": (256, 64), "raven_arrow": (128, 32),
+            "raven_sigil": (512, 256), "night_veil": (1024, 512),
+        },
+        "flipbooks": {
+            "feather_blade_spin": (128, 128, 8), "feather_burst": (256, 256, 8),
+            "raven_appear": (256, 384, 8), "split_wisps": (256, 384, 8),
+            "feather_drift": (64, 64, 8), "bow_glint": (128, 128, 6),
+            "arrow_rain": (128, 384, 6), "rain_impact": (192, 96, 6),
+            "channel_gather": (256, 384, 8), "raven_death": (384, 384, 10),
+        },
+        "keep_full": {"night_veil"},
+    },
+    "ironjaw": {
+        "out": "fx_boss_ironjaw",
+        "textures": {
+            "chain_glow": (256, 32), "execution_mark": (512, 256),
+        },
+        "flipbooks": {
+            "hook_spark": (128, 128, 6), "chain_drag": (256, 128, 6),
+            "heavy_cleave": (384, 384, 8), "stomp_quake": (512, 256, 8),
+            "stomp_wave": (512, 256, 8), "charge_sparks": (256, 128, 6),
+            "headsman_glint": (256, 256, 6), "execution_drop": (384, 512, 8),
+            "chain_break": (384, 384, 10), "ironjaw_death": (384, 384, 10),
+        },
+        "keep_full": {"chain_glow"},
+    },
+    "afterimage": {
+        "out": "fx_boss_afterimage",
+        "textures": {
+            "rev_ribbon": (1024, 128), "streak_line": (512, 64), "mirror_sigil": (256, 256),
+        },
+        "flipbooks": {
+            "rev_slash": (256, 256, 6), "rev_wave": (256, 256, 6),
+            "shadow_step_out": (256, 384, 6), "shadow_step_in": (256, 384, 6),
+            "exec_dash": (384, 192, 6), "exec_mark": (192, 96, 8),
+            "habit_read": (128, 128, 8), "reversal_gather": (256, 384, 8),
+            "reversal_burst": (512, 512, 8), "afterimage_death": (256, 384, 10),
+        },
+        "keep_full": {"rev_ribbon", "streak_line"},
+    },
 }
 
 
-def validate_raven(root, m):
+def validate_boss(name, root, m):
     if m.get("schema") != "afterglow.fxpack.v1":
         raise ValueError("fx.json 的 schema 应为 afterglow.fxpack.v1")
-    for group, spec in (("textures", RAVEN_TEXTURES), ("flipbooks", RAVEN_FLIPBOOKS)):
+    for group in ("textures", "flipbooks"):
+        spec = BOSS_PACKS[name][group]
         entries = m[group]
         ids = [t["id"] for t in entries]
         found = set(ids)
         missing, extra = sorted(spec.keys() - found), sorted(found - spec.keys())
         repeats = len(ids) - len(found)
         if missing or extra or repeats:
-            raise ValueError(f"{group} 的 id 与夜鸦规格不符（缺少 {missing}，多出 {extra}，重复 {repeats} 项）")
+            raise ValueError(f"{group} 的 id 与 {name} 规格不符（缺少 {missing}，多出 {extra}，重复 {repeats} 项）")
         for item in entries:
             ident = item["id"]
             w, h, *count = spec[ident]
@@ -173,7 +209,8 @@ def validate_raven(root, m):
                     im.verify()
 
 
-def build_raven(root):
+def build_boss(name, root):
+    spec = BOSS_PACKS[name]
     # 兼容解压后平铺的包，以及工具自动加了一层顶层目录的包
     root = Path(root)
     if not (root / "fx.json").is_file():
@@ -183,25 +220,29 @@ def build_raven(root):
         root = choices[0]
     with (root / "fx.json").open(encoding="utf-8") as manifest:
         m = json.load(manifest)
-    validate_raven(root, m)
+    validate_boss(name, root, m)
     fbs = {f["id"]: (root, f) for f in m["flipbooks"]}
     for suffix, sc, width in (("", 0.5, 2048), ("_m", 0.25, 1024)):
         tex_scale = sc * 2
-        textures, tex = collect_textures(root, m, tex_scale, keep_full={"night_veil"})
+        textures, tex = collect_textures(root, m, tex_scale, keep_full=spec["keep_full"])
         frames, fb = collect_flipbooks(fbs, fbs, sc)
         # 混合图集里 scale 仍表示序列帧的比例，贴图用 texScale
-        save_atlas(f"fx_boss_raven{suffix}", textures + frames, width,
+        save_atlas(spec["out"] + suffix, textures + frames, width,
                    {"scale": sc, "texScale": tex_scale, "tex": tex, "fb": fb})
 
 
-# ---------- 夜鸦特效包（单独打，不需要别的包）----------
+# ---------- 首领特效包（单独打，不需要别的包）----------
 if sys.argv[1:2] == ["--boss"]:
-    if len(sys.argv) != 4 or sys.argv[2] != "raven":
-        sys.exit("用法：python3 -I tools/build_fx.py --boss raven <fx_boss_raven_v1 目录>")
+    choices = "|".join(BOSS_PACKS)
+    if len(sys.argv) > 2 and sys.argv[2] not in BOSS_PACKS:
+        sys.exit(f"未知首领包 {sys.argv[2]!r}，可用：{choices}")
+    if len(sys.argv) != 4:
+        sys.exit(f"用法：python3 -I tools/build_fx.py --boss <{choices}> <包目录>")
+    name = sys.argv[2]
     try:
-        build_raven(sys.argv[3])
+        build_boss(name, sys.argv[3])
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
-        sys.exit(f"夜鸦特效包构建失败：{exc}")
+        sys.exit(f"{name} 特效包构建失败：{exc}")
     sys.exit(0)
 
 

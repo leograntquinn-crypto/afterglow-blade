@@ -8,3 +8,5 @@
   由 `tools/build_fx.py --enemy <fx_enemy_v1_common> <fx_enemy_v1_types>` 处理成每种敌人一套 `fx_enemy_<grunt|brute|archer|priest|wing>`（桌面 50% / 手机 25%，按关卡里有的敌人载入），贴图 `ember_trail` 并进 `fx_enemy_tex`
 - 首领「夜鸦」专属特效（贴图 4 张、序列帧 10 组 76 帧）：项目作者提供（GitHub Release `assets-v8`：`fx_boss_raven_v1.zip`，sha256 `4c6fadb5…`，规格 `docs/ART_FX_BOSS_RAVEN_V1.md`）。原创手绘设计；并非任何现有游戏的特效或提取素材。
   由 `tools/build_fx.py --boss raven <fx_boss_raven_v1>` 处理成 `fx_boss_raven`（贴图和序列帧同一套图集：贴图桌面原尺寸 / 手机 50%、`night_veil` 不裁边；序列帧桌面 50% / 手机 25%），只在夜鸦那一关载入
+- 首领「铁颚」「残影」专属特效（铁颚：贴图 2 张 + 序列帧 10 组 76 帧；残影：贴图 3 张 + 序列帧 10 组 72 帧）：项目作者提供（GitHub Release `assets-v8`：`fx_boss_ironjaw_v1.zip` sha256 `c14d3fcb…`、`fx_boss_afterimage_v1.zip` sha256 `4bac1b59…`，规格 `docs/ART_FX_BOSS_IRONJAW_V1.md`、`docs/ART_FX_BOSS_AFTERIMAGE_V1.md`）。原创手绘设计；并非任何现有游戏的特效或提取素材。
+  由 `tools/build_fx.py --boss ironjaw|afterimage <包目录>` 处理成 `fx_boss_ironjaw`、`fx_boss_afterimage`（同夜鸦包的打法；`chain_glow`、`rev_ribbon`、`streak_line` 不裁边），各自只在第 3 关 / 第 5 关载入
