@@ -42,10 +42,20 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
     g.hazards = [];
     // 夜鸦死了（或回到第一阶段）：夜色退去
     bo.hp = 0; bo.setState('dying'); step(RN.NIGHT.ramp + 5); out.after = +(bo.night ?? 0).toFixed(2); out.ravenAfter = !!RN.nightRaven(g);
-    // 素材层：夜鸦素材包没载时不画（不出错）
-    const c = document.createElement('canvas').getContext('2d'); bo.night = 1; out.veilNoPack = RN.drawVeil(c, bo, 100, 100) === false; bo.night = 0;
-    // 渲染一帧不出错
+    // 素材层（fx_boss_raven，H-1）：第 2 关载入 → 夜幕画得出来、夜里飘黑羽；回第 1 关释放 → 不画、不出错
+    const { FX_ART } = await import('./src/fx_art.js');
+    for (let i = 0; i < 80 && !FX_ART.raven.ready; i++) await new Promise((r) => setTimeout(r, 100));
+    out.packLoaded = FX_ART.raven.ready && !!FX_ART.raven.items.night_veil && !!FX_ART.raven.items.feather_drift?.frames;
+    const c = document.createElement('canvas').getContext('2d'); bo.night = 1; bo.alive !== undefined;
+    out.veilDraws = RN.drawVeil(c, bo, 100, 100) === true;
+    bo.hp = bo.maxHp * 0.4; bo.setState('idle'); bo.night = 1; bo.drift = []; for (let i = 0; i < 60; i++) { RN.updateNight(bo, g); g.ticks++; } out.drift = bo.drift.length;
+    out.driftDraws = RN.drawDrift(c, bo, 0) === true;
+    bo.night = 0;
+    // 渲染一帧不出错（素材包载好、夜色满）
     bo.hp = bo.maxHp * 0.4; bo.setState('idle'); bo.night = 1; g.render(); out.render = true;
+    // 回第 1 关：夜鸦素材包释放
+    g.story.clear(); g.startStage(0, 0, false); g.story.clear(); out.released = !FX_ART.raven.ready;
+    const bo2 = { night: 1, drift: [{ x: 0, y: 0, t: 5, phase: 0, flip: 1 }] }; out.veilNoPack = RN.drawVeil(c, bo2, 100, 100) === false && RN.drawDrift(c, bo2, 0) === false;
     return out;
   });
   console.log(JSON.stringify(r));
@@ -57,7 +67,8 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
   ok(r.splitParity, '鸦影分身：真身和两个分身的光完全一样（不泄露真身）');
   ok(r.laneLights >= 3, `地面光带夜里沿线补光（${r.laneLights} 盏）`);
   ok(r.after === 0 && !r.ravenAfter, '夜鸦死了：夜色退去');
-  ok(r.veilNoPack && r.render, '夜鸦素材包没载：夜幕层不画，渲染不出错');
+  ok(r.packLoaded && r.veilDraws && r.drift > 0 && r.driftDraws && r.render, `夜鸦素材包载入：夜幕画出来、夜里飘黑羽（${r.drift} 片），渲染不出错`);
+  ok(r.released && r.veilNoPack, '回第 1 关：夜鸦素材包释放，夜幕 / 黑羽不画、不出错');
   ok(!errs.length, 'PAGE ERRORS ' + (errs.join(' | ') || 'none'));
   console.log(bad ? `RAVENNIGHTTEST FAIL ${bad}` : 'RAVENNIGHTTEST ok');
   await b.close();
