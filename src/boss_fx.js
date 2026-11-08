@@ -2,16 +2,17 @@
 import { toScreen } from './config.js';
 import { bossTex, enemyTex, flipbook } from './fx_art.js';
 import { tinted } from './fx_tex.js';
-import { fbIndex } from './enemy_fx.js';
+import { fbIndex, tileAlong } from './enemy_fx.js';
 import { BOSS_FX, ENEMY_FX } from './fx_data.js';
 
 const raven = BOSS_FX.nightRaven;
+const iron = BOSS_FX.ironJaw;
 const tex = (id) => bossTex('raven', id);
 const FIG = 260; // 人形特效以 260 交付像素的身高绘制
 const VEIL_TICKS = 12; // 只在读条成功结束时一闪
 
 // k 是逻辑像素 / 交付像素。用裁边后的锚点和图集比例兼容桌面和手机。
-function put(ctx, img, x, y, k, color, alpha = 1, facing = 1, rot = 0) {
+function put(ctx, img, x, y, k, color, alpha = 1, facing = 1, rot = 0, tintMode = 'fill') {
   if (!img) return false;
   ctx.save();
   ctx.translate(x, y);
@@ -19,7 +20,7 @@ function put(ctx, img, x, y, k, color, alpha = 1, facing = 1, rot = 0) {
   ctx.scale(facing * k / img.sc, k / img.sc);
   ctx.globalAlpha *= alpha;
   if (color) ctx.globalCompositeOperation = 'lighter';
-  ctx.drawImage(color ? tinted(img, color) : img, -img.cx, -img.cy);
+  ctx.drawImage(color ? tinted(img, color, tintMode) : img, -img.cx, -img.cy);
   ctx.restore();
   return true;
 }
@@ -108,14 +109,16 @@ export function ravenRainImpact(game, hazard) {
 }
 
 // 法阵只借地面队列绘制，没有命中判定。招式被打断时随之移除。
-class RavenSigil {
-  constructor(boss, life, radius) {
+class BossGroundMark {
+  constructor(boss, life, radius, pack, entry) {
     this.x = boss.x;
     this.y = boss.y;
     this.boss = boss;
     this.act = boss.act;
     this.life = life;
     this.radius = radius;
+    this.pack = pack;
+    this.entry = entry;
     this.t = 0;
     this.dead = false;
   }
@@ -127,18 +130,23 @@ class RavenSigil {
   drawFloor(ctx, camX) {
     if (this.dead || this.boss.act !== this.act) return;
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
-    const e = raven.sigil;
-    const img = tex(e.tex);
+    const e = this.entry, img = bossTex(this.pack, e.tex);
     if (!img) return;
     const fade = Math.max(1, this.life * 0.1);
-    const alpha = Math.min(1, (this.t + 1) / fade, (this.life - this.t) / fade);
+    const rise = e.rise ? Math.max(1, this.life * e.rise) : fade;
+    const alpha = Math.min(1, (this.t + 1) / rise, (this.life - this.t) / fade);
+    const k = 2 * this.radius * img.sc / img.fw;
+    if (!e.spin) {
+      put(ctx, img, sx, sy, k, e.color, alpha * (e.alpha ?? 1), 1, 0, 'mul');
+      return;
+    }
     // 在地面的 2:1 透视里转动，法阵不会竖起来。
     ctx.save();
     ctx.translate(sx, sy);
     ctx.scale(1, 0.5);
     ctx.rotate(this.t * e.spin);
     ctx.scale(1, 2);
-    put(ctx, img, 0, 0, 2 * this.radius * img.sc / img.fw, e.color, alpha);
+    put(ctx, img, 0, 0, k, e.color, alpha);
     ctx.restore();
   }
 }
@@ -146,7 +154,7 @@ class RavenSigil {
 export function ravenSigil(game, boss, radius, life) {
   if (boss.key !== 'nightRaven') return false;
   if (!tex(raven.sigil.tex)) return false;
-  game.hazards.push(new RavenSigil(boss, life, radius));
+  game.hazards.push(new BossGroundMark(boss, life, radius, 'raven', raven.sigil));
   return true;
 }
 
@@ -192,4 +200,90 @@ export function updateRavenDeathFx(game, boss) {
   if (boss.key !== 'nightRaven' || boss.state !== 'dying' || boss.z > 0 || boss.ravenDeathStarted) return;
   boss.ravenDeathStarted = true;
   ravenBodyFx(game, boss, 'death');
+}
+
+// 铁颚的表现和伤害判定分开。Hazard 只接收素材和渲染参数。
+export function ironJawGroundArt(boss, kind, scale = 1, extra = null) {
+  if (boss.key !== 'ironJaw') return {};
+  const e = iron[kind];
+  const options = { color: e.color, size: e.k * scale, ground: e.ground, alpha: e.alpha };
+  const layer = extra && iron[extra];
+  return {
+    art: e.fb, artOptions: options,
+    artExtra: layer && { id: layer.fb, options: { color: layer.color, size: layer.k, ground: layer.ground } },
+  };
+}
+
+export function ironJawStompArt(boss, index) {
+  return ironJawGroundArt(boss, 'quake', iron.stompScales[index], index === 2 ? 'wave' : null);
+}
+
+export function drawIronJawChain(ctx, owner, x, angle, length) {
+  if (owner?.key !== 'ironJaw' || length <= 0) return false;
+  const e = iron.chain, img = bossTex('ironjaw', e.tex);
+  if (!img) return false;
+  ctx.save();
+  ctx.globalAlpha *= e.alpha;
+  tileAlong(ctx, img, x, 0, angle, length, e.height, 0, e.color);
+  ctx.restore();
+  return true;
+}
+
+export function playIronJawFx(game, boss, kind, x = boss.x, y = boss.y, z = boss.z) {
+  if (boss.key !== 'ironJaw') return false;
+  const e = iron[kind];
+  return !!game.fx.flip(e.fb, x, y, z, { size: e.k, color: e.color, ground: e.ground, facing: boss.facing });
+}
+
+export function ironJawCleave(game, boss, up = false) {
+  if (boss.key !== 'ironJaw') return false;
+  const e = iron.cleave;
+  return !!game.fx.flip(e.fb, boss.x + boss.facing * boss.h * e.x, boss.y, boss.z + boss.h * e.z, {
+    size: e.k, color: e.color, facing: boss.facing, flipY: up ? -1 : 1,
+  });
+}
+
+// 拖拽火星和拉人的位移同长，跟着玩家脚底走。
+export function startIronJawDrag(game, boss) {
+  if (boss.key !== 'ironJaw') return;
+  const p = game.player, e = iron.drag;
+  game.fx.flip(e.fb, p.x, p.y, 0, { follow: p, ground: true, size: e.k, color: e.color, life: 12 });
+}
+
+export function hasIronJawCharge(boss) {
+  return boss.key === 'ironJaw' && !!flipbook(iron.charge.fb);
+}
+
+export function drawIronJawBodyFx(ctx, boss, sx, sy, alpha) {
+  if (boss.key !== 'ironJaw') return;
+  const act = boss.act;
+  if (act?.name === 'charge' && !boss.tele && !act.d.stop && boss.vx) {
+    const e = iron.charge;
+    put(ctx, frame(e, act.t - 1), sx, sy, e.k, e.color, alpha, boss.facing);
+  }
+  if (act?.name === 'channel' && boss.channel === act.d) {
+    const e = iron.glint, t = act.t - 1, fb = flipbook(e.fb);
+    if (!fb || t < 0 || t * fb.fps >= fb.frames.length * 60) return;
+    put(ctx, fb.frames[fbIndex(fb, t)], sx + boss.facing * boss.h * e.x, sy - boss.h * e.z,
+      e.k, e.color, alpha, boss.facing);
+  }
+}
+
+export function hasIronJawMark(boss) {
+  return boss.key === 'ironJaw' && !!bossTex('ironjaw', iron.mark.tex);
+}
+
+export function ironJawMark(game, boss, radius, life) {
+  if (!hasIronJawMark(boss)) return false;
+  game.hazards.push(new BossGroundMark(boss, life, radius, 'ironjaw', iron.mark));
+  return true;
+}
+
+export function ironJawChannelArt(boss) {
+  if (boss.key !== 'ironJaw') return {};
+  return { ...ironJawGroundArt(boss, 'drop'), artOwnerAct: boss.act };
+}
+
+export function hasIronJawDrop(boss) {
+  return boss.key === 'ironJaw' && !!flipbook(iron.drop.fb);
 }

@@ -5,7 +5,7 @@ import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { tex, tinted } from './fx_tex.js';
-import { ravenBodyFx, disperseRavenCopies } from './boss_fx.js';
+import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const dist = (b, p) => Math.abs(p.x - b.x);
@@ -163,12 +163,18 @@ export const SIGNATURE = {
         b.vy = 0;
         d.hook = new Projectile({ x: b.x + b.facing * 40, y: b.y, z: 60, vx: b.facing * 13, life: 30, team: 'enemy', kind: 'hook', color: b.B.glow, owner: b,
           hit: { box: { w: 34, d: 22, z0: -40, z1: 40 }, dmg: 6, kb: 0, stun: 26, stop: 5, shake: 4 },
-          onHit: () => { d.pulled = true; } }); // 命中时记下来，下一帧从这里开始计时
+          onHit: () => {
+            d.pulled = true; // 命中时记下来，下一帧从这里开始计时
+            playIronJawFx(g, b, 'hook', d.hook.x, d.hook.y, d.hook.z);
+          } });
         g.projectiles.push(d.hook);
         sfx('swing');
       }
       // 被钩中：把你拉到它面前，停一下给你反应（弹刀 / 闪避），然后重锤
-      if (d.pulled && d.pulledAt == null) { d.pulledAt = t; d.set = new Set(); }
+      if (d.pulled && d.pulledAt == null) {
+        d.pulledAt = t; d.set = new Set();
+        startIronJawDrag(g, b);
+      }
       if (d.pulledAt != null) {
         const k = t - d.pulledAt;
         if (k < 12) { p.x += (b.x + b.facing * 70 - p.x) * 0.28; p.y += (b.y - p.y) * 0.3; }
@@ -176,7 +182,12 @@ export const SIGNATURE = {
         b.tele = k < 24;
         b.pa = k < 24 ? -2.6 : 1.2;
         if (k >= 24 && k < 30) melee(b, g, { box: { x: 60, w: 130, d: 40, z0: 0, z1: 140 }, dmg: 20, kb: 8, launch: 7, stop: 8, shake: 10, heavy: true }, d.set);
-        if (k === 24) { g.fx.dustburst(b.x + b.facing * 70, b.y, 0.8); sfx('heavy'); }
+        if (k === 24) {
+          ironJawCleave(g, b);
+          const x = b.x + b.facing * 70;
+          if (!playIronJawFx(g, b, 'quake', x, b.y, 0)) g.fx.dustburst(x, b.y, 0.8);
+          sfx('heavy');
+        }
         return k >= 60;
       }
       b.tele = t < D;
@@ -192,7 +203,7 @@ export const SIGNATURE = {
       if (t === 0) {
         b.facing = sign(p.x - b.x);
         d.xs = [110, 220, 340].map((o) => clamp(b.x + b.facing * o, 50, world.w - 50));
-        [0, 1, 2].forEach((i) => g.hazards.push(new Hazard({ x: d.xs[i], y: b.y, rx: 70 + i * 26, ry: 40 + i * 8, delay: D + i * 16, owner: b, ownerState: 'attack', color: b.B.glow,
+        [0, 1, 2].forEach((i) => g.hazards.push(new Hazard({ x: d.xs[i], y: b.y, rx: 70 + i * 26, ry: 40 + i * 8, delay: D + i * 16, owner: b, ownerState: 'attack', color: b.B.glow, ...ironJawStompArt(b, i),
           hit: { dmg: 16 + i * 4, kb: 6, launch: 7 + i, stop: 6, shake: 7 + i * 2, heavy: i === 2 } })));
         g.fx.label(b.x, b.y, b.h + 40, '刑台三震', b.B.glow, 24);
         sfx('warn');

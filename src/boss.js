@@ -25,7 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
-import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx } from './boss_fx.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -132,7 +132,7 @@ const ATTACKS = {
         if (t === s) {
           d.set = new Set();
           b.vx = b.facing * 6;
-          g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.62, b.facing, 70 * sz, up ? 1.2 : -2.3, up ? -1.8 : 1.2, b.B.glow, 14);
+          if (!ironJawCleave(g, b, up)) g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.62, b.facing, 70 * sz, up ? 1.2 : -2.3, up ? -1.8 : 1.2, b.B.glow, 14);
           if (b.key === 'boneLord') g.fx.flip('bone_rend', b.x + b.facing * 14, b.y, b.h * 0.6, { facing: b.facing, flipY: up ? -1 : 1, color: b.B.glow, scale: sz / 1.5 });
           sfx('swing');
         }
@@ -153,7 +153,8 @@ const ATTACKS = {
       if (t === 0) {
         b.facing = sign(g.player.x - b.x);
         g.hazards.push(new Hazard({ x: clamp(b.x + b.facing * 110 * b.B.scale, 60, world.w - 60), y: b.y, rx: 150, ry: 56, delay: D, owner: b, ownerState: 'attack',
-          hit: { dmg: 26, kb: 9, launch: 10, stop: 9, shake: 12, heavy: true }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null }));
+          hit: { dmg: 26, kb: 9, launch: 10, stop: 9, shake: 12, heavy: true }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null,
+          ...ironJawGroundArt(b, 'quake') }));
         sfx('warn');
       }
       b.tele = t < D;
@@ -170,13 +171,18 @@ const ATTACKS = {
       b.tele = t < D;
       b.pa = t < D ? -2.6 : 1.2;
       b.pc = t < D ? 0.35 : 0.1;
-      if (t === D) { g.fx.shake(8, 14); g.fx.dust(b.x, b.y, 14, 2); g.fx.dustburst(b.x, b.y, 1.1); sfx('heavy'); }
+      if (t === D) {
+        g.fx.shake(8, 14); g.fx.dust(b.x, b.y, 14, 2);
+        if (!playIronJawFx(g, b, 'wave', b.x, b.y, 0)) g.fx.dustburst(b.x, b.y, 1.1);
+        sfx('heavy');
+      }
       if (t >= D && (t - D) % 10 === 0 && t < D + 60) {
         const i = (t - D) / 10 + 1;
         for (const s of [-1, 1]) {
           const x = b.x + s * i * 95;
           if (x < 20 || x > world.w - 20) continue;
-          g.hazards.push(new Hazard({ x, y: b.y, rx: 58, ry: 62, delay: 22, hit: { dmg: 18, kb: 6, launch: 7, stop: 5, shake: 6 }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null }));
+          g.hazards.push(new Hazard({ x, y: b.y, rx: 58, ry: 62, delay: 22, hit: { dmg: 18, kb: 6, launch: 7, stop: 5, shake: 6 }, color: b.B.glow, art: b.key === 'boneLord' ? 'bone_spikes' : null,
+            ...ironJawGroundArt(b, 'wave') }));
         }
       }
       return t >= D + 90;
@@ -198,7 +204,7 @@ const ATTACKS = {
         b.vx = b.facing * 15 * b.spd;
         b.vy = 0;
         b.tele = false;
-        if (t % 2 === 0) g.fx.dust(b.x, b.y, 2, 1);
+        if (t % 2 === 0 && !hasIronJawCharge(b)) g.fx.dust(b.x, b.y, 2, 1);
         melee(b, g, { box: { x: 30, w: 110 * b.B.scale, d: 36, z0: 0, z1: 120 * b.B.scale }, dmg: 22, kb: 10, launch: 8, stop: 8, shake: 9, heavy: true }, d.set);
         const wall = b.x <= 60 || b.x >= world.w - 60;
         if (wall || t > T0 + 70) {
@@ -268,7 +274,7 @@ const ATTACKS = {
     tick(b, g, t) {
       b.pa = -1.4;
       b.pc = 0.2;
-      if (t === 0 && !ravenSigil(g, b, 120, 54)
+      if (t === 0 && !ravenSigil(g, b, 120, 54) && !ironJawMark(g, b, 120, 54)
         && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: 30, color: b.B.glow, scale: 0.65 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
       if (t === 24) {
         for (const s of [-1, 1]) g.spawnMinion(b.B.minion, clamp(b.x + s * 170, 60, world.w - 60), clamp(b.y + rand(-40, 40), 10, DEPTH - 10));
@@ -322,9 +328,10 @@ const ATTACKS = {
         b.channel = d;
         b.channelCd = 900;
         g.hazards.push(new Hazard({ x: b.x, y: b.y, rx: 900, ry: 260, delay: d.T, owner: b, ownerState: 'attack', color: b.B.glow,
+          ...ironJawChannelArt(b),
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
-        if (!ravenSigil(g, b, 170, d.T)
+        if (!ravenSigil(g, b, 170, d.T) && !ironJawMark(g, b, 170, d.T)
           && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
@@ -332,10 +339,10 @@ const ATTACKS = {
       b.tele = true;
       b.vx = b.vy = 0;
       b.pa = -2.6; b.pc = 0.3; b.pl = -4;
-      if (t % 20 === 0 && !hasRavenChannelFx(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t % 20 === 0 && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
       if (t >= d.T) {
         b.channel = null;
-        if (!flashRavenVeil(b, g)) g.fx.flash(b.B.glow, 0.45);
+        if (!flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
         g.fx.shake(18, 34);
         return true;
       }
@@ -350,7 +357,7 @@ const ATTACKS = {
       b.pl = -8;
       if (t === 1) {
         g.banner = { title: PHASE_TITLES[b.phase], sub: b.B.phases[b.phase].line, t: 0, color: b.B.glow };
-        g.fx.flash(b.B.glow, 0.35);
+        if (b.phase !== 1 || !playIronJawFx(g, b, 'chainBreak')) g.fx.flash(b.B.glow, 0.35);
         g.fx.shake(14, 40);
         sfx('roar');
       }
@@ -533,6 +540,7 @@ export class Boss extends Enemy {
         const I = ENEMY_FX.aura.bossIdle;
         drawEnemyAura(ctx, this, sx, sy, 'bossIdle', t, alpha * (1 + (this.phase * I.phase) / I.alpha), this.armor > 0 ? this.B.glow : COLORS.ember);
       }
+      drawIronJawBodyFx(ctx, this, sx, sy, alpha);
       drawBody(sx, sy, alpha);
       drawRavenBodyFx(ctx, this, sx, sy, alpha);
     }
