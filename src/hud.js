@@ -1,5 +1,4 @@
 import { drawGearIcon } from './gear/art.js';
-import { itemGlyph } from './items.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 // 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
 import { STAMINA } from './stamina_data.js';
@@ -455,7 +454,7 @@ function drawToasts(ctx, game) {
     ctx.fillStyle = t.color;
     ctx.fillRect(x, y - 10, 2, 21);
     ctx.textBaseline = 'middle';
-    if (t.item && !drawGearIcon(ctx, t.item, x + 6, y - 17, 22)) ctx.fillText(itemGlyph(t.item), x + 8, y);
+    if (t.item) drawGearIcon(ctx, t.item, x + 6, y - 17, 22);
     ctx.fillText(t.text, x + 12 + (t.item ? 24 : 0), y + 1);
     ctx.restore();
   });

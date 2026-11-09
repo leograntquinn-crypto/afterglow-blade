@@ -1,6 +1,6 @@
 // 掉落物：金币和装备。装备会冒出对应品质颜色的光柱（光照包 loot_beam 序列帧，按稀有度染色），品质越高光柱越高
-import { toScreen, FONT_TITLE } from './config.js';
-import { RARITY, isLegend, itemGlyph } from './items.js';
+import { toScreen } from './config.js';
+import { RARITY, isLegend } from './items.js';
 import { lightFb } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { drawLightTex } from './draw.js';
@@ -79,7 +79,7 @@ export class Loot {
       // 地上的一圈光：柔光压扁成地面透视
       drawLightTex(ctx, 'glow_soft', color, sx, gy, 54 + 6 * Math.sin(t * 0.1), 20, 0.7);
     }
-    // 物品图标：菱形底座 + 字
+    // 缺图时仅保留物品底座，不显示单字占位
     ctx.save();
     ctx.translate(sx, sy - 12);
     ctx.rotate(Math.PI / 4);
@@ -89,10 +89,5 @@ export class Loot {
     ctx.fillRect(-9, -9, 18, 18);
     ctx.strokeRect(-9, -9, 18, 18);
     ctx.restore();
-    ctx.font = `15px ${FONT_TITLE}`;
-    ctx.textAlign = 'center';
-    ctx.textBaseline = 'middle';
-    ctx.fillStyle = color;
-    ctx.fillText(itemGlyph(it), sx, sy - 11);
   }
 }

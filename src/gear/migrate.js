@@ -23,7 +23,8 @@ export function migrateSave(input) {
     def ||= CATALOG[`${kind}_${series}_r${rar}`];
     if (!def) throw new Error(`无法迁移装备：${old.name}`);
     const it = {uid:old.id,def:def.id,ilvl:old.ilvl,enh:old.enh,affix:old.affix || [],
-      mark:old.mark ?? null,imbueLv:old.rar >= 2 ? 1 : 0,
+      mark:def.fixed || ['wings','veil'].includes(def.kind) ? null : old.mark ?? null,
+      imbueLv:def.fixed || ['wings','veil'].includes(def.kind) ? 0 : old.rar >= 2 ? 1 : 0,
       locked:old.locked ?? false,reforged:old.reforged ?? 0,skin:null};
     const base = itemBase(it);
     if (Object.entries(old.base || {}).some(([k,v])=>v > (base[k] || 0))) it.legacyBase = {...old.base};

@@ -77,7 +77,7 @@ const PORT = process.env.PORT || 8765;
             // 2：每档各抽40件，交替两种外观件，并给恶意强化/词条确认不会漏入属性。
             for (let rar=0;rar<5;rar++) for (let n=0;n<40;n++) {
               const slot=n%2?'wings':'veil', pool=defsBy({slot,rar});
-              const it=makeItem(pool[n%pool.length].id,1+n,{enh:10});
+              const it=makeItem(pool[n%pool.length].id,1+n,{enh:10,imbueLv:3,mark:'counter',affix:[{k:'atk',v:999}]});
               check(same(itemStats(it),{atk:10}) && it.affix.length===0 && it.mark===null && it.imbueLv===0, `2 固定属性 ${rar}/${n}`);
               const s=newSave(); s.equip=Object.fromEntries(SLOT_KEYS.map(k=>[k,null])); s.equip[slot]=it;
               check(Object.keys(computeStats(s).setCount).length===0, `2 不计套装 ${rar}/${n}`);
@@ -261,18 +261,53 @@ const PORT = process.env.PORT || 8765;
       await page.locator('.bag [data-act="sel"]').nth(1).click();
       await page.locator('[data-act="compareSlot"][data-slot="trinket2"]').click();
       check(await page.evaluate(()=>__game.hub.compareSlot==='trinket2'),'9 饰品切换 '+mobile);
+      const engraveGuards = await page.evaluate(async () => {
+        const {makeItem} = await import('./src/items.js');
+        const g=__game, hub=g.hub, bag=[...g.save.bag], stones=g.save.stones;
+        const results=[];
+        try {
+          g.save.stones=3;
+          for (const kind of ['wings','veil']) {
+            const it=makeItem(`${kind}_frost_r2`,10);
+            g.save.bag.push(it); hub.sel=it.id; hub.engrave=false; hub.renderModal();
+            const noButton=!hub.modal.querySelector('[data-act="engrave"]');
+            const click=act=>hub.onClick({target:{closest:()=>({dataset:{act,k:'counter'}})}});
+            const entry=click('engrave')===false && !hub.engrave;
+            const write=click('engraveMark')===false && it.mark===null && g.save.stones===3;
+            hub.engrave=true; hub.renderModal();
+            results.push(noButton && entry && write && !hub.engrave &&
+              !hub.modal.querySelector('[data-act="engraveMark"]'));
+          }
+          return results.every(Boolean);
+        } finally {g.save.bag=bag;g.save.stones=stones;hub.closeModal();hub.render();}
+      });
+      check(engraveGuards,'9 翅膀/光幕铭刻按钮、页面及写入均拒绝且不耗石 '+mobile);
       const lifecycle=await page.evaluate(async () => {
         const {GEAR_ART,gearGlyph}=await import('./src/gear/art.js');
-        const {makeItem,itemGlyph}=await import('./src/items.js');
+        const {makeItem}=await import('./src/items.js');
         const g=__game,it=g.save.bag[0];
         g.hub.hide();const retained=GEAR_ART.ready;
         g.startStage(0);const released=!GEAR_ART.ready && !GEAR_ART.meta && GEAR_ART.pages.length===0;
-        const fallback=gearGlyph(it)===itemGlyph(it);
+        const blankTiles=()=>[...document.querySelectorAll('.slots .slot, .bag .cell')]
+          .every(node=>!node.textContent.trim());
+        const releasedBlank=blankTiles() && gearGlyph(it)==='';
+        // 阻止真实加载，渲染未加载状态的槽位和背包。
+        const load=GEAR_ART.load; GEAR_ART.load=()=>Promise.resolve(false);
+        let unloadedBlank;
+        try {g.hub.render();unloadedBlank=blankTiles();} finally {GEAR_ART.load=load;}
         // 立即释放在途请求，旧请求不能恢复已释放图集。
         const pending=GEAR_ART.load();GEAR_ART.release();await pending;
         const race=!GEAR_ART.ready && GEAR_ART.pages.length===0;
-        const missing=gearGlyph(makeItem('lg_duanyue',10))===itemGlyph(makeItem('lg_duanyue',10));
-        return {retained,released,fallback,race,missing};
+        const missing=gearGlyph(makeItem('lg_duanyue',10))==='';
+        const fetchOriginal=window.fetch;
+        let failedBlank;
+        try {
+          window.fetch=async()=>{throw new Error('模拟图集加载失败');};
+          const failed=!(await GEAR_ART.load());
+          GEAR_ART.load=()=>Promise.resolve(false);g.hub.render();
+          failedBlank=failed && blankTiles() && gearGlyph(it)==='';
+        } finally {window.fetch=fetchOriginal;GEAR_ART.load=load;}
+        return {retained,released,releasedBlank,unloadedBlank,race,missing,failedBlank};
       });
       for(const [label,ok] of Object.entries(lifecycle)) check(ok,'9 '+label+' '+mobile);
       console.log('9 资源失败 URL '+mobile+' '+JSON.stringify(resourceFailures));

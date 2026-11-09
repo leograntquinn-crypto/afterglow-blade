@@ -24,6 +24,9 @@ import { heroSprite } from './sprite.js';
 import { sfx } from './audio.js';
 import { music } from './music.js';
 
+const canEngrave = it => !!it && it.rar >= 2 && !CATALOG[it.def]?.fixed &&
+  !['wings', 'veil'].includes(CATALOG[it.def]?.kind);
+
 export class Hub {
   constructor(game, root) {
     this.g = game;
@@ -311,6 +314,7 @@ export class Hub {
     const { it, equipped } = f;
     const s = this.save, R = RARITY[it.rar];
     // 铭刻：八选一，覆盖原来的刻印
+    if (this.engrave && !canEngrave(it)) this.engrave = false;
     if (this.engrave) {
       const list = Object.entries(MARKS).map(([k, M]) => `<button class="btn" data-act="engraveMark" data-k="${k}" ${it.mark === k ? 'disabled' : ''}>
           <b>${M.name}${it.mark === k ? '（当前）' : ''}</b><span>${M.desc}</span><small>适合：${M.style}</small></button>`).join('');
@@ -370,7 +374,7 @@ export class Hub {
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : it.slot === 'trinket' ? ['trinket1','trinket2'].map((slot) => `<button class="btn primary" data-act="equip" data-slot="${slot}">穿戴至${SLOT_NAME[slot]}</button>`).join('') : `<button class="btn primary" data-act="equip">穿戴</button>`}
         ${enhBtn}
         ${inh ? `<button class="btn" data-act="inherit" ${s.gold >= inh ? '' : 'disabled'} title="把「${itemTitle(cur)}」的强化等级转到这件上，旧装备变回 +0">传承 +${cur.enh} 强化 · ${inh} 金币</button>` : ''}
-        ${it.rar >= 2 ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
+        ${canEngrave(it) ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
         <button class="btn ghost" data-act="lock">${it.locked ? '🔒 已锁定（点击解锁）' : '锁定（批量出售时跳过）'}</button>
         ${equipped ? '' : `<button class="btn ghost" data-act="sell" ${it.locked ? 'disabled' : ''}>出售 · ${sellPrice(it)} 金币</button>`}
       </div>
@@ -422,6 +426,7 @@ export class Hub {
         if (rerollContract(s, el.dataset.id)) { sfx('click'); commit(); }
         return;
       case 'engrave':
+        if (!canEngrave(this.findItem(this.sel)?.it)) return false;
         this.engrave = true;
         sfx('click');
         return this.renderModal();
@@ -516,7 +521,8 @@ export class Hub {
       s.bag.push(it);
       this.closeModal();
       commit();
-    } else if (act === 'engraveMark' && it.rar >= 2) {
+    } else if (act === 'engraveMark') {
+      if (!canEngrave(it)) return false;
       const k = el.dataset.k;
       if (!MARKS[k] || s.stones < 1 || it.mark === k) return;
       s.stones--;
@@ -620,12 +626,6 @@ export class Hub {
     g.addColorStop(1, rgba(colors[0], 0));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, c.width, c.height);
-    if (equip.wings) {
-      const wide = ctx.createRadialGradient(220, 235, 15, 220, 235, 290);
-      wide.addColorStop(0, rgba(colors[1] || colors[0], 0.22 * breath));
-      wide.addColorStop(1, rgba(colors[1] || colors[0], 0));
-      ctx.fillStyle = wide; ctx.fillRect(0, 0, c.width, c.height);
-    }
     colors.forEach(color => fx('glow_soft', color, 220, 235, equip.wings ? 420 : 290,
       equip.wings ? 430 : 350, breath * (equip.wings ? 0.65 : 0.42) / Math.sqrt(colors.length)));
     ctx.fillStyle = 'rgba(0,0,0,.45)';

@@ -1,7 +1,6 @@
 // E1 与特效图集同目录、同手机判定；只由角色页发起载入，进战斗清空引用。
 import { MOBILE } from '../sprite.js';
 import { CATALOG } from './catalog.js';
-import { itemGlyph } from '../items.js';
 const DIR = 'assets/fx/';
 const loadImage = (file) => new Promise((resolve, reject) => {
   const image = new Image();
@@ -35,8 +34,8 @@ export const GEAR_ART = {
   },
   release() {
     this.generation++;
-    // 隐藏的角色页仍持有CSS图集引用，进入关卡时一并退回文字，允许解码图像释放。
-    for (const node of document.querySelectorAll('[data-gear-icon]')) node.replaceWith(document.createTextNode(node.dataset.gearGlyph));
+    // 隐藏的角色页仍持有CSS图集引用，进入关卡时一并清空图标，允许解码图像释放。
+    for (const node of document.querySelectorAll('[data-gear-icon]')) node.replaceWith(document.createTextNode(''));
     Object.assign(this, {ready: false, loading: null, pages: [], frames: {}, meta: null});
   },
   entry(it) {
@@ -50,8 +49,8 @@ export function gearGlyph(it) {
   const pos = GEAR_ART.entry(it);
   if (!pos) {
     if (!it) return '';
-    // 整体未加载沿用 D-1 降级；图集已就绪的缺图装备只显示稀有度框。
-    if (!GEAR_ART.ready) return itemGlyph(it);
+    // 未就绪时保持空白；图集已就绪的缺图装备只显示稀有度框。
+    if (!GEAR_ART.ready) return '';
     const frame = GEAR_ART.frames[it.rar] && GEAR_ART.meta.frames[it.rar];
     return frame ? `<span data-gear-icon data-gear-frame data-gear-glyph="" aria-hidden="true" style="display:inline-block;width:100%;height:100%;background-image:url('${DIR}${frame}');background-size:100% 100%;background-position:center;background-repeat:no-repeat"></span>` : '';
   }
@@ -59,7 +58,7 @@ export function gearGlyph(it) {
   const {file, width, height} = meta.pages[page];
   const px = width === cell ? 0 : x / (width - cell) * 100;
   const py = height === cell ? 0 : y / (height - cell) * 100;
-  return `<span data-gear-icon data-gear-glyph="${itemGlyph(it)}" aria-hidden="true" style="display:inline-block;width:100%;height:100%;background-image:url('${DIR}${file}'),url('${DIR}${meta.frames[it.rar]}');background-size:${width / cell * 100}% ${height / cell * 100}%,100% 100%;background-position:${px}% ${py}%,center;background-repeat:no-repeat"></span>`;
+  return `<span data-gear-icon data-gear-glyph="" aria-hidden="true" style="display:inline-block;width:100%;height:100%;background-image:url('${DIR}${file}'),url('${DIR}${meta.frames[it.rar]}');background-size:${width / cell * 100}% ${height / cell * 100}%,100% 100%;background-position:${px}% ${py}%,center;background-repeat:no-repeat"></span>`;
 }
 export function drawGearIcon(ctx, it, x, y, size) {
   const pos = GEAR_ART.entry(it);

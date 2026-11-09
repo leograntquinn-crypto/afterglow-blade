@@ -36,7 +36,7 @@ for (const n of SKILL_TREE) if (n.active) Object.assign(n, { name: SKILLS[n.key]
 export function newSave() {
   return {
     v: 2, savedAt: 0,
-    lv: 2, xp: 0, gold: 0,
+    lv: 1, xp: 0, gold: 0,
     statPts: 0, stats: { str: 0, vit: 0, int: 0, agi: 0 },
     sp: 0, skills: { skill1: 1, skill2: 0, skill3: 0, skill4: 0, mastery: 0, focus: 0, flow: 0 },
     equip: starterGear(), bag: [],
