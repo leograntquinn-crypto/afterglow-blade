@@ -356,3 +356,89 @@ export function drawAfterimageStreak(ctx, streak, camX) {
   if (streak.last) put(ctx, frame(mark, streak.t), x1, y1, mark.k, streak.color);
   ctx.restore();
 }
+
+// 骸骨统领补充包只负责表现，骨刺仍沿用第一版的判定和素材。
+const bone = BOSS_FX.boneLord;
+export function playBoneFx(game, boss, kind, x = boss.x, y = boss.y) {
+  if (boss.key !== 'boneLord') return false;
+  const e = bone[kind];
+  return !!game.fx.flip(e.fb, x, y, boss.z, {
+    size: boss.h / FIG * e.size, color: e.color, facing: boss.facing,
+  });
+}
+export function boneSigil(game, boss, radius, life) {
+  if (boss.key !== 'boneLord' || !bossTex('bonev2', bone.sigil.tex)) return false;
+  game.hazards.push(new BossGroundMark(boss, life, radius, 'bonev2', bone.sigil));
+  return true;
+}
+export function hasBoneGlow(boss) {
+  return boss.key === 'boneLord' && !!flipbook(bone.glow.fb);
+}
+export function drawBoneBodyFx(ctx, boss, sx, sy, alpha) {
+  if (boss.key !== 'boneLord') return;
+  const a = boss.act;
+  if (a?.name === 'channel' && boss.channel === a.d) {
+    const e = bone.glow;
+    put(ctx, frame(e, a.t - 1), sx, sy, boss.h / FIG * e.size, e.color, alpha, boss.facing);
+  }
+  const dragging = a?.name === 'rendChase' && a.t <= a.d.boneDragEnd
+    || a?.name === 'charge' && !boss.tele && !a.d.stop && boss.vx;
+  if (dragging) {
+    const e = bone.drag;
+    put(ctx, frame(e, a.t - 1), sx + boss.facing * boss.h * e.x, sy + boss.z,
+      boss.h / FIG * e.size, e.color, alpha, boss.facing);
+  }
+}
+function boneTether(ctx, a, b, t) {
+  const e = bone.tether, img = bossTex('bonev2', e.tex);
+  if (img) tileAlong(ctx, img, a[0], a[1], Math.atan2(b[1] - a[1], b[0] - a[0]),
+    Math.hypot(b[0] - a[0], b[1] - a[1]), e.height, t * e.scroll, e.color);
+}
+export function boneCageFx(game, boss, data, life, radius) {
+  if (boss.key !== 'boneLord') return;
+  const act = boss.act;
+  game.hazards.push({ x: data.cx, y: data.cy, t: 0, dead: false,
+    update() { if (++this.t >= life || boss.act !== act) this.dead = true; },
+    drawFloor(ctx, camX) {
+      if (this.dead || boss.act !== act) return;
+      const e = bone.cage, [x, y] = toScreen(this.x, this.y, 0, camX);
+      put(ctx, frame(e, this.t), x, y, radius * 2 / e.width * (1 - (1 - e.shrink) * this.t / life), e.color);
+      // 按原七个槽位取邻居，空槽两侧都不接，不能把存活骨刺压成闭环。
+      data.boneSlots.forEach((a, i, slots) => {
+        const b = slots[(i + 1) % slots.length];
+        if (a && b) boneTether(ctx, toScreen(a.x, a.y, 0, camX), toScreen(b.x, b.y, 0, camX), this.t);
+      });
+    },
+  });
+}
+// 骨片独立留在表现队列；回程目标每帧取胸口，首领移动也能接回。
+export function boneShards(game, boss) {
+  if (boss.key !== 'boneLord' || !flipbook(bone.shard.fb) || boss.boneShardTick === game.ticks) return;
+  boss.boneShardTick = game.ticks;
+  const e = bone.shard, count = e.count[0] + game.ticks % (e.count[1] - e.count[0] + 1);
+  for (let i = 0; i < count; i++) {
+    const angle = (i + 0.5) / count * Math.PI * 2;
+    const origin = { x: boss.x, y: boss.y, z: boss.z + boss.h * e.chest };
+    const end = { x: origin.x + Math.cos(angle) * e.speed * e.scatter, y: origin.y,
+      z: Math.max(0, origin.z + (e.lift + Math.sin(angle) * e.speed) * e.scatter - e.gravity * e.scatter * e.scatter / 2) };
+    const pos = (t) => {
+      if (t <= e.scatter) return { x: origin.x + Math.cos(angle) * e.speed * t, y: origin.y,
+        z: Math.max(0, origin.z + (e.lift + Math.sin(angle) * e.speed) * t - e.gravity * t * t / 2) };
+      const u = Math.max(0, Math.min(1, (t - e.scatter - e.pause) / e.back));
+      return { x: end.x + (boss.x - end.x) * u, y: end.y + (boss.y - end.y) * u,
+        z: end.z + (boss.z + boss.h * e.chest - end.z) * u + Math.sin(u * Math.PI) * e.arc };
+    };
+    game.hazards.push({ ...origin, t: 0, dead: false,
+      update() { this.t++; Object.assign(this, pos(this.t)); if (this.t >= e.scatter + e.pause + e.back) this.dead = true; },
+      drawFloor(ctx, camX) {
+        if (this.dead) return;
+        const at = toScreen(this.x, this.y, this.z, camX);
+        if (this.t > e.scatter + e.pause) {
+          const tail = pos(Math.max(e.scatter + e.pause, this.t - e.back * e.trail));
+          boneTether(ctx, toScreen(tail.x, tail.y, tail.z, camX), at, this.t);
+        }
+        put(ctx, frame(e, this.t), ...at, boss.h / FIG * e.size, null);
+      },
+    });
+  }
+}

@@ -168,6 +168,19 @@ export const ENEMY_TYPE_FX = {
 
 // ---------- 首领专属特效（画法见 boss_fx.js）----------
 export const BOSS_FX = {
+  boneLord: {
+    cage: { fb: 'cage_tighten', color: '#ff5a3c', width: 512, shrink: 0.6 },
+    tether: { tex: 'marrow_tether', color: '#ff5a3c', height: 6, scroll: 1.5 },
+    drag: { fb: 'drag_sparks', color: '#ff5a3c', size: 1, x: 0.55, rendTail: 40 },
+    shard: { fb: 'shard_return', size: 0.45, count: [3, 5], scatter: 18, pause: 10, back: 24,
+      chest: 0.6, speed: 3.5, lift: 4, gravity: 0.22, arc: 45, trail: 0.2 },
+    reform: { fb: 'bone_reform', size: 1 },
+    sigil: { tex: 'bone_sigil', color: '#ff5a3c', spin: 0.004 },
+    glow: { fb: 'marrow_glow', color: '#ff5a3c', size: 1 },
+    burst: { fb: 'bone_call_burst', color: '#ff5a3c', size: 1.4 },
+    rise: { fb: 'summon_rise', size: 0.8 },
+    groundDeath: { fb: 'bonelord_death', color: '#ffffff', size: 1.2, hold: 120 },
+  },
   afterimage: {
     slash: { fb: 'rev_slash', size: 1, z: 0.62 },
     spin: { fb: 'rev_slash', size: 1.3, z: 0.54, turn: Math.PI / 40 },

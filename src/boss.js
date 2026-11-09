@@ -25,7 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
-import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather } from './boss_fx.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather, playBoneFx, boneSigil, hasBoneGlow, drawBoneBodyFx, boneShards } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -275,10 +275,14 @@ const ATTACKS = {
     tick(b, g, t) {
       b.pa = -1.4;
       b.pc = 0.2;
-      if (t === 0 && !ravenSigil(g, b, 120, 54) && !ironJawMark(g, b, 120, 54)
+      if (t === 0 && !boneSigil(g, b, 120, 54) && !ravenSigil(g, b, 120, 54) && !ironJawMark(g, b, 120, 54)
         && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: 30, color: b.B.glow, scale: 0.65 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 120, 54, 0.02);
       if (t === 24) {
-        for (const s of [-1, 1]) g.spawnMinion(b.B.minion, clamp(b.x + s * 170, 60, world.w - 60), clamp(b.y + rand(-40, 40), 10, DEPTH - 10));
+        for (const s of [-1, 1]) {
+          const x = clamp(b.x + s * 170, 60, world.w - 60), y = clamp(b.y + rand(-40, 40), 10, DEPTH - 10);
+          g.spawnMinion(b.B.minion, x, y);
+          playBoneFx(g, b, 'rise', x, y);
+        }
         g.fx.flash(b.B.glow, 0.15);
         sfx('roar');
       }
@@ -333,7 +337,7 @@ const ATTACKS = {
           ...ironJawChannelArt(b),
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
-        if (!hasAfterimageGather(b) && !ravenSigil(g, b, 170, d.T) && !ironJawMark(g, b, 170, d.T)
+        if (!boneSigil(g, b, 170, d.T) && !hasAfterimageGather(b) && !ravenSigil(g, b, 170, d.T) && !ironJawMark(g, b, 170, d.T)
           && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
@@ -341,10 +345,10 @@ const ATTACKS = {
       b.tele = true;
       b.vx = b.vy = 0;
       b.pa = -2.6; b.pc = 0.3; b.pl = -4;
-      if (t % 20 === 0 && !hasAfterimageGather(b) && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t % 20 === 0 && !hasBoneGlow(b) && !hasAfterimageGather(b) && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
       if (t >= d.T) {
         b.channel = null;
-        if (!playAfterimageFx(g, b, 'burst') && !flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
+        if (!playBoneFx(g, b, 'burst') && !playAfterimageFx(g, b, 'burst') && !flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
         g.fx.shake(18, 34);
         return true;
       }
@@ -359,7 +363,7 @@ const ATTACKS = {
       b.pl = -8;
       if (t === 1) {
         g.banner = { title: PHASE_TITLES[b.phase], sub: b.B.phases[b.phase].line, t: 0, color: b.B.glow };
-        if (b.phase !== 1 || !playIronJawFx(g, b, 'chainBreak')) g.fx.flash(b.B.glow, 0.35);
+        if (b.phase !== 1 || (!playBoneFx(g, b, 'reform') && !playIronJawFx(g, b, 'chainBreak'))) g.fx.flash(b.B.glow, 0.35);
         g.fx.shake(14, 40);
         sfx('roar');
       }
@@ -388,6 +392,7 @@ export class Boss extends Enemy {
     this.key = key;
     this.isBoss = true;
     this.phase = 0;
+    this.boneArmorPrev = this.armor;
     this.act = null;
     this.restT = 50;
     this.fade = 1;
@@ -396,7 +401,18 @@ export class Boss extends Enemy {
 
   get spd() { return (1 + this.phase * 0.18) * (this.game.D?.bossSpd ?? 1); } // 阶段越高、难度越高，出招越快
 
+  takeHit(h, dir, dmg) {
+    const result = super.takeHit(h, dir, dmg);
+    if (result && (h.heavy || result.broke)) boneShards(this.game, this);
+    this.boneArmorPrev = this.armor;
+    return result;
+  }
+
   setState(s) {
+    if (this.boneArmorPrev > 0 && this.armor <= 0) {
+      boneShards(this.game, this);
+      this.boneArmorPrev = this.armor;
+    }
     // 爆发可在正常收招后播完；受击、倒地或死亡时立即清掉。
     if (s !== 'idle' && s !== 'attack' && this.afterimageBurst) {
       this.afterimageBurst.cancelled = true;
@@ -413,10 +429,14 @@ export class Boss extends Enemy {
     if (this.state === 'idle' && (this.vx || this.vy)) this.runDist = (this.runDist ?? 0) + runStep(this.vx, this.vy); // 残影跑步换帧按距离（sprite.js runFrame / runStep）
     if (this.channelCd > 0) this.channelCd--;
     if (this.state !== 'attack' || this.act?.name !== 'channel') this.channel = null; // 被打断 / 破防时读条作废
+    // 覆盖读条打断、弹反等在 takeHit 之外清空护甲的路径。
+    if (this.boneArmorPrev > 0 && this.armor <= 0) boneShards(game, this);
+    this.boneArmorPrev = this.armor;
     const next = this.B.phases[this.phase + 1];
     if (next && this.alive && this.z <= 0 && this.state !== 'spawn' && this.hp / this.maxHp <= next.at) {
       this.phase++;
       this.armor = this.maxArmor;
+      this.boneArmorPrev = this.armor;
       this.brokenT = 0;
       this.startAct('roar');
     }
@@ -552,6 +572,7 @@ export class Boss extends Enemy {
       drawBody(sx, sy, alpha);
       drawRavenBodyFx(ctx, this, sx, sy, alpha);
       drawAfterimageBodyFx(ctx, this, sx, sy, alpha);
+      drawBoneBodyFx(ctx, this, sx, sy, alpha);
     }
     ctx.save();
     ctx.textAlign = 'center';
