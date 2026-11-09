@@ -2,7 +2,7 @@
 
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
 python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录> [fx_enemy_v1_types 目录]   （只打敌人特效包，不动别的图集）
-python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage> <包目录>   （只打指定首领特效包，不动别的图集）
+python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage|bone> <包目录>   （只打指定首领特效包，不动别的图集）
 python3 -I tools/build_fx.py --scene <fx_scene_v1 目录>   （只打场景特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
@@ -135,7 +135,7 @@ def build_flipbooks(name, ids, fbs, scales=(0.5, 0.25)):
         save_atlas(f"{name}{suffix}", items, 2048 if not suffix else 1024, {"scale": sc, "fb": meta})
 
 
-# 各包的交付画布和帧数见对应的 docs/ART_FX_BOSS_*_V1.md 第三节
+# 各包的交付画布和帧数见对应的 docs/ART_FX_BOSS_* 规格第三节
 BOSS_PACKS = {
     "raven": {
         "out": "fx_boss_raven",
@@ -179,6 +179,19 @@ BOSS_PACKS = {
             "reversal_burst": (512, 512, 8), "afterimage_death": (256, 384, 10),
         },
         "keep_full": {"rev_ribbon", "streak_line"},
+    },
+    "bone": {
+        "out": "fx_boss_bone_v2",
+        "textures": {
+            "bone_sigil": (512, 256), "marrow_tether": (256, 32),
+        },
+        "flipbooks": {
+            "cage_tighten": (512, 256, 8), "drag_sparks": (256, 128, 6),
+            "shard_return": (128, 128, 8), "bone_reform": (256, 384, 10),
+            "marrow_glow": (256, 384, 8), "bone_call_burst": (512, 384, 8),
+            "summon_rise": (256, 256, 8), "bonelord_death": (384, 384, 10),
+        },
+        "keep_full": {"marrow_tether"},
     },
 }
 

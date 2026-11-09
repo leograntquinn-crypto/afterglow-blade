@@ -6,7 +6,7 @@ import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { BOSS_FX } from './fx_data.js';
 import { tex, tinted } from './fx_tex.js';
-import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak } from './boss_fx.js';
+import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak, boneCageFx } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const dist = (b, p) => Math.abs(p.x - b.x);
@@ -27,13 +27,16 @@ export const SIGNATURE = {
       if (t === 0) {
         b.facing = sign(p.x - b.x);
         const n = 7, gap = (Math.random() * n) | 0, R = 118;
+        d.boneSlots = Array(n).fill(null);
         for (let k = 0; k < n; k++) {
           if (k === gap) continue;
           const a = (k / n) * Math.PI * 2;
+          d.boneSlots[k] = { x: clamp(p.x + Math.cos(a) * R, 40, world.w - 40), y: clamp(p.y + Math.sin(a) * R * 0.42, 6, DEPTH - 6) };
           g.hazards.push(new Hazard({ x: clamp(p.x + Math.cos(a) * R, 40, world.w - 40), y: clamp(p.y + Math.sin(a) * R * 0.42, 6, DEPTH - 6), rx: 50, ry: 24, delay: D,
             owner: b, ownerState: 'attack', color: b.B.glow, art: spikeArt(b), hit: { dmg: 16, kb: 4, launch: 8, stop: 6, shake: 6 } }));
         }
         d.cx = p.x; d.cy = p.y;
+        boneCageFx(g, b, d, D, R);
         g.fx.label(b.x, b.y, b.h + 40, '骨 牢', b.B.glow, 26);
         sfx('warn');
       }
@@ -49,6 +52,7 @@ export const SIGNATURE = {
     ok: (b, p) => dist(b, p) > 120 && dist(b, p) < 560,
     tick(b, g, t, d) {
       const D = Math.round(30 / b.spd), p = g.player;
+      d.boneDragEnd = D + 28 + BOSS_FX.boneLord.drag.rendTail;
       if (t === 0) {
         b.facing = sign(p.x - b.x);
         g.hazards.push(new Lane({ x: b.x, y: p.y, facing: b.facing, life: D, half: 26 }));

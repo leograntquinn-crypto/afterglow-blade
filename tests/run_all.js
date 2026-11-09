@@ -49,6 +49,7 @@ const TESTS = [
   test('bossfxtest', 300),
   test('ironjawfxtest', 300),
   test('afterimagefxtest', 300),
+  test('bonefxtest', 300),
   test('scenefxtest', 300),
   ...[
     'afftest', 'traintest', 'train2', 'countertest', 'walktest', 'difftest',
