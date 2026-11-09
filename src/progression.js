@@ -1,3 +1,4 @@
+import { markRating, buffRating } from './gear/rating.js';
 import { CATALOG } from './gear/catalog.js';
 // 成长系统：经验与等级、属性点、技能树、最终属性计算
 //
@@ -39,7 +40,7 @@ export function newSave() {
     statPts: 0, stats: { str: 0, vit: 0, int: 0, agi: 0 },
     sp: 0, skills: { skill1: 1, skill2: 0, skill3: 0, skill4: 0, mastery: 0, focus: 0, flow: 0 },
     equip: starterGear(), bag: [],
-    cleared: {}, best: {}, runs: 0,
+    cleared: {}, best: {}, runs: 0, legendPity: {},
   };
 }
 
@@ -72,11 +73,12 @@ export function addXp(save, n) {
   return ups;
 }
 
-export function computeStats(save) {
+// gearMeta 仅供比较阶段保留旧件状态 / 套装来源；战斗调用不传此参数。
+export function computeStats(save, gearMeta = {}) {
   const eq = {}, setCount = {}, imbues = {};
   for (const slot of SLOT_KEYS) {
     const it = save.equip[slot];
-    const d = CATALOG[it?.def];
+    const d = CATALOG[(gearMeta[slot] || it)?.def];
     if (d && !d.fixed) {
       if (d.set) setCount[d.set] = (setCount[d.set] || 0) + 1;
       if (d.imbue && it.imbueLv) (imbues[d.imbue] ||= []).push({slot,uid:it.uid,def:it.def,lv:it.imbueLv});
@@ -110,7 +112,7 @@ export function computeStats(save) {
 export const skillMul = (S, key) => (1 + (S.skillLv[key] - 1) * 0.12) * S.intMul;
 
 // 「战力」：把各种属性折算成一个数字，给玩家直观的成长反馈
-export const power = (S) => Math.round(S.atk * (1 + S.crit * (S.critDmg - 1)) * 8 + S.maxHp * 0.6 + S.def * 6);
+export const power = (S) => Math.round((S.atk * (1 + S.crit * (S.critDmg - 1)) * 8 + S.maxHp * 0.6 + S.def * 6) * (1 + markRating(S) + buffRating(S)));
 
 export function resetStats(save) {
   for (const k of Object.keys(save.stats)) {

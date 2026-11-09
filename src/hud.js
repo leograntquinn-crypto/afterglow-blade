@@ -1,3 +1,4 @@
+import { compareItem, COMPARISON } from './gear/compare.js';
 // 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
 import { STAMINA } from './stamina_data.js';
 import { VIEW_W, VIEW_H, COLORS, FONT_NUM, FONT_TITLE, FONT_UI, clamp } from './config.js';
@@ -574,7 +575,7 @@ function drawRewards(ctx, game, x, y, t) {
   if (r.firstClear) lines.push(['首次通关奖励 ×3', COLORS.ember]);
   const TR = game.trial?.result;
   if (TR) lines.push([`试炼：过了 ${TR.floor} 层${TR.newBest ? '（新纪录）' : ''} · 刻印石 +${TR.stones}${TR.died ? '（阵亡减半）' : ''}`, '#c99bff']);
-  const best = [...r.items].sort((a, b) => b.rar - a.rar)[0];
+  const best = [...r.items].sort((a, b) => compareItem(game.save,b).total - compareItem(game.save,a).total)[0];
   lines.push([r.items.length ? `获得装备 ${r.items.length} 件` : '没有获得装备', COLORS.ink]);
   ctx.textAlign = 'left';
   lines.forEach(([text, color], i) => {
@@ -586,7 +587,7 @@ function drawRewards(ctx, game, x, y, t) {
   if (best && t > lines.length * 8) {
     ctx.font = `17px ${FONT_UI}`;
     ctx.fillStyle = RARITY[best.rar].color;
-    ctx.fillText(`最佳：[${RARITY[best.rar].name}] ${itemTitle(best)}`, x, y + lines.length * 28);
+    ctx.fillText(`最佳：${COMPARISON[compareItem(game.save,best).verdict].symbol} [${RARITY[best.rar].name}] ${itemTitle(best)}`, x, y + lines.length * 28);
   }
 }
 

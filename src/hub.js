@@ -1,10 +1,13 @@
+import { compareItem, COMPARISON } from './gear/compare.js';
+import { CATALOG } from './gear/catalog.js';
+import { SERIES } from './gear/series.js';
 // 营地菜单（HTML）：角色与装备 / 技能 / 委托，在大地图上随时打开（Esc、B 或右上角按钮）；
 // 关卡、训练场、试炼的卡片在地图上走到对应地点时单独弹出（stageCard / trainingCard / trialCard）
 // 菜单类界面用 HTML 比在 Canvas 里画方便得多：自带滚动、点击、文字排版、适配手机。
 // 所有按钮用 data-act 属性标记，统一在 onClick 里处理（事件委托）。
 
 import {
-  RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, itemScore, itemGlyph, itemTitle, itemKind,
+  RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, hydrateItem, canImprove, itemGlyph, itemTitle, itemKind,
   enhCost, enhRate, sellPrice, WTYPES, MARKS, reforgeCost, reforgeAffix, inheritCost,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
@@ -169,9 +172,9 @@ export class Hub {
         <button class="btn mini" data-act="stat" data-k="${a.key}" ${s.statPts > 0 ? '' : 'disabled'} aria-label="${a.name}加一点">+</button>
       </div>`).join('');
     const bag = s.bag.map((it) => {
-      const better = itemScore(it) > itemScore(s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot]);
+      const cmp = compareItem(s,it), label = COMPARISON[cmp.verdict];
       return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
-        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
+        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}<i class="up" style="color:${label.color}" title="${label.text} ${cmp.total.toFixed(1)}%">${label.symbol}</i>${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
       </button>`;
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
@@ -251,8 +254,10 @@ export class Hub {
       this.modal.hidden = false;
       return;
     }
-    const cur = equipped ? null : s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot];
-    const mine = itemStats(it), other = cur ? itemStats(cur) : {};
+    const comparison = equipped ? null : compareItem(s,it,{slot:this.compareSlot});
+    const cur = comparison?.against;
+    const allowed = canImprove(it);
+    const mine = itemStats(hydrateItem({...it,enh:comparison?.enhAs ?? it.enh,affix:[]})), other = cur ? itemStats(hydrateItem({...cur,enh:comparison.enhAs,affix:[]})) : {};
     const keys = Object.keys(it.base);
     const statRows = keys.map((k) => {
       const d = mine[k] - (other[k] || 0);
@@ -263,13 +268,21 @@ export class Hub {
     const rc = reforgeCost(it);
     const affix = it.affix.map((a, i) => `<li class="affix">${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}<button class="btn ghost mini-text reforge" data-act="reforge" data-i="${i}" ${s.gold >= rc ? '' : 'disabled'} title="把这条换成另一种属性 · ${rc} 金币">重铸</button></li>`).join('');
     // 传承：同部位正在穿的装备强化得更高 → 可以把强化等级转到这件上
-    const inh = !equipped && cur && cur.enh > it.enh ? inheritCost(it, cur) : 0;
-    const dScore = itemScore(it) - itemScore(cur);
-    const compare = equipped ? '<p class="cmp same">已穿戴</p>'
-      : cur ? `<p class="cmp ${dScore >= 0 ? 'up' : 'down'}">对比当前「${itemTitle(cur)}」：评分 ${dScore >= 0 ? '▲' : '▼'} ${Math.abs(dScore)}</p>`
-      : '<p class="cmp up">该部位还没有装备</p>';
+    const inh = allowed && !equipped && cur && cur.enh > it.enh ? inheritCost(it, cur) : 0;
+    const label = comparison && COMPARISON[comparison.verdict];
+    const effectText = x => x ? `${x.affix.map(a=>`${STAT_INFO[a.k][0]} +${fmtStat(a.k,a.v)}`).join(' / ') || '无词条'}；刻印：${MARKS[x.mark]?.name || '无'}${x.mark ? '（条件型）' : ''}` : '—';
+    const buffText = x => { const d=CATALOG[x?.def]; return d ? `状态：${d.imbue || '无'} ${x.imbueLv || 0} 档（条件型）；套装：${SERIES[d.set]?.name || d.set || '无'}` : '—'; };
+    const explanation = comparison?.reasons.map(r=>r.id==='ilvl' ? `物品等级 ${r.delta>0?'+':''}${r.delta}` : r.id==='setCount' ? `${SERIES[r.set]?.name || r.set} ${r.from}→${r.to} 件` : r.id==='conditionalMark' ? `刻印「${MARKS[r.mark]?.name || r.mark}」（条件型）` : `${r.change==='before'?'换下':'换上'}状态「${r.status}」${r.lv} 档（条件型）`).join('；');
+    const compare = equipped ? '<p class="cmp same">已穿戴</p>' : `
+      ${it.slot==='trinket' ? ['trinket1','trinket2'].map(slot=>`<button class="btn ghost" data-act="compareSlot" data-slot="${slot}">对比${SLOT_NAME[slot]}</button>`).join('') : ''}
+      <p>折算：都按 +${comparison.enhAs} · 对比${SLOT_NAME[comparison.slot]}</p>
+      <table><tr><th></th><th>新：${it.name}</th><th>身上：${cur ? itemTitle(cur) : '空'}</th></tr>
+      <tr><td>基础</td><td>${Object.keys(mine).map(k=>`${STAT_INFO[k][0]} ${fmtStat(k,mine[k])}`).join(' / ')}；物品等级 ${it.ilvl}</td><td>${Object.keys(other).map(k=>`${STAT_INFO[k][0]} ${fmtStat(k,other[k])}`).join(' / ')}；物品等级 ${cur?.ilvl || 0}</td></tr>
+      <tr><td>效果</td><td>${effectText(it)}</td><td>${effectText(cur)}</td></tr>
+      <tr><td>buff</td><td>${buffText(it)}</td><td>${buffText(cur)}</td></tr></table>
+      <p class="cmp" style="color:${label.color}">${label.symbol} ${label.text}（${comparison.total.toFixed(1)}%） · 基础 ${comparison.parts.base.toFixed(1)}% · 效果 ${comparison.parts.effect.toFixed(1)}% · buff ${comparison.parts.buff.toFixed(1)}%</p><p class="hint">${explanation}</p>`;
     const cost = enhCost(it);
-    const enhBtn = it.enh >= MAX_ENH ? '<button class="btn" disabled>已强化到 +10</button>'
+    const enhBtn = !allowed ? '<button class="btn" disabled title="翅膀 / 光幕固定攻击 +10，不能强化">不能强化：固定攻击 +10</button>' : it.enh >= MAX_ENH ? '<button class="btn" disabled>已强化到 +10</button>'
       : `<button class="btn" data-act="enhance" ${s.gold >= cost ? '' : 'disabled'}>强化 +${it.enh + 1} · 成功率 ${Math.round(enhRate(it) * 100)}% · ${cost} 金币</button>`;
     this.modal.innerHTML = `<div class="sheet" role="dialog" aria-label="${itemTitle(it)}">
       <div class="card-head">
@@ -282,6 +295,7 @@ export class Hub {
       ${it.slot === 'weapon' ? `<p class="school">流派「${WTYPES[it.wtype].school}」${WTYPES[it.wtype].schoolDesc}</p>` : ''}
       ${it.mark && MARKS[it.mark] ? `<p class="mark">刻印「${MARKS[it.mark].name}」${MARKS[it.mark].desc}<small>适合：${MARKS[it.mark].style}${!equipped && this.g.stats.marks.has(it.mark) ? ' · 身上已有同名刻印，不叠加' : ''}</small></p>` : ''}
       ${compare}
+      ${!allowed ? '<p class="hint">翅膀 / 光幕固定攻击 +10，不能强化、重铸、传承。</p><button class="btn" disabled>不能重铸：固定属性</button><button class="btn" disabled>不能传承：固定属性</button>' : ''}
       <div class="actions">
         ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : it.slot === 'trinket' ? ['trinket1','trinket2'].map((slot) => `<button class="btn primary" data-act="equip" data-slot="${slot}">穿戴至${SLOT_NAME[slot]}</button>`).join('') : `<button class="btn primary" data-act="equip">穿戴</button>`}
         ${enhBtn}
@@ -361,7 +375,12 @@ export class Hub {
         sfx('click');
         this.g.closeMenu();
         return;
+      case 'compareSlot':
+        this.compareSlot = el.dataset.slot;
+        this.renderModal();
+        return;
       case 'sel':
+        this.compareSlot = undefined;
         this.sel = el.dataset.id;
         this.engrave = false;
         sfx('click');
@@ -387,7 +406,7 @@ export class Hub {
         resetSkills(s); commit(); this.toast('技能点已全部返还');
         return;
       case 'sort':
-        s.bag.sort((a, b) => SLOT_KEYS.indexOf(a.slot) - SLOT_KEYS.indexOf(b.slot) || b.rar - a.rar || itemScore(b) - itemScore(a));
+        s.bag.sort((a, b) => SLOT_KEYS.indexOf(a.slot==='trinket'?'trinket1':a.slot) - SLOT_KEYS.indexOf(b.slot==='trinket'?'trinket1':b.slot) || compareItem(s,b).total - compareItem(s,a).total);
         commit();
         return;
       case 'sellJunk': {
@@ -446,8 +465,8 @@ export class Hub {
       const a = it.affix[i];
       this.toast(`${STAT_INFO[before.k][0]} → ${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}`, '#7ff3ff');
     } else if (act === 'inherit' && !equipped) {
-      const cur = s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot];
-      if (!cur || cur.enh <= it.enh) return;
+      const cur = compareItem(s,it,{slot:this.compareSlot}).against;
+      if (!canImprove(it) || !canImprove(cur) || !cur || cur.enh <= it.enh) return;
       const cost = inheritCost(it, cur);
       if (s.gold < cost) return;
       s.gold -= cost;
@@ -469,6 +488,7 @@ export class Hub {
       commit();
       this.toast(`获得 ${gold} 金币`, '#ffd65a');
     } else if (act === 'enhance') {
+      if (!canImprove(it)) return;
       const cost = enhCost(it);
       if (s.gold < cost || it.enh >= MAX_ENH) return;
       s.gold -= cost;

@@ -6,8 +6,9 @@
 import { rand } from './config.js';
 
 import { CATALOG, defsBy } from './gear/catalog.js';
-import { BUDGET, AFFIX_SHARE, AFFIX_MAX, ITEM_RULES, RARITY } from './gear/rules.js';
+import { BUDGET, AFFIX_SHARE, AFFIX_MAX, ITEM_RULES, RARITY, COST_TIER, SELL_MULT, DROP_RULES } from './gear/rules.js';
 export { RARITY };
+import { SERIES } from './gear/series.js';
 export const SLOT_KEYS = ['weapon','helm','chest','legs','boots','bracers','wings','veil','trinket1','trinket2'];
 export const RESERVED_SLOTS = ['class'];
 export const SLOT_NAME = {weapon:'武器',helm:'头盔',chest:'胸甲',legs:'护腿',boots:'战靴',bracers:'护腕',wings:'翅膀',veil:'光幕',trinket:'饰品',trinket1:'饰品一',trinket2:'饰品二'};
@@ -80,15 +81,15 @@ let seq = 0;
 export const newId = () => `${Date.now().toString(36)}${(seq++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 
 // 掉落品质：关卡越深，高品质权重越高；精英怪有额外幸运
-export function rollRarity(L, { minRar = 0, luck = 0 } = {}) {
-  const w = RARITY.map((r, i) => (i === 0 ? r.w : r.w * (1 + L * 0.05 + luck) * (i === 4 ? 1 + L * 0.06 : 1)));
+export function rollRarity(L, { minRar = 0, luck = 0, maxRar = 4 } = {}) {
+  const w = RARITY.map((r, i) => i>maxRar ? 0 : (i === 0 ? r.w : r.w * (1 + L * 0.05 + luck) * (i === 4 ? 1 + L * 0.06 : 1)));
   let x = Math.random() * w.reduce((a, b) => a + b, 0);
   let rar = 0;
   for (let i = 0; i < w.length; i++) {
     x -= w[i];
     if (x <= 0) { rar = i; break; }
   }
-  return Math.max(minRar, rar);
+  return Math.min(maxRar, Math.max(minRar, rar));
 }
 
 // 定义属性通过访问器读取，JSON 存档只保存实例字段；旧界面继续使用原字段名。
@@ -119,7 +120,7 @@ export function itemBase(it) {
   return base;
 }
 export function makeItem(defId, ilvl, opts = {}, wtype) {
-  // G-3 前保留旧调用签名，掉落分布与养成逻辑留给下一检查点。
+  // 保留旧调用兼容；新掉落统一按定义 id 生成。
   if (!CATALOG[defId]) {
     const slot = {armor:'chest',ring:'trinket'}[defId] || defId;
     const rar = typeof opts === 'number' ? opts : 0;
@@ -144,11 +145,34 @@ export function makeItem(defId, ilvl, opts = {}, wtype) {
   return hydrateItem(it);
 }
 
-export function randomDrop(L, opts) {
-  const r = Math.random();
-  const slot = r < 0.34 ? 'weapon' : r < 0.56 ? 'armor' : r < 0.78 ? 'helm' : 'ring';
-  const ilvl = Math.max(1, L + Math.floor(rand(-1, 2)));
-  return makeItem(slot, ilvl, rollRarity(L, opts));
+// 来源由调用方显式传入；没有合法来源时绝不掉传说。保底按一次抽取计数。
+const weighted = (rows, weight) => {
+  let n = Math.random()*rows.reduce((sum,row)=>sum+weight(row),0);
+  return rows.find((row)=>(n-=weight(row))<0) || rows.at(-1);
+};
+export function randomDrop(L, opts = {}) {
+  const {save,source='normal',stage=1,boss,diff=0} = opts;
+  const cosmetic = !!save?.gearCosmeticsUnlocked || !!save?.cleared?.s2 || stage>DROP_RULES.cosmeticStage || (source==='boss' && stage>=DROP_RULES.cosmeticStage);
+  if (cosmetic && save) save.gearCosmeticsUnlocked=true;
+  const available = Object.values(CATALOG).filter(d=>cosmetic || !d.fixed);
+  const legends = available.filter(d=>d.rar===4 && (source==='boss' ? d.drop.boss===boss :
+    (source==='trial' || (source==='clear' && diff>=1)) && !d.drop.boss));
+  const key = source==='boss' ? `boss:${boss}` : source==='clear' ? `clear:${stage}:${diff}` : source;
+  const pity = save ? (save.legendPity ||= {}) : {};
+  let rar = rollRarity(L,{...opts,maxRar:legends.length ? 4 : 3});
+  if (legends.length && (pity[key] || 0)>=DROP_RULES.pityMisses) rar=4;
+  let pool = rar===4 ? legends : available.filter(d=>d.rar===rar);
+  const series = weighted([...new Set(pool.map(d=>d.series))],id=>SERIES[id].stages.includes(source==='trial' ? 'trial' : stage) ? DROP_RULES.majorWeight : 1);
+  pool=pool.filter(d=>d.series===series);
+  const kind = weighted([...new Set(pool.map(d=>d.kind))],k=>{
+    const slot=pool.find(d=>d.kind===k).slot;
+    const count=new Set(pool.filter(d=>d.slot===slot).map(d=>d.kind)).size;
+    const weight=DROP_RULES.oldSlotWeights[slot];
+    return (weight===undefined ? DROP_RULES.newSlotShare/DROP_RULES.newSlots.length : weight*(1-DROP_RULES.newSlotShare))/count;
+  });
+  const it=makeItem(pick(pool.filter(d=>d.kind===kind)).id,Math.max(1,L+Math.floor(rand(-1,2))));
+  if (legends.length && save) pity[key]=rar===4 ? 0 : (pity[key] || 0)+1;
+  return it;
 }
 
 export function starterGear() {
@@ -172,30 +196,23 @@ export function itemStats(it) {
   return s;
 }
 
-// 给装备打一个「分数」，用于比较好坏（绿色上箭头 / 红色下箭头）
-const SCORE_W = { atk: 3, def: 2, hp: 0.25, str: 2, vit: 1.6, int: 1.2, agi: 1.5, crit: 300, critDmg: 80, cdr: 250, atkPct: 250, mpRegen: 40 };
-export function itemScore(it) {
-  if (!it) return 0;
-  let s = 0;
-  for (const [k, v] of Object.entries(itemStats(it))) s += (SCORE_W[k] || 0) * v;
-  return Math.round(s);
-}
-
 // ---------- 强化 ----------
 export const MAX_ENH = 10;
 const ENH_RATE = [1, 1, 0.9, 0.8, 0.7, 0.6, 0.5, 0.4, 0.3, 0.2];
-export const enhRate = (it) => ENH_RATE[it.enh] ?? 0;
-export const enhCost = (it) => Math.round((40 + it.ilvl * 20) * (1 + it.enh * 0.7) * (1 + it.rar * 0.3));
+export const canImprove = (it) => !!it && !CATALOG[it.def]?.fixed;
+export const enhRate = (it) => canImprove(it) ? ENH_RATE[it.enh] ?? 0 : 0;
+export const enhCost = (it) => Math.round((40 + it.ilvl * 20) * (1 + it.enh * 0.7) * (1 + COST_TIER[it.rar] * 0.3));
 // 重铸：把第 i 条词条换成另一种属性（不和这件装备的其他词条重复），数值按物品等级重新随机。
 // 每重铸一次下次贵 50%：金币换来「更接近理想」的确定进展，但不能无限便宜地刷
-export const reforgeCost = (it) => Math.round((60 + it.ilvl * 25) * (1 + it.rar * 0.5) * (1 + (it.reforged || 0) * 0.5));
+export const reforgeCost = (it) => Math.round((60 + it.ilvl * 25) * (1 + COST_TIER[it.rar] * 0.5) * (1 + (it.reforged || 0) * 0.5));
 export function reforgeAffix(it, i) {
-  if (!it.affix[i]) return false;
+  if (!canImprove(it) || !it.affix[i]) return false;
   const used = new Set(it.affix.map((a) => a.k));
   const pool = Object.keys(AFFIX).filter((k) => !used.has(k));
   if (!pool.length) return false;
   const k = pick(pool);
-  const v = AFFIX[k].roll(it.ilvl) * (isLegend(it) ? 1.3 : 1);
+  const [a,b] = AFFIX_MAX[k];
+  const v = (a+b*it.ilvl)*rand(ITEM_RULES.affixMin,1)*AFFIX_SHARE[it.slot]*RARITY[it.rar].quality;
   it.affix[i] = { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
   it.reforged = (it.reforged || 0) + 1;
   return true;
@@ -204,9 +221,10 @@ export function reforgeAffix(it, i) {
 // 传承：新装备继承同部位旧装备的强化等级（旧装备变回 +0）。
 // 价格约为「在新装备上重新强化到同等级」的 35%（还不用承担失败），让强化成为长期投入，换装备只看底子
 export function inheritCost(it, from) {
+  if (!canImprove(it) || !canImprove(from) || it.slot !== from.slot) return 0;
   let c = 0;
-  for (let e = it.enh; e < from.enh; e++) c += (40 + it.ilvl * 20) * (1 + e * 0.7) * (1 + it.rar * 0.3);
+  for (let e = it.enh; e < from.enh; e++) c += (40 + it.ilvl * 20) * (1 + e * 0.7) * (1 + COST_TIER[it.rar] * 0.3);
   return Math.round(c * 0.35);
 }
 
-export const sellPrice = (it) => Math.round((5 + it.ilvl * 3) * [1, 3, 8, 25][it.rar] * (1 + it.enh * 0.25));
+export const sellPrice = (it) => Math.round((5 + it.ilvl * 3) * SELL_MULT[COST_TIER[it.rar]] * (1 + it.enh * 0.25));

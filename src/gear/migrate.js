@@ -36,6 +36,7 @@ export function migrateSave(input) {
   }
   save.equip = equip;
   save.bag = (save.bag || []).map(convert);
+  save.legendPity ||= {};
   save.v = 2;
   return save;
 }

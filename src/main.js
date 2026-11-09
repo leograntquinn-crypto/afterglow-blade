@@ -1,3 +1,5 @@
+import { DROP_RULES } from './gear/rules.js';
+import { compareItem, COMPARISON } from './gear/compare.js';
 // 游戏主循环与场景管理
 //
 // 场景流程：标题 → 营地（HTML 界面）→ 地下城（一间间房间 → 首领）→ 结算 → 营地 ……
@@ -760,7 +762,7 @@ class Game {
     this.fx.flash(COLORS.gold, 0.2);
     this.fx.ring(chest.x, chest.y, 30, COLORS.gold, 20, 8, 24, 5);
     for (let i = 0; i < 4; i++) this.loots.push(new Loot({ x: chest.x, y: chest.y, gold: Math.round(rand(8, 14) * (1 + L * 0.3)), vx: rand(-4, 4) }));
-    for (let i = 0; i < 2; i++) this.dropItem(chest.x, chest.y, randomDrop(L, { minRar: 1, luck: 1 }));
+    for (let i = 0; i < 2; i++) this.dropItem(chest.x, chest.y, randomDrop(L, { save:this.save, stage:this.stageIdx+1, source:this.trial ? 'trial' : 'normal', minRar: 1, luck: 1 }));
   }
 
   // 结束一次出征（通关、死亡或撤退都会走这里）：存档
@@ -782,6 +784,7 @@ class Game {
     this.run.firstClear = first;
     this.gainXp(Math.round(40 * st.lv * mul), false);
     this.gainGold(Math.round(60 * st.lv * mul));
+    if (this.diff>=1) for(let i=0;i<DROP_RULES.clearItems;i++) this.pickup({item:randomDrop(st.lv,{save:s,stage:this.stageIdx+1,source:'clear',diff:this.diff})});
     s.cleared[key] = true;
     const b = s.best[key];
     this.newBest = !b || this.result.total > b.total || (this.result.total === b.total && this.frame / 60 < b.time);
@@ -845,9 +848,9 @@ class Game {
     const luck = D.luck + sp * 1.5;
     if (e.isBoss) {
       // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高；地狱难度第一件必定是传说
-      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 4 : L > 1 ? 2 : 1, luck: 2 + luck }));
+      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { save:this.save, stage:this.stageIdx+1, source:'boss', boss:this.stage.boss, minRar: this.diff === 2 && i === 0 ? 4 : L > 1 ? 2 : 1, luck: 2 + luck }));
     } else if (Math.random() < (e.elite ? 1 : e.T.drop * (1 + D.luck * 0.3) * (1 + sp))) {
-      this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + luck }));
+      this.dropItem(e.x, e.y, randomDrop(L, { save:this.save, stage:this.stageIdx+1, source:this.trial ? 'trial' : 'normal', minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + luck }));
     }
   }
 
@@ -875,7 +878,8 @@ class Game {
     } else {
       this.save.bag.push(it);
       this.run.items.push(it);
-      this.toast(`获得 [${RARITY[it.rar].name}] ${itemTitle(it)}`, color);
+      const cmp=compareItem(this.save,it), label=COMPARISON[cmp.verdict];
+      this.toast(`获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color);
     }
     this.fx.label(p.x, p.y, p.z + 110, it.name, color, 20);
     sfx(it.rar >= 2 ? 'rare' : 'pickup');
