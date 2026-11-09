@@ -35,13 +35,14 @@ function readConfig(file) {
   if (!Array.isArray(cells) || !cells.length) throw new Error('配置需要至少一个格子（cells）');
   if (!Number.isInteger(columns) || columns < 1) throw new Error('columns 必须是正整数');
   cells.forEach((cell, i) => {
-    const { label, stage, spawn, moment, frames } = cell || {};
+    const { label, stage, spawn, moment, frames, phase } = cell || {};
     if (typeof label !== 'string' || !label.trim() ||
         !Number.isSafeInteger(stage) || stage < 0 ||
         typeof spawn !== 'string' || !spawn.trim() ||
         typeof moment !== 'string' || !/^(tele|attack|hit|death|move:\S+)$/.test(moment) ||
-        !Number.isSafeInteger(frames) || frames < 0) {
-      throw new Error('第 ' + (i + 1) + ' 格配置无效，检查 label / stage / spawn / moment / frames');
+        !Number.isSafeInteger(frames) || frames < 0 ||
+        (phase !== undefined && (!Number.isSafeInteger(phase) || phase < 0 || phase > 2))) {
+      throw new Error('第 ' + (i + 1) + ' 格配置无效，检查 label / stage / spawn / moment / frames / phase');
     }
   });
   return { cells, columns };
@@ -128,6 +129,8 @@ async function captureCell({ cell, vw, vh, tw, th }) {
     if (isBoss) {
       g.boss = e;
       e.restT = 9999;
+      // 可选 phase：满血时不会被阶段判定改回去，出招速度与染色都按该阶段走。
+      if (cell.phase !== undefined) e.phase = cell.phase;
     }
 
     if (moment === 'hit' || moment === 'death') {
