@@ -40,7 +40,31 @@ export class Hub {
     this.tooltip.setAttribute('role', 'tooltip');
     this.tooltip.hidden = true;
     root.append(this.tooltip);
+    this.statsLocked = false;
+    this.statsHovered = false;
     this.finePointer = matchMedia('(pointer: fine)');
+    root.addEventListener('mouseenter', e => {
+      if (e.target.id === 'preview' && this.finePointer.matches) {
+        this.statsHovered = true;
+        this.updateStatsPop();
+      }
+    }, true);
+    root.addEventListener('mouseleave', e => {
+      if (e.target.id === 'preview') {
+        this.statsHovered = false;
+        this.updateStatsPop();
+      }
+    }, true);
+    document.addEventListener('click', e => {
+      if (e.target === this.preview) {
+        this.statsLocked = !this.statsLocked;
+        this.statsHovered = false;
+      } else if (!e.target.closest('.stats-pop')) {
+        this.statsLocked = false;
+        this.statsHovered = false;
+      }
+      this.updateStatsPop();
+    }, true);
     root.addEventListener('mouseenter', e => {
       if (e.target.matches?.('.slots .slot, .bag .cell[data-act="sel"][data-id]')) this.showGearTooltip(e);
     }, true);
@@ -51,6 +75,10 @@ export class Hub {
     for (const event of ['pointerdown', 'dragstart', 'wheel']) root.addEventListener(event, () => this.hideGearTooltip(), {capture: true, passive: true});
     document.addEventListener('scroll', () => this.hideGearTooltip(), {capture: true, passive: true});
     this.finePointer.addEventListener('change', () => this.hideGearTooltip());
+    this.finePointer.addEventListener('change', () => {
+      this.statsHovered = false;
+      this.updateStatsPop();
+    });
     window.addEventListener('resize', () => this.hideGearTooltip());
     this.toastEl = document.getElementById('hub-toast'); // 在 #hub 外面：地图上也要能弹提示
     root.addEventListener('click', (e) => this.onClick(e));
@@ -59,10 +87,13 @@ export class Hub {
   get save() { return this.g.save; }
 
   show() {
+    this.statsLocked = this.statsHovered = false;
     this.root.hidden = false;
     this.render();
   }
   hide() {
+    this.statsLocked = this.statsHovered = false;
+    this.updateStatsPop();
     this.root.hidden = true;
     this.closeModal();
   }
@@ -98,7 +129,19 @@ export class Hub {
     });
     this.body.innerHTML = this[`render_${this.tab}`]();
     this.preview = this.body.querySelector('#preview');
+    if (this.tab !== 'hero') this.statsLocked = false;
+    this.statsHovered = !!this.preview && this.finePointer.matches && this.preview.matches(':hover');
+    this.updateStatsPop();
     if (this.sel) this.renderModal();
+  }
+
+  updateStatsPop() {
+    const pop = this.body.querySelector('.stats-pop');
+    if (pop) {
+      pop.hidden = !(this.statsLocked || this.statsHovered);
+      pop.classList.toggle('is-locked', this.statsLocked);
+    }
+    this.preview?.setAttribute('aria-expanded', String(!!pop && !pop.hidden));
   }
 
   canLearnAny() {
@@ -205,9 +248,9 @@ export class Hub {
 
     return `<div class="hero">
       <section class="panel figure">
-        <canvas id="preview" width="440" height="460" aria-label="角色外观预览"></canvas>
+        <canvas id="preview" width="440" height="460" aria-label="角色外观预览" aria-controls="hero-stats" aria-expanded="false"></canvas>
         <div class="slots">${slots}</div>
-      </section>
+      <div class="stats-pop" id="hero-stats" hidden>
       <section class="panel">
         <h4>属性</h4>
         <div class="kvs">${rows}</div>
@@ -215,6 +258,8 @@ export class Hub {
         <div class="attr-head"><h4>属性点</h4><span class="pts">${s.statPts > 0 ? `可分配 <b>${s.statPts}</b>` : '升级获得 3 点'}</span></div>
         ${attrs}
         <button class="btn ghost" data-act="resetStats">重置属性点（免费）</button>
+      </section>
+      </div>
       </section>
       <section class="panel">
         <div class="attr-head"><h4>背包 <small>${s.bag.length} / ${BAG_MAX}</small></h4>

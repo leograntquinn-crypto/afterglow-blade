@@ -256,11 +256,17 @@
   .lock { font-size: 12px; color: var(--mute); }
 
   /* 角色 */
-  .hero { display: grid; grid-template-columns: minmax(360px, 1.35fr) minmax(220px, 1fr) minmax(220px, 1fr); gap: 14px; align-items: start; }
-  @media (max-width: 1100px) { .hero { grid-template-columns: minmax(360px, 1.35fr) minmax(220px, 1fr); } .hero .panel:last-child { grid-column: 1 / -1; } }
+  .hero { display: grid; grid-template-columns: minmax(360px, 1fr) minmax(220px, calc((100% - 28px) / 3.35)); gap: 14px; align-items: start; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-  .figure { container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+  .figure { position: relative; container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
   #preview { grid-column: 2; grid-row: 1; width: 100%; max-width: 300px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
+  .stats-pop { pointer-events: none; position: absolute; z-index: 5; top: 14px; right: 88px; width: min(320px, calc(100% - 176px)); max-height: min(580px, 65vh); overflow: auto; }
+  .stats-pop.is-locked { pointer-events: auto; }
+  .stats-pop[hidden] { display: none; }
+  #preview { cursor: pointer; }
+  @media (pointer: coarse) {
+    .stats-pop { right: 16px; width: min(320px, calc(100% - 32px)); }
+  }
   .slots { grid-column: 1 / -1; grid-row: 1; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; pointer-events: none; }
   .slot { box-sizing: border-box; grid-column: var(--slot-col); grid-row: var(--slot-row); position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 0; cursor: pointer; pointer-events: auto; background: none; border: none; box-shadow: none; }
   .slot.empty { cursor: default; color: var(--mute); border: 1px dashed var(--rc, var(--line)); border-radius: 6px; background: rgba(0,0,0,.3); opacity: 1; }
@@ -268,8 +274,8 @@
   @media (max-width: 680px) {
     .hero { grid-template-columns: minmax(0, 1fr); }
   }
-  /* 三栏桌面的面板更窄；下限排除桌面，上限覆盖无 viewport meta 的手机两栏面板。 */
-  @container (min-width: 440px) and (max-width: 620px) {
+  /* 触屏保留立绘下方五列槽位，不压缩装备格。 */
+  @media (pointer: coarse) {
     .figure > #preview { grid-column: 1 / -1; grid-row: 1; max-width: 280px; }
     .figure > .slots { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(5, minmax(56px, 1fr)); gap: 4px; }
     .figure > .slots > .slot { grid-column: auto; grid-row: auto; }
