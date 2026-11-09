@@ -137,7 +137,7 @@ class BossGroundMark {
     const alpha = Math.min(1, (this.t + 1) / rise, (this.life - this.t) / fade);
     const k = 2 * this.radius * img.sc / img.fw;
     if (!e.spin) {
-      put(ctx, img, sx, sy, k, e.color, alpha * (e.alpha ?? 1), 1, 0, 'mul');
+      put(ctx, img, sx, sy, k, e.color, alpha * (e.alpha ?? 1)); // 发光印记：染亮色叠加（乘色叠加会暗到看不见，模块测试发现）
       return;
     }
     // 在地面的 2:1 透视里转动，法阵不会竖起来。
@@ -247,7 +247,7 @@ export function ironJawCleave(game, boss, up = false) {
 export function startIronJawDrag(game, boss) {
   if (boss.key !== 'ironJaw') return;
   const p = game.player, e = iron.drag;
-  game.fx.flip(e.fb, p.x, p.y, 0, { follow: p, ground: true, size: e.k, color: e.color, life: 12 });
+  game.fx.flip(e.fb, p.x, p.y, 0, { follow: p, size: e.k, color: e.color, life: 12 }); // 素材本身已按地面透视压扁画，不再走 ground（会再压一次）
 }
 
 export function hasIronJawCharge(boss) {
