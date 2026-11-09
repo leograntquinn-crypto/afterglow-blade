@@ -125,7 +125,8 @@ export class Hub {
     ensureContracts(s);
     this.root.querySelector('#h-stones').textContent = s.stones;
     this.root.querySelector('#h-sync').textContent = this.g.store.status === 'cloud' ? '云存档已同步' : '本地存档';
-    this.root.querySelector('#h-music').textContent = music.muted ? '音乐：关' : '音乐：开';
+    this.root.querySelector('#h-music .sr-only').textContent = music.muted ? '音乐：关' : '音乐：开';
+    this.root.querySelector('#h-music').classList.toggle('off', music.muted);
     this.root.querySelectorAll('[data-tab]').forEach((b) => {
       b.classList.toggle('on', b.dataset.tab === this.tab);
       const dot = (b.dataset.tab === 'hero' && s.statPts > 0) || (b.dataset.tab === 'skills' && this.canLearnAny());

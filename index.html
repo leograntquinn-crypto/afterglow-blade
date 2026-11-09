@@ -89,7 +89,7 @@
 
   #pause-btn {
     position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
-    width: 40px; height: 32px; border-radius: 8px; border: 1px solid var(--line); background: rgba(11, 9, 16, .5);
+    width: 52px; height: 52px;
     font-size: 14px; letter-spacing: 1px; display: none;
   }
   body[data-scene="play"] #pause-btn { display: block; }
@@ -336,10 +336,9 @@
 
   /* 大地图 */
   #world-bar {
-    position: fixed; z-index: 4; display: none; gap: 6px; top: max(10px, env(safe-area-inset-top, 0px)); right: max(12px, env(safe-area-inset-right, 0px));
+    position: fixed; z-index: 4; display: none; gap: 10px; right: 18px; bottom: 18px; flex-direction: column;
   }
   body[data-scene="world"]:not([data-menu]) #world-bar { display: flex; }
-  #world-bar .btn { background: rgba(11, 9, 16, .72); }
   #site-panel { position: fixed; inset: 0; z-index: 6; display: grid; place-items: center; background: rgba(5, 4, 8, .45); padding: 16px max(16px, env(safe-area-inset-right, 0px)) 16px max(16px, env(safe-area-inset-left, 0px)); }
   #site-panel[hidden] { display: none; }
   .sheet.site { position: relative; width: min(420px, 100%); padding: 10px; }
@@ -351,27 +350,30 @@
 
   .tabs.rail {
     position: fixed; right: 18px; bottom: 18px; z-index: 6;
-    display: flex; flex-direction: column; gap: 6px; margin: 0; border-bottom: none;
-    background:
-      url('assets/ui/frame_corner_tl.webp') 0 0 / 40px 40px no-repeat,
-      url('assets/ui/frame_corner_tr.webp') 100% 0 / 40px 40px no-repeat,
-      url('assets/ui/frame_corner_bl.webp') 0 100% / 40px 40px no-repeat,
-      url('assets/ui/frame_corner_br.webp') 100% 100% / 40px 40px no-repeat,
-      url('assets/ui/frame_edge_h.webp') left 40px top 3px / 55px 13px repeat-x,
-      url('assets/ui/frame_edge_h_flip.webp') left 40px bottom 3px / 55px 13px repeat-x,
-      url('assets/ui/frame_edge_v.webp') left 3px top 40px / 13px 55px repeat-y,
-      url('assets/ui/frame_edge_v_flip.webp') right 3px top 40px / 13px 55px repeat-y,
-      var(--panel);
-    border: 0; border-radius: 0; padding: 16px 14px;
+    display: flex; flex-direction: column; gap: 10px; margin: 0;
+    background: none; padding: 0; border: 0;
   }
-  .tabs.rail button { font: 20px var(--font-title); padding: 8px 16px; text-align: center; border-bottom: none; margin: 0; }
-  .tabs.rail button.dot::after { top: 6px; right: 6px; }
-  .tabs.rail .back { margin: 8px 0 0; font: 15px var(--font-ui); }
-  @media (max-width: 680px) {
-    .tabs.rail { right: 10px; bottom: 10px; }
-    .tabs.rail button { font-size: 17px; padding: 6px 12px; }
-    .tabs.rail .back { font-size: 15px; }
+  .tabs.rail button { margin: 0; }
+
+  .ibtn, .tabs button.ibtn {
+    position: relative; width: 56px; height: 56px; flex: none; padding: 0; border: 0; border-radius: 50%; cursor: pointer;
+    background: url('assets/ui/icons/btn_medallion.webp') center / 100% 100% no-repeat;
+    display: grid; place-items: center;
   }
+  .ibtn::before { content: ""; position: absolute; inset: 15%; border-radius: 50%; background: radial-gradient(circle at 50% 38%, #251c33, #110c18 74%); box-shadow: inset 0 1px 6px rgba(0,0,0,.85); }
+  .ibtn img { width: 60%; height: 60%; object-fit: contain; position: relative; z-index: 1; filter: brightness(.95); transition: filter .15s ease; pointer-events: none; }
+  .ibtn:hover img, .ibtn:focus-visible img { filter: brightness(1.2); }
+  .ibtn:focus-visible { outline: 2px solid rgba(233,207,142,.7); outline-offset: 2px; }
+  .ibtn.on img { filter: brightness(1.22) drop-shadow(0 0 6px rgba(233,207,142,.5)); }
+  .ibtn.dot::after, .tabs button.ibtn.dot::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%; background: var(--ember); z-index: 2; }
+  .ibtn.sm { width: 44px; height: 44px; }
+  .ibtn.off img { opacity: .38; filter: grayscale(.5) brightness(.8); }
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0, 0, 0, 0); white-space: nowrap; }
+  .ibtn .tip { position: absolute; right: calc(100% + 10px); top: 50%; transform: translateY(-50%) translateX(4px); background: linear-gradient(180deg, #1c1626, #0f0c14); border: 1px solid rgba(233,207,142,.35); color: var(--ink); font: 14px var(--font-ui); padding: 5px 10px; border-radius: 6px; white-space: nowrap; opacity: 0; pointer-events: none; transition: opacity .15s ease, transform .15s ease; z-index: 40; }
+  .ibtn:hover .tip, .ibtn:focus-visible .tip { opacity: 1; transform: translateY(-50%) translateX(0); }
+  .ibtn .tip.b { right: auto; left: 50%; top: calc(100% + 8px); transform: translateX(-50%) translateY(-4px); }
+  .ibtn:hover .tip.b, .ibtn:focus-visible .tip.b { transform: translateX(-50%) translateY(0); }
+  @media (pointer: coarse) { .ibtn .tip { display: none; } }
 
 
   #hub-gear-tooltip {
@@ -459,7 +461,7 @@
     <button class="tbtn ult" data-action="ult" aria-label="残光终焉">觉</button>
   </div>
 </div>
-<button id="pause-btn" aria-label="暂停">❚❚</button>
+<button class="ibtn" id="pause-btn" aria-label="暂停"><img src="assets/ui/icons/icon_pause.webp" alt=""></button>
 
 <div id="settings" hidden>
   <div class="sheet wide" role="dialog" aria-label="设置">
@@ -533,15 +535,15 @@
       <span class="stat-chip gold">金币<b id="h-gold">0</b></span>
       <span class="stat-chip stone" title="完成委托获得，用来给稀有、传说装备铭刻指定的刻印">刻印石<b id="h-stones">0</b></span>
       <span class="sync" id="h-sync"></span>
-      <button class="btn ghost mini-text" id="h-music" data-act="music" aria-label="开关背景音乐">音乐：开</button>
-      <button class="btn ghost mini-text" data-act="story">剧情</button>
-      <button class="btn ghost mini-text" data-act="settings">设置</button>
+      <button class="ibtn sm" id="h-music" data-act="music" aria-label="开关背景音乐"><img src="assets/ui/icons/icon_music.webp" alt=""><span class="tip b">音乐</span><span class="sr-only">音乐：开</span></button>
+      <button class="ibtn sm" data-act="story" aria-label="剧情"><img src="assets/ui/icons/icon_story.webp" alt=""><span class="tip b">剧情</span></button>
+      <button class="ibtn sm" data-act="settings" aria-label="设置"><img src="assets/ui/icons/icon_settings.webp" alt=""><span class="tip b">设置</span></button>
     </header>
     <nav class="tabs rail" aria-label="菜单">
-      <button data-tab="hero">角色</button>
-      <button data-tab="skills">技能</button>
-      <button data-tab="contracts">委托</button>
-      <button class="back" data-act="close-hub" aria-label="返回地图">返回地图 ✕</button>
+      <button class="ibtn" data-tab="hero" aria-label="角色"><img src="assets/ui/icons/icon_hero.webp" alt=""><span class="tip">角色</span></button>
+      <button class="ibtn" data-tab="skills" aria-label="技能"><img src="assets/ui/icons/icon_skills.webp" alt=""><span class="tip">技能</span></button>
+      <button class="ibtn" data-tab="contracts" aria-label="委托"><img src="assets/ui/icons/icon_contracts.webp" alt=""><span class="tip">委托</span></button>
+      <button class="ibtn back" data-act="close-hub" aria-label="返回地图"><img src="assets/ui/icons/icon_map.webp" alt=""><span class="tip">返回地图</span></button>
     </nav>
     <main id="hub-body"></main>
   </div>
@@ -549,7 +551,7 @@
 </div>
 <div id="hub-toast" role="status"></div>
 
-<!-- 大地图：走到地点时弹出的卡片（关卡 / 练剑场 / 试炼），和右上角的菜单按钮 -->
+<!-- 大地图：走到地点时弹出的卡片（关卡 / 练剑场 / 试炼），和右下角的菜单按钮 -->
 <div id="site-panel" hidden>
   <div class="sheet site" role="dialog" aria-label="地点">
     <button class="close" data-site-close aria-label="关闭">×</button>
@@ -558,11 +560,11 @@
   </div>
 </div>
 <nav id="world-bar" aria-label="地图菜单">
-  <button class="btn ghost mini-text" data-menu="hero">角色</button>
-  <button class="btn ghost mini-text" data-menu="skills">技能</button>
-  <button class="btn ghost mini-text" data-menu="contracts">委托</button>
-  <button class="btn ghost mini-text" data-menu="story">剧情</button>
-  <button class="btn ghost mini-text" data-menu="settings">设置</button>
+  <button class="ibtn" data-menu="hero" aria-label="角色"><img src="assets/ui/icons/icon_hero.webp" alt=""><span class="tip">角色</span></button>
+  <button class="ibtn" data-menu="skills" aria-label="技能"><img src="assets/ui/icons/icon_skills.webp" alt=""><span class="tip">技能</span></button>
+  <button class="ibtn" data-menu="contracts" aria-label="委托"><img src="assets/ui/icons/icon_contracts.webp" alt=""><span class="tip">委托</span></button>
+  <button class="ibtn" data-menu="story" aria-label="剧情"><img src="assets/ui/icons/icon_story.webp" alt=""><span class="tip">剧情</span></button>
+  <button class="ibtn" data-menu="settings" aria-label="设置"><img src="assets/ui/icons/icon_settings.webp" alt=""><span class="tip">设置</span></button>
 </nav>
 
 <p id="rotate">把手机横过来玩，画面会更大</p>
