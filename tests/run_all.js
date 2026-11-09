@@ -48,6 +48,7 @@ const TESTS = [
   test('bosspacktest', 300),
   test('bossfxtest', 300),
   test('ironjawfxtest', 300),
+  test('afterimagefxtest', 300),
   ...[
     'afftest', 'traintest', 'train2', 'countertest', 'walktest', 'difftest',
     'coretest', 'contracttest', 'trialtest', 'trialsoak', 'gear', 'settest',
