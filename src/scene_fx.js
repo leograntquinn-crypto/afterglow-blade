@@ -8,8 +8,8 @@ const SCENE_FX = {
     baseAlpha: 0.72, flameAlpha: 0.92, phaseStep: 3,
   },
   stairs: {
-    tex: 'stairs_down', glow: 'stairs_glow', width: 172,
-    lockedColor: '#ff4d5e', openColor: '#7ff3ff', alpha: 0.2, pulse: 0.35,
+    tex: 'stairs_down', glow: 'stairs_glow', width: 210, // 画布宽；台阶本身约占 0.6，和原来梯形开口差不多
+    lockedColor: '#ff4d5e', openColor: '#7ff3ff', alpha: 0.6, pulse: 0.5, glowPasses: 2, // 封着 / 可走是玩法信息：沿口光要一眼看得出红 / 青
   },
   runes: { tex: 'trial_runes', color: '#7ff3ff', alpha: 0.8, breathSpeed: 0.024, breathDepth: 0.1 },
 };
@@ -43,7 +43,8 @@ export function drawSceneStairs(ctx, x, y, open, pulse) {
   // 两张原画布一样大，使用同一个比例和顶边中点，台阶沿口的光不会移位。
   const k = S.width / stairs.fw;
   put(ctx, stairs, x, y, k, k, 1);
-  put(ctx, glow, x, y, k, k, S.alpha + S.pulse * pulse, open ? S.openColor : S.lockedColor);
+  const a = Math.min(1, S.alpha + S.pulse * pulse), c = open ? S.openColor : S.lockedColor;
+  for (let i = 0; i < S.glowPasses; i++) put(ctx, glow, x, y, k, k, a, c);
   return true;
 }
 
