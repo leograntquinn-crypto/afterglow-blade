@@ -168,6 +168,21 @@ export const ENEMY_TYPE_FX = {
 
 // ---------- 首领专属特效（画法见 boss_fx.js）----------
 export const BOSS_FX = {
+  afterimage: {
+    slash: { fb: 'rev_slash', size: 1, z: 0.62 },
+    spin: { fb: 'rev_slash', size: 1.3, z: 0.54, turn: Math.PI / 40 },
+    wave: { fb: 'rev_wave', k: 0.57, x: -40, z: 50 },
+    out: { fb: 'shadow_step_out', size: 1 },
+    appear: { fb: 'shadow_step_in', size: 1 },
+    sigil: { tex: 'mirror_sigil', size: 0.6, z: 1.35 },
+    route: { tex: 'streak_line', height: 14, scroll: 3, alpha: 0.8, fallback: { color: '#ff4d5e', alpha: 0.9 } }, // fallback：残影包没载好时借敌人路线光带 lane_band（可见高约 64 里的 33）
+    vertex: { fb: 'exec_mark', k: 0.35 },
+    dash: { fb: 'exec_dash', k: 0.5, width: 384, z: 50 },
+    read: { fb: 'habit_read', size: 1, z: 0.8 },
+    gather: { fb: 'reversal_gather', size: 1 },
+    burst: { fb: 'reversal_burst', size: 1.4, z: 0.5 },
+    groundDeath: { fb: 'afterimage_death', color: '#b46bff', size: 1.2, towardHero: true },
+  },
   nightRaven: {
     feather: { fb: 'feather_blade_spin', trail: 'feather_trail', k: 0.42, trailColor: '#ff4dd2' },   // 回旋羽：k = 逻辑像素 / 交付像素
     burst: { fb: 'feather_burst', color: '#ff4dd2', size: 1 },      // 化作黑羽（size × 身高 / 260）
@@ -180,5 +195,20 @@ export const BOSS_FX = {
     gather: { fb: 'channel_gather', color: '#ff4dd2', size: 1 },
     veil: { tex: 'night_veil' },                                     // H-2 只做读条结束的一闪；第二阶段常驻压暗是机制，我来做
     death: { fb: 'raven_death', color: '#ff4dd2', size: 1.2 },
+  },
+  ironJaw: {
+    chain: { tex: 'chain_glow', color: '#ff7a2e', height: 10, alpha: 0.82 },
+    hook: { fb: 'hook_spark', color: '#ff7a2e', k: 0.5 },
+    drag: { fb: 'chain_drag', color: '#ff7a2e', k: 0.55 },
+    cleave: { fb: 'heavy_cleave', color: '#ff7a2e', k: 0.58, x: 0.12, z: 0.62 },
+    quake: { fb: 'stomp_quake', color: '#ff7a2e', k: 0.52 }, // 素材已按地面透视压扁（2:1），不要 ground（粒子的 ground 会再压到 0.32）
+    wave: { fb: 'stomp_wave', color: '#ff7a2e', k: 0.48 },
+    stompScales: [1, 1.2, 1.5],
+    charge: { fb: 'charge_sparks', color: '#ff7a2e', k: 0.56 },
+    mark: { tex: 'execution_mark', color: '#ff7a2e', rise: 0.3, alpha: 0.6 },
+    glint: { fb: 'headsman_glint', color: '#e1eeff', k: 0.43, x: 0.28, z: 1.03 },
+    drop: { fb: 'execution_drop', color: '#ff7a2e', k: 0.80, alpha: 0.72 },
+    chainBreak: { fb: 'chain_break', color: '#ff7a2e', k: 0.64 },
+    groundDeath: { fb: 'ironjaw_death', color: '#ff7a2e', size: 1.2 },
   },
 };

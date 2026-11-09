@@ -1,0 +1,17 @@
+{
+  "columns": 4,
+  "cells": [
+    {"label": "铁颚 · 锁链钩甩出", "stage": 2, "spawn": "ironJaw", "moment": "move:chainHook", "frames": 40},
+    {"label": "铁颚 · 重砸落地", "stage": 2, "spawn": "ironJaw", "moment": "move:slam", "frames": 52},
+    {"label": "铁颚 · 刑台三震 1", "stage": 2, "spawn": "ironJaw", "moment": "move:tripleStomp", "frames": 34},
+    {"label": "铁颚 · 刑台三震 3", "stage": 2, "spawn": "ironJaw", "moment": "move:tripleStomp", "frames": 68},
+    {"label": "铁颚 · 冲击波", "stage": 2, "spawn": "ironJaw", "moment": "move:shockwave", "frames": 52},
+    {"label": "铁颚 · 冲锋", "stage": 2, "spawn": "ironJaw", "moment": "move:charge", "frames": 40},
+    {"label": "铁颚 · 读条", "stage": 2, "spawn": "ironJaw", "moment": "move:channel", "frames": 60},
+    {"label": "铁颚 · 召唤", "stage": 2, "spawn": "ironJaw", "moment": "move:summon", "frames": 10},
+    {"label": "铁颚 · 死亡", "stage": 2, "spawn": "ironJaw", "moment": "death", "frames": 40},
+    {"label": "骸骨统领 · 重砸（不变）", "stage": 0, "spawn": "boneLord", "moment": "move:slam", "frames": 52},
+    {"label": "骸骨统领 · 冲击波（不变）", "stage": 0, "spawn": "boneLord", "moment": "move:shockwave", "frames": 52},
+    {"label": "夜鸦 · 读条（不变）", "stage": 1, "spawn": "nightRaven", "moment": "move:channel", "frames": 60}
+  ]
+}

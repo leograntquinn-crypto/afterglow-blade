@@ -1,9 +1,9 @@
 // 敌人特效的画法（fx_enemy_v1，docs/ART_FX_ENEMY_V1.md）：按 fx_data.js 的 ENEMY_FX / ENEMY_TYPE_FX 表画。
 // 每个函数画成了返回 true；素材没载好返回 false，调用的地方退回原来代码画的样子（预警是玩法信息，不能不画）。
 // 素材是灰度的发光图（add），引擎按状态染色；箭是带颜色的实物（normal）。
-import { enemyTex, enemyFb, enemyTypeFb } from './fx_art.js';
+import { enemyTex, enemyFb, enemyTypeFb, flipbook } from './fx_art.js';
 import { tinted } from './fx_tex.js';
-import { ENEMY_FX, ENEMY_TYPE_FX } from './fx_data.js';
+import { ENEMY_FX, ENEMY_TYPE_FX, BOSS_FX } from './fx_data.js';
 
 const FIG = 260; // 素材里的人按身高 260 交付像素画
 
@@ -133,7 +133,7 @@ export function drawMeteor(ctx, sx, sy, h, t, color) {
 }
 
 // 沿一条线平铺一张可平铺的贴图并往前滚动：从 (x0, y0) 往 ang 方向铺 len 长；th = 贴图画多高（逻辑像素）；off = 滚动量
-function tileAlong(ctx, img, x0, y0, ang, len, th, off, color) {
+export function tileAlong(ctx, img, x0, y0, ang, len, th, off, color) {
   const tw = (img.fw / img.fh) * th; // 平铺的贴图不裁边：整张的宽高比
   const src = tinted(img, color);
   ctx.save();
@@ -200,14 +200,17 @@ export function arrowBreakFx(game, x, y, z, facing) {
 // ---------- 第 2 批：各敌人自己的预警 / 出招 / 命中 / 死亡（fx_enemy_v1_types，按关卡里有的敌人载入）----------
 // 一次性的交给粒子系统播（跟着敌人走的用 follow）；跟着状态走的（屠夫烧红的斧刃、烬翼发亮的裂纹）在 Enemy.draw 里每帧画（drawTypeTele），
 // 这样佯攻露出破绽的那一刻能换成琥珀色、被打断马上消失。返回画没画（素材没到 / 这种敌人没有这一项 → false，调用的地方再决定用不用通用的）
-export const typeFxEntry = (e, kind) => (!e.isBoss && e.look && ENEMY_TYPE_FX[e.look.rig]?.[kind]) || null;
-export const hasTypeFx = (e, kind) => { const E = typeFxEntry(e, kind); return !!(E?.fb && enemyTypeFb(e.look.rig, E.fb)); };
+export const typeFxEntry = (e, kind) => (e.isBoss
+  ? kind === 'death' && BOSS_FX[e.key]?.groundDeath
+  : ENEMY_TYPE_FX[e.look?.rig]?.[kind]) || null;
+const typeFlipbook = (e, id) => e.isBoss ? flipbook(id) : enemyTypeFb(e.look.rig, id);
+export const hasTypeFx = (e, kind) => { const E = typeFxEntry(e, kind); return !!(E?.fb && typeFlipbook(e, E.fb)); };
 // o.at = [x, z]：放在别的位置（命中放在打中的那一点）；o.dir：朝向（命中按打过来的方向）
 export function typeFx(game, e, kind, o = {}) {
   const E = typeFxEntry(e, kind);
-  if (!E?.fb || E.attached || !enemyTypeFb(e.look.rig, E.fb)) return false;
+  if (!E?.fb || E.attached || !typeFlipbook(e, E.fb)) return false;
   const color = (o.feint && E.feintColor) || E.color || '#ffffff';
-  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0), facing = o.dir ?? e.facing;
+  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0), facing = E.towardHero ? (game.player.x > e.x ? -1 : 1) : o.dir ?? e.facing;
   const [x, z] = o.at ?? [e.x + facing * ox, e.z + oz];
   return !!game.fx.flip(E.fb, x, e.y, z, {
     color, size: (e.h / FIG) * (E.size ?? 1), facing, hold: E.hold, holdFade: !!E.hold,

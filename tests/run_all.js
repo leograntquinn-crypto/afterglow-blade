@@ -47,6 +47,8 @@ const TESTS = [
   test('ravennighttest', 300),
   test('bosspacktest', 300),
   test('bossfxtest', 300),
+  test('ironjawfxtest', 300),
+  test('afterimagefxtest', 300),
   test('scenefxtest', 300),
   ...[
     'afftest', 'traintest', 'train2', 'countertest', 'walktest', 'difftest',
@@ -173,13 +175,20 @@ async function startServer(firstPort) {
   throw new Error('找不到可用端口');
 }
 
+// 控制台报的错里，网络层的资源载入失败（net::ERR_*）是外部环境问题——比如没有外网时 index.html 的 Google 字体样式表拉不到——不算测试失败。
+// 仍然算失败的：HTTP 状态错误（自己的素材 404 / 500，消息里是 "status of 404"）、页面脚本报错。
+const NET_RESOURCE_ERROR = /^(?:console: )?Failed to load resource: net::ERR_[A-Z_]+$/; // soakd / soakd60 给控制台消息加了 "console: " 前缀
+function realErrors(text) {
+  return text.split(/\s*\|\s*/).map((s) => s.trim()).filter((s) => s && s !== 'none' && !NET_RESOURCE_ERROR.test(s));
+}
+
 function outputFailure(job, output) {
   const soak = job.script === 'soakd' || job.script === 'soakd60';
   let jsonLines = 0;
   for (const line of output.split(/\r?\n/)) {
     if (/\b(?:FAIL|FAILED)\b/.test(line)) return line;
     const errors = /^(?:ERR |PAGE ERRORS )(.*)$/.exec(line);
-    if (errors && errors[1].trim() !== 'none') return line;
+    if (errors && realErrors(errors[1]).length) return line;
     if (!soak || !line.trim()) continue;
     let result;
     try {

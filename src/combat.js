@@ -7,7 +7,7 @@ import { BOSS_SPRITES } from './enemy_sprites.js';
 import { FEINT } from './ai_data.js';
 import { ENEMY_FX } from './fx_data.js';
 import { drawWarn, drawWarnFlash, drawMeteor, drawLaneBand, drawArrow, arrowBreakFx } from './enemy_fx.js';
-import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact } from './boss_fx.js';
+import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact, drawIronJawChain, drawAfterimageWave } from './boss_fx.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -95,6 +95,7 @@ export class Projectile {
     ctx.translate(sx, sy);
     ctx.scale(this.facing, 1);
     if (this.kind === 'wave') {
+      if (drawAfterimageWave(ctx, this)) { ctx.restore(); return; }
       // 剑气：新月形，后面拖两层渐淡的残像；外层柔光 + 刀刃白芯
       ctx.globalCompositeOperation = 'lighter';
       const a = Math.min(1, this.life / 10), sc = this.scale || 1, col = this.color || COLORS.blade, T = tex();
@@ -174,6 +175,7 @@ export class Projectile {
             ctx.drawImage(BS.link, -8, -8, 16, 16);
             ctx.restore();
           }
+          drawIronJawChain(ctx, o, tail, ang, L);
         } else if (!art) {
           const n = Math.max(1, Math.floor(L / 9));
           ctx.strokeStyle = '#5a504a';
@@ -254,7 +256,10 @@ export class Hazard {
       }
       game.fx.shake(this.hit.shake ?? 8, 18);
       game.fx.dust(this.x, this.y, 16, 2.5);
-      if (!ravenRainImpact(game, this)) {
+      const artActive = !this.artOwnerAct || this.owner?.act === this.artOwnerAct;
+      const impact = artActive && this.art && this.artOptions && game.fx.flip(this.art, this.x, this.y, 0, this.artOptions);
+      if (impact && this.artExtra) game.fx.flip(this.artExtra.id, this.x, this.y, 0, this.artExtra.options);
+      if (!impact && !ravenRainImpact(game, this)) {
         game.fx.ring(this.x, this.y, 2, this.color || '#ff6a3d', 20, 10, 16, 6);
         // 爆发：贴地冲击波 + 光柱 + 火星
         const col = this.color || '#ff6a3d';
@@ -265,7 +270,7 @@ export class Hazard {
         game.fx.spark(this.x, this.y, 10, -1, 8, col);
         game.fx.dustburst(this.x, this.y, Math.min(1.4, this.rx / 120));
         // 首领专属的地面特效（骸骨统领的骨刺）；没有或还没载好时用通用的地面爆发
-        if (!this.art || !game.fx.flip(this.art, this.x, this.y, 0, { color: '#d8cbb8', scale: Math.min(1.3, this.rx / 120), facing: Math.random() < 0.5 ? -1 : 1 })) {
+        if (!this.art || this.artOptions || !game.fx.flip(this.art, this.x, this.y, 0, { color: '#d8cbb8', scale: Math.min(1.3, this.rx / 120), facing: Math.random() < 0.5 ? -1 : 1 })) {
           game.fx.flip('impact_ground', this.x, this.y, 0, { color: col, scale: Math.min(1.2, this.rx / 140) });
         }
       }
