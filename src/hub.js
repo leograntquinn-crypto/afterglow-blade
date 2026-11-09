@@ -258,7 +258,7 @@ export class Hub {
       <section class="panel">
         <h4>属性</h4>
         <div class="kvs">${rows}</div>
-        <div class="marks"><h4>刻印 <small>${S.marks.size ? '' : '稀有、传说装备可能带有刻印，在你做到某件事时生效'}</small></h4>${marks}</div>
+        <div class="marks"><h4>刻印 · 装备效果 <small>${S.marks.size ? '' : '稀有、传说装备可能带有刻印，在你做到某件事时生效'}</small></h4>${marks}</div>
         <div class="attr-head"><h4>属性点</h4><span class="pts">${s.statPts > 0 ? `可分配 <b>${s.statPts}</b>` : '升级获得 3 点'}</span></div>
         ${attrs}
         <button class="btn ghost" data-act="resetStats">重置属性点（免费）</button>
