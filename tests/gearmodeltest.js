@@ -288,7 +288,7 @@ const PORT = process.env.PORT || 8765;
         const g=__game,it=g.save.bag[0];
         g.hub.hide();const retained=GEAR_ART.ready;
         g.startStage(0);const released=!GEAR_ART.ready && !GEAR_ART.meta && GEAR_ART.pages.length===0;
-        const blankTiles=()=>[...document.querySelectorAll('.slots .slot, .bag .cell')]
+        const blankTiles=()=>[...document.querySelectorAll('.slots .slot .gearGlyph, .slots .slot .glyph, .bag .cell .gearGlyph, .bag .cell .glyph')]
           .every(node=>!node.textContent.trim());
         const releasedBlank=blankTiles() && gearGlyph(it)==='';
         // 阻止真实加载，渲染未加载状态的槽位和背包。
