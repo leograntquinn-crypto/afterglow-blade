@@ -1,3 +1,4 @@
+import { GEAR_ART, gearGlyph } from './gear/art.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 import { CATALOG } from './gear/catalog.js';
 import { SERIES } from './gear/series.js';
@@ -7,7 +8,7 @@ import { SERIES } from './gear/series.js';
 // 所有按钮用 data-act 属性标记，统一在 onClick 里处理（事件委托）。
 
 import {
-  RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, hydrateItem, canImprove, itemGlyph, itemTitle, itemKind,
+  RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, hydrateItem, canImprove, itemTitle, itemKind,
   enhCost, enhRate, sellPrice, WTYPES, MARKS, reforgeCost, reforgeAffix, inheritCost,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
@@ -154,11 +155,14 @@ export class Hub {
   }
 
   render_hero() {
+    if (!GEAR_ART.ready && !GEAR_ART.loading) GEAR_ART.load().then((ready) => {
+      if (ready && !this.root.hidden && this.tab === 'hero' && this.g.scene !== 'play') this.render();
+    });
     const s = this.save, S = this.g.stats;
     const slots = SLOT_KEYS.map((k) => {
       const it = s.equip[k];
       return `<button class="slot ${it ? `r${it.rar}` : 'empty'}" data-act="sel" data-id="${it ? it.id : ''}" data-slot="${k}" ${it ? '' : 'disabled'}>
-        <span class="glyph">${it ? itemGlyph(it) : ''}</span>
+        <span class="glyph">${it ? gearGlyph(it) : ''}</span>
         <span class="slot-label">${it ? itemTitle(it) : `${SLOT_NAME[k]}（空）`}</span>
       </button>`;
     }).join('');
@@ -174,7 +178,7 @@ export class Hub {
     const bag = s.bag.map((it) => {
       const cmp = compareItem(s,it), label = COMPARISON[cmp.verdict];
       return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
-        <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}<i class="up" style="color:${label.color}" title="${label.text} ${cmp.total.toFixed(1)}%">${label.symbol}</i>${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
+        <span class="glyph">${gearGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}<i class="up" style="color:${label.color}" title="${label.text} ${cmp.total.toFixed(1)}%">${label.symbol}</i>${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
       </button>`;
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
@@ -245,7 +249,7 @@ export class Hub {
       const list = Object.entries(MARKS).map(([k, M]) => `<button class="btn" data-act="engraveMark" data-k="${k}" ${it.mark === k ? 'disabled' : ''}>
           <b>${M.name}${it.mark === k ? '（当前）' : ''}</b><span>${M.desc}</span><small>适合：${M.style}</small></button>`).join('');
       this.modal.innerHTML = `<div class="sheet wide" role="dialog" aria-label="铭刻">
-        <div class="card-head"><span class="glyph big r${it.rar}">${itemGlyph(it)}</span>
+        <div class="card-head"><span class="glyph big r${it.rar}">${gearGlyph(it)}</span>
           <div><h3 style="color:${R.color}">铭刻 · ${itemTitle(it)}</h3><p class="isub">消耗 1 颗刻印石，指定一条刻印${it.mark ? `（覆盖原来的「${MARKS[it.mark].name}」）` : ''} · 剩余 ${s.stones} 颗</p></div>
           <button class="close" data-act="close" aria-label="关闭">×</button></div>
         <div class="engrave-list">${list}</div>
@@ -286,7 +290,7 @@ export class Hub {
       : `<button class="btn" data-act="enhance" ${s.gold >= cost ? '' : 'disabled'}>强化 +${it.enh + 1} · 成功率 ${Math.round(enhRate(it) * 100)}% · ${cost} 金币</button>`;
     this.modal.innerHTML = `<div class="sheet" role="dialog" aria-label="${itemTitle(it)}">
       <div class="card-head">
-        <span class="glyph big r${it.rar}">${itemGlyph(it)}</span>
+        <span class="glyph big r${it.rar}">${gearGlyph(it)}</span>
         <div><h3 style="color:${R.color}">${itemTitle(it)}</h3><p class="isub">${R.name} · ${itemKind(it)} · 物品等级 ${it.ilvl}</p></div>
         <button class="close" data-act="close" aria-label="关闭">×</button>
       </div>

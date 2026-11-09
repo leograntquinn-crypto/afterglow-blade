@@ -1,3 +1,5 @@
+import { drawGearIcon } from './gear/art.js';
+import { itemGlyph } from './items.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 // 战斗界面：头像框、血条、技能栏、连击、首领血条、小地图，以及标题 / 结算画面
 import { STAMINA } from './stamina_data.js';
@@ -444,7 +446,7 @@ function drawToasts(ctx, game) {
     ctx.save();
     ctx.globalAlpha = a;
     ctx.font = `14px ${FONT_UI}`;
-    const w = ctx.measureText(t.text).width + 26;
+    const w = ctx.measureText(t.text).width + 26 + (t.item ? 24 : 0);
     const g = ctx.createLinearGradient(x, 0, x + w + 40, 0);
     g.addColorStop(0, 'rgba(6,4,10,.85)');
     g.addColorStop(1, 'rgba(6,4,10,0)');
@@ -453,7 +455,8 @@ function drawToasts(ctx, game) {
     ctx.fillStyle = t.color;
     ctx.fillRect(x, y - 10, 2, 21);
     ctx.textBaseline = 'middle';
-    ctx.fillText(t.text, x + 12, y + 1);
+    if (t.item && !drawGearIcon(ctx, t.item, x + 6, y - 17, 22)) ctx.fillText(itemGlyph(t.item), x + 8, y);
+    ctx.fillText(t.text, x + 12 + (t.item ? 24 : 0), y + 1);
     ctx.restore();
   });
 }

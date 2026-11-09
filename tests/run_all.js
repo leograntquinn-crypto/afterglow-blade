@@ -41,6 +41,7 @@ const TESTS = [
   ...desktopAndMobile('wstorytest', 'out/ws'),
   ...desktopAndMobile('w4arttest', 'out/wa'),
   ...['aitest', 'aitest2', 'aitest3', 'staminatest', 'runtest', 'fxltest'].map(name => test(name, 300)),
+  test('gearmodeltest', 600),
   test('stagetest', 600),
   test('efxtest', 300),
   test('efx2test', 300),

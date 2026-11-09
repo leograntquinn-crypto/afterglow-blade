@@ -1,3 +1,4 @@
+import { GEAR_ART } from './gear/art.js';
 import { DROP_RULES } from './gear/rules.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 // 游戏主循环与场景管理
@@ -205,6 +206,7 @@ class Game {
   }
 
   setScene(s) {
+    if (s === 'play') GEAR_ART.release();
     this.scene = s;
     this.sceneT = 0;
     document.body.dataset.scene = s;
@@ -828,8 +830,8 @@ class Game {
     this.save.gold += n;
   }
 
-  toast(text, color) {
-    this.toasts.push({ text, color, life: 200 });
+  toast(text, color, item = null) {
+    this.toasts.push({ text, color, item, life: 200 });
     if (this.toasts.length > 5) this.toasts.shift();
   }
 
@@ -879,7 +881,7 @@ class Game {
       this.save.bag.push(it);
       this.run.items.push(it);
       const cmp=compareItem(this.save,it), label=COMPARISON[cmp.verdict];
-      this.toast(`获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color);
+      this.toast(`获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color, it);
     }
     this.fx.label(p.x, p.y, p.z + 110, it.name, color, 20);
     sfx(it.rar >= 2 ? 'rare' : 'pickup');
