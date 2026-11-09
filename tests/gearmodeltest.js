@@ -189,8 +189,8 @@ const PORT = process.env.PORT || 8765;
             [...node.querySelectorAll('.gearGlyph, .glyph')].every(glyph => !glyph.textContent.trim());
         }));
       check(singleFrame, '9 已填充格无可见外框且无字形回退 '+mobile);
-      const missingIcon = await page.evaluate(async () => {
-        const {gearGlyph} = await import('./src/gear/art.js');
+      const legendIcon = await page.evaluate(async () => {
+        const {GEAR_ART,gearGlyph} = await import('./src/gear/art.js');
         const {makeItem} = await import('./src/items.js');
         const g = __game, saved = g.save.equip.helm;
         const it = makeItem('lg_duanyue',10);
@@ -201,15 +201,22 @@ const PORT = process.env.PORT || 8765;
           const tiles = [...document.querySelectorAll('.slots .slot[data-id], .bag .cell[data-id]')]
             .filter(node => node.dataset.id === String(it.id));
           const glyph = document.createElement('div'); glyph.innerHTML = gearGlyph(it);
-          return tiles.length === 2 && tiles.every(tile =>
-            tile.getAttribute('aria-label') && tile.querySelector('[data-gear-frame]') &&
+          const pos = GEAR_ART.entry(it), image = GEAR_ART.pages[pos[0]];
+          let failedPage;
+          try {
+            GEAR_ART.pages[pos[0]] = null;
+            const fallback = document.createElement('div'); fallback.innerHTML = gearGlyph(it);
+            failedPage = !!fallback.querySelector('[data-gear-frame]') && !fallback.textContent.trim();
+          } finally { GEAR_ART.pages[pos[0]] = image; }
+          return failedPage && tiles.length === 2 && tiles.every(tile =>
+            tile.getAttribute('aria-label') && tile.querySelector('[data-gear-icon][style*="gear_icons_legend_"]') &&
             !tile.querySelector('.glyph').textContent.trim()) &&
-            !!glyph.querySelector('[data-gear-frame]') && !glyph.textContent.trim();
+            !!glyph.querySelector('[data-gear-icon][style*="gear_icons_legend_"]') && !glyph.textContent.trim();
         } finally {
           g.save.equip.helm = saved; g.save.bag.pop(); g.hub.render();
         }
       });
-      check(missingIcon, '9 图集就绪缺图仅保留框与装备无障碍名称 '+mobile);
+      check(legendIcon, '9 传说图集就绪呈现图标且保留装备无障碍名称 '+mobile);
       if (!mobile) {
         const expected = await page.evaluate(async () => {
           const {itemTitle, STAT_INFO} = await import('./src/items.js');

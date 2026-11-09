@@ -34,6 +34,7 @@ def picture(path):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--icons', nargs='+', type=Path, required=True)
+    parser.add_argument('--legend', type=Path, help='传说素材目录（gear.json 与 icons/）')
     args = parser.parse_args()
     rows, frames = {}, {}
     for directory in args.icons:
@@ -85,6 +86,20 @@ def main():
                 if series != 'wayfarer' or kind not in ('wings', 'veil')
                 for rar in range(2 if series == 'wayfarer' else 4)}
     require(expected <= rows.keys(), f'缺少保底件: {sorted(expected - rows.keys())}')
+    if args.legend:
+        pack = json.loads((args.legend / 'gear.json').read_text())
+        require(isinstance(pack, list) and len(pack) == 36, '传说清单必须包含36项')
+        legends = set()
+        for row in pack:
+            require(isinstance(row, dict) and set(row) == {'id', 'name'}, '传说条目须为id/name对象')
+            ident = row['id']
+            require(isinstance(ident, str) and re.fullmatch(r'lg_[a-z0-9_]+', ident), f'无效传说id: {ident}')
+            require(ident not in rows and ident not in legends, f'重复id: {ident}')
+            require(isinstance(row['name'], str) and row['name'].strip(), f'{ident}: 缺少名字')
+            legends.add(ident)
+            rows[ident] = ({'series': 'legend'}, picture(args.legend / f'icons/{ident}.png'))
+        require({p.name for p in (args.legend / 'icons').glob('*.png')} ==
+                {f'{key}.png' for key in legends}, '传说PNG与清单不一致')
     output = ROOT / 'assets/fx'
     with tempfile.TemporaryDirectory(prefix='gear-build-') as temporary:
         stage = Path(temporary)
@@ -92,7 +107,7 @@ def main():
             cell = CELL // (2 if mobile else 1)
             suffix = '_m' if mobile else ''
             meta = {'schema': 'afterglow.gearatlas.v1', 'cell': cell, 'pages': [], 'items': {}, 'frames': {}}
-            for series in SERIES:
+            for series in (*SERIES, 'legend'):
                 group = sorted((key for key, (row, _) in rows.items() if row['series'] == series))
                 for offset in range(0, len(group), COLUMNS * COLUMNS):
                     keys = group[offset:offset + COLUMNS * COLUMNS]

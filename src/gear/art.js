@@ -20,7 +20,9 @@ export const GEAR_ART = {
         if (!response.ok) return false;
         const meta = await response.json();
         const [pages, frames] = await Promise.all([
-          Promise.all(meta.pages.map(page => loadImage(page.file))),
+          // 传说页独立失败时仍保留普通图标和底板，entry 会把缺页降级为空框。
+          Promise.all(meta.pages.map(page => /^gear_icons_legend_/.test(page.file)
+            ? loadImage(page.file).catch(() => null) : loadImage(page.file))),
           Promise.all(Object.values(meta.frames).map(loadImage)),
         ]);
         if (generation !== this.generation) return false;
@@ -39,9 +41,10 @@ export const GEAR_ART = {
     Object.assign(this, {ready: false, loading: null, pages: [], frames: {}, meta: null});
   },
   entry(it) {
-    const key = CATALOG[it?.def]?.art?.icon;
+    const def = CATALOG[it?.def];
+    const key = def?.art?.icon || (def?.id?.startsWith('lg_') || def?.rar === 4 ? def.id : null);
     const pos = this.ready && this.meta.items[key];
-    return pos && this.frames[it.rar] ? pos : null;
+    return pos && this.pages[pos[0]] && this.frames[it.rar] ? pos : null;
   },
 };
 // 图标与底板都铺满 glyph：图集每个 cell 映射为完整格子（100%，不留缩小边距）。

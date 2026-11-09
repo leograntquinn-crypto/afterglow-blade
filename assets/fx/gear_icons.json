@@ -36,6 +36,11 @@
       "file": "gear_icons_dawn_0.webp",
       "width": 2048,
       "height": 384
+    },
+    {
+      "file": "gear_icons_legend_0.webp",
+      "width": 2048,
+      "height": 384
     }
   ],
   "items": {
@@ -1577,6 +1582,186 @@
     "wings_dawn_r3": [
       6,
       1920,
+      256
+    ],
+    "lg_afterimage_boots": [
+      7,
+      0,
+      0
+    ],
+    "lg_afterimage_chest": [
+      7,
+      128,
+      0
+    ],
+    "lg_afterimage_ring": [
+      7,
+      256,
+      0
+    ],
+    "lg_afterimage_sword": [
+      7,
+      384,
+      0
+    ],
+    "lg_binglingyu": [
+      7,
+      512,
+      0
+    ],
+    "lg_boneking_chest": [
+      7,
+      640,
+      0
+    ],
+    "lg_boneking_great": [
+      7,
+      768,
+      0
+    ],
+    "lg_boneking_helm": [
+      7,
+      896,
+      0
+    ],
+    "lg_boneking_ring": [
+      7,
+      1024,
+      0
+    ],
+    "lg_bumianzhezhiguan": [
+      7,
+      1152,
+      0
+    ],
+    "lg_canguangzhanyi": [
+      7,
+      1280,
+      0
+    ],
+    "lg_chenxiyu": [
+      7,
+      1408,
+      0
+    ],
+    "lg_duanyue": [
+      7,
+      1536,
+      0
+    ],
+    "lg_gravekeeper_amulet": [
+      7,
+      1664,
+      0
+    ],
+    "lg_gravekeeper_helm": [
+      7,
+      1792,
+      0
+    ],
+    "lg_gravekeeper_legs": [
+      7,
+      1920,
+      0
+    ],
+    "lg_gravekeeper_sword": [
+      7,
+      0,
+      128
+    ],
+    "lg_ironjaw_bracers": [
+      7,
+      128,
+      128
+    ],
+    "lg_ironjaw_chest": [
+      7,
+      256,
+      128
+    ],
+    "lg_ironjaw_great": [
+      7,
+      384,
+      128
+    ],
+    "lg_ironjaw_legs": [
+      7,
+      512,
+      128
+    ],
+    "lg_jinhuoyi": [
+      7,
+      640,
+      128
+    ],
+    "lg_jinmietouguan": [
+      7,
+      768,
+      128
+    ],
+    "lg_leitingyi": [
+      7,
+      896,
+      128
+    ],
+    "lg_limingmu": [
+      7,
+      1024,
+      128
+    ],
+    "lg_raven_amulet": [
+      7,
+      1152,
+      128
+    ],
+    "lg_raven_boots": [
+      7,
+      1280,
+      128
+    ],
+    "lg_raven_helm": [
+      7,
+      1408,
+      128
+    ],
+    "lg_raven_katana": [
+      7,
+      1536,
+      128
+    ],
+    "lg_shizhihuan": [
+      7,
+      1664,
+      128
+    ],
+    "lg_shuangjin": [
+      7,
+      1792,
+      128
+    ],
+    "lg_wugui": [
+      7,
+      1920,
+      128
+    ],
+    "lg_yongyemu": [
+      7,
+      0,
+      256
+    ],
+    "lg_yongyezhishi": [
+      7,
+      128,
+      256
+    ],
+    "lg_yuanhailinjia": [
+      7,
+      256,
+      256
+    ],
+    "lg_zhulongzhiya": [
+      7,
+      384,
       256
     ]
   },
