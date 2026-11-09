@@ -42,7 +42,7 @@ const PORT = process.env.PORT || 8765, SEED = process.env.SEED || 97531;
       let start = null, revealAt = null, cancelAt = null, hp0 = g.player.dmgTaken ?? 0, dmgFeint = 0, realStart = null, realFeint = null, hz = 0, w = 0;
       T.run(400, (i) => {
         g.player.x = 600; g.player.y = 85; g.player.invuln = 0;
-        if (start == null && e.state === 'windup' && e.atk.feint) { start = i; w = e.windup; }
+        if (start == null && e.state === 'windup' && e.atk.feint) { start = i; w = e.windup; hp0 = g.player.dmgTaken ?? 0; } // 从佯攻起手算伤害：之前的真攻击不算进来
         if (start != null && revealAt == null && T.A.feintRevealed(e)) revealAt = i - start;
         if (start != null && cancelAt == null && e.state === 'idle') { cancelAt = i - start; dmgFeint = (g.player.dmgTaken ?? 0) - hp0; }
         if (cancelAt != null && realStart == null && e.state === 'windup') { realStart = i - start; realFeint = !!e.atk.feint; }
