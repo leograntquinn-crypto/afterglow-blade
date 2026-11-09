@@ -1,0 +1,861 @@
+{
+ "v": 1,
+ "savedAt": 1794000000000,
+ "lv": 26,
+ "xp": 0,
+ "gold": 38000,
+ "statPts": 0,
+ "stats": {
+  "str": 0,
+  "vit": 0,
+  "int": 0,
+  "agi": 0
+ },
+ "sp": 0,
+ "skills": {
+  "skill1": 1,
+  "skill2": 0,
+  "skill3": 0,
+  "skill4": 0,
+  "mastery": 0,
+  "focus": 0,
+  "flow": 0
+ },
+ "equip": {
+  "weapon": {
+   "id": "mw95dsk1xai",
+   "slot": "weapon",
+   "rar": 3,
+   "ilvl": 26,
+   "enh": 10,
+   "base": {
+    "atk": 167
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.056
+    },
+    {
+     "k": "int",
+     "v": 21
+    },
+    {
+     "k": "mpRegen",
+     "v": 0.244
+    }
+   ],
+   "wtype": "great",
+   "mark": "air",
+   "name": "烛龙之牙"
+  },
+  "helm": {
+   "id": "mw95dsk1ydm",
+   "slot": "helm",
+   "rar": 3,
+   "ilvl": 25,
+   "enh": 9,
+   "base": {
+    "def": 51,
+    "hp": 248
+   },
+   "affix": [
+    {
+     "k": "str",
+     "v": 27
+    },
+    {
+     "k": "atkPct",
+     "v": 0.088
+    },
+    {
+     "k": "cdr",
+     "v": 0.039
+    }
+   ],
+   "mark": "otg",
+   "name": "不眠者之冠"
+  },
+  "armor": {
+   "id": "mw95dsk1zll",
+   "slot": "armor",
+   "rar": 2,
+   "ilvl": 26,
+   "enh": 8,
+   "base": {
+    "def": 75,
+    "hp": 370
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.037
+    },
+    {
+     "k": "mpRegen",
+     "v": 0.085
+    }
+   ],
+   "name": "星纹战衣",
+   "mark": "streak"
+  },
+  "ring": {
+   "id": "mw95dsk1105o",
+   "slot": "ring",
+   "rar": 3,
+   "ilvl": 24,
+   "enh": 7,
+   "base": {
+    "atk": 49,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.079
+    },
+    {
+     "k": "vit",
+     "v": 26
+    },
+    {
+     "k": "cdr",
+     "v": 0.027
+    }
+   ],
+   "mark": "desperate",
+   "name": "时之环",
+   "reforged": 4
+  }
+ },
+ "bag": [
+  {
+   "id": "mw95dsk125fr",
+   "slot": "armor",
+   "rar": 3,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "def": 85,
+    "hp": 419
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.19
+    },
+    {
+     "k": "hp",
+     "v": 195
+    },
+    {
+     "k": "atkPct",
+     "v": 0.065
+    }
+   ],
+   "mark": "air",
+   "name": "残光战衣",
+   "locked": true
+  },
+  {
+   "id": "mw95dsk112wr",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 22,
+   "enh": 0,
+   "base": {
+    "def": 56,
+    "hp": 276
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.045
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk113sw",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "atk": 111
+   },
+   "affix": [
+    {
+     "k": "int",
+     "v": 16
+    }
+   ],
+   "wtype": "great",
+   "name": "天崩巨剑"
+  },
+  {
+   "id": "mw95dsk114v0",
+   "slot": "ring",
+   "rar": 0,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "atk": 33,
+    "crit": 0.01
+   },
+   "affix": [],
+   "name": "星辰指环"
+  },
+  {
+   "id": "mw95dsk11572",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "atk": 81,
+    "crit": 0.04
+   },
+   "affix": [],
+   "wtype": "katana",
+   "name": "天羽太刀"
+  },
+  {
+   "id": "mw95dsk116xp",
+   "slot": "armor",
+   "rar": 0,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "def": 57,
+    "hp": 280
+   },
+   "affix": [],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk117te",
+   "slot": "armor",
+   "rar": 2,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "def": 67,
+    "hp": 330
+   },
+   "affix": [
+    {
+     "k": "int",
+     "v": 13
+    },
+    {
+     "k": "mpRegen",
+     "v": 0.159
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk118ah",
+   "slot": "ring",
+   "rar": 0,
+   "ilvl": 23,
+   "enh": 5,
+   "base": {
+    "atk": 31,
+    "crit": 0.01
+   },
+   "affix": [],
+   "name": "星辰指环"
+  },
+  {
+   "id": "mw95dsk119wc",
+   "slot": "armor",
+   "rar": 2,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "def": 70,
+    "hp": 343
+   },
+   "affix": [
+    {
+     "k": "atkPct",
+     "v": 0.076
+    },
+    {
+     "k": "crit",
+     "v": 0.037
+    }
+   ],
+   "mark": "wall",
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11akw",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "def": 32,
+    "hp": 154
+   },
+   "affix": [],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11b3u",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 27,
+   "enh": 0,
+   "base": {
+    "atk": 115,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "str",
+     "v": 15
+    },
+    {
+     "k": "crit",
+     "v": 0.038
+    }
+   ],
+   "wtype": "katana",
+   "mark": "streak",
+   "name": "天羽太刀"
+  },
+  {
+   "id": "mw95dsk11cje",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 27,
+   "enh": 0,
+   "base": {
+    "def": 41,
+    "hp": 198
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.132
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11dqh",
+   "slot": "armor",
+   "rar": 0,
+   "ilvl": 22,
+   "enh": 0,
+   "base": {
+    "def": 49,
+    "hp": 240
+   },
+   "affix": [],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11eua",
+   "slot": "ring",
+   "rar": 2,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "atk": 40,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 16
+    },
+    {
+     "k": "int",
+     "v": 16
+    }
+   ],
+   "mark": "desperate",
+   "name": "星辰指环"
+  },
+  {
+   "id": "mw95dsk11f9x",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "atk": 111
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.086
+    }
+   ],
+   "wtype": "great",
+   "name": "天崩巨剑"
+  },
+  {
+   "id": "mw95dsk11g6b",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "def": 66,
+    "hp": 322
+   },
+   "affix": [
+    {
+     "k": "str",
+     "v": 15
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11hkc",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 27,
+   "enh": 0,
+   "base": {
+    "def": 41,
+    "hp": 198
+   },
+   "affix": [
+    {
+     "k": "atkPct",
+     "v": 0.046
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11is1",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "def": 39,
+    "hp": 191
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 21
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11jcc",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 21,
+   "enh": 0,
+   "base": {
+    "def": 28,
+    "hp": 136
+   },
+   "affix": [],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11ki",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "atk": 82
+   },
+   "affix": [],
+   "wtype": "sword",
+   "name": "星陨剑"
+  },
+  {
+   "id": "mw95dsk11loi",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "def": 38,
+    "hp": 184
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.022
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11mh3",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "atk": 112
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.132
+    },
+    {
+     "k": "agi",
+     "v": 17
+    }
+   ],
+   "wtype": "sword",
+   "mark": "otg",
+   "name": "星陨剑"
+  },
+  {
+   "id": "mw95dsk11nz7",
+   "slot": "ring",
+   "rar": 1,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "atk": 38,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.046
+    }
+   ],
+   "name": "星辰指环"
+  },
+  {
+   "id": "mw95dsk11ogh",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "atk": 91
+   },
+   "affix": [],
+   "wtype": "sword",
+   "name": "星陨剑"
+  },
+  {
+   "id": "mw95dsk11pg7",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 21,
+   "enh": 0,
+   "base": {
+    "def": 32,
+    "hp": 156
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 14
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11q4g",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 22,
+   "enh": 0,
+   "base": {
+    "atk": 106
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 16
+    }
+   ],
+   "wtype": "great",
+   "name": "天崩巨剑"
+  },
+  {
+   "id": "mw95dsk11ra1",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "def": 61,
+    "hp": 299
+   },
+   "affix": [
+    {
+     "k": "atkPct",
+     "v": 0.073
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11snf",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "atk": 103,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "str",
+     "v": 19
+    },
+    {
+     "k": "vit",
+     "v": 13
+    }
+   ],
+   "wtype": "katana",
+   "name": "天羽太刀"
+  },
+  {
+   "id": "mw95dsk11tkj",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "atk": 91
+   },
+   "affix": [],
+   "wtype": "sword",
+   "name": "星陨剑"
+  },
+  {
+   "id": "mw95dsk11uyp",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 27,
+   "enh": 0,
+   "base": {
+    "def": 68,
+    "hp": 334
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.156
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11vxs",
+   "slot": "helm",
+   "rar": 2,
+   "ilvl": 21,
+   "enh": 0,
+   "base": {
+    "def": 37,
+    "hp": 180
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 13
+    },
+    {
+     "k": "agi",
+     "v": 19
+    }
+   ],
+   "mark": "otg",
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11wh8",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "def": 61,
+    "hp": 299
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.132
+    }
+   ],
+   "name": "星纹战衣"
+  },
+  {
+   "id": "mw95dsk11xda",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "def": 31,
+    "hp": 148
+   },
+   "affix": [],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk11yo4",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 24,
+   "enh": 0,
+   "base": {
+    "atk": 103,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "hp",
+     "v": 169
+    },
+    {
+     "k": "critDmg",
+     "v": 0.081
+    }
+   ],
+   "wtype": "katana",
+   "name": "天羽太刀"
+  },
+  {
+   "id": "mw95dsk11zs9",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "def": 33,
+    "hp": 160
+   },
+   "affix": [],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk1203x",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 26,
+   "enh": 0,
+   "base": {
+    "def": 34,
+    "hp": 166
+   },
+   "affix": [],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk121fp",
+   "slot": "helm",
+   "rar": 2,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "def": 40,
+    "hp": 195
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.156
+    },
+    {
+     "k": "agi",
+     "v": 18
+    }
+   ],
+   "mark": "counter",
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk122dr",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 22,
+   "enh": 0,
+   "base": {
+    "atk": 122
+   },
+   "affix": [
+    {
+     "k": "hp",
+     "v": 138
+    },
+    {
+     "k": "cdr",
+     "v": 0.038
+    }
+   ],
+   "wtype": "great",
+   "name": "天崩巨剑"
+  },
+  {
+   "id": "mw95dsk1232z",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 23,
+   "enh": 0,
+   "base": {
+    "def": 35,
+    "hp": 170
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 14
+    }
+   ],
+   "name": "星纹头冠"
+  },
+  {
+   "id": "mw95dsk124ac",
+   "slot": "armor",
+   "rar": 3,
+   "ilvl": 25,
+   "enh": 0,
+   "base": {
+    "def": 85,
+    "hp": 419
+   },
+   "affix": [
+    {
+     "k": "str",
+     "v": 23
+    },
+    {
+     "k": "int",
+     "v": 26
+    },
+    {
+     "k": "hp",
+     "v": 230
+    }
+   ],
+   "mark": "air",
+   "name": "残光战衣"
+  }
+ ],
+ "cleared": {},
+ "best": {},
+ "runs": 0,
+ "stones": 11
+}

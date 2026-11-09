@@ -1,0 +1,109 @@
+{
+ "v": 1,
+ "savedAt": 1794000000000,
+ "lv": 2,
+ "xp": 0,
+ "gold": 120,
+ "statPts": 0,
+ "stats": {
+  "str": 0,
+  "vit": 0,
+  "int": 0,
+  "agi": 0
+ },
+ "sp": 0,
+ "skills": {
+  "skill1": 1,
+  "skill2": 0,
+  "skill3": 0,
+  "skill4": 0,
+  "mastery": 0,
+  "focus": 0,
+  "flow": 0
+ },
+ "equip": {
+  "weapon": {
+   "id": "mw95dsk00nl",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 1,
+   "enh": 0,
+   "base": {
+    "atk": 11
+   },
+   "affix": [],
+   "wtype": "sword",
+   "name": "旧铁剑"
+  },
+  "helm": null,
+  "armor": {
+   "id": "mw95dsk01qm",
+   "slot": "armor",
+   "rar": 0,
+   "ilvl": 1,
+   "enh": 0,
+   "base": {
+    "def": 7,
+    "hp": 30
+   },
+   "affix": [],
+   "name": "布衣"
+  },
+  "ring": null
+ },
+ "bag": [
+  {
+   "id": "mw95dsk02d6",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 1,
+   "enh": 0,
+   "base": {
+    "atk": 13
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 2
+    }
+   ],
+   "wtype": "sword",
+   "name": "铁剑"
+  },
+  {
+   "id": "mw95dsk03r4",
+   "slot": "armor",
+   "rar": 0,
+   "ilvl": 3,
+   "enh": 0,
+   "base": {
+    "def": 11,
+    "hp": 50
+   },
+   "affix": [],
+   "name": "布衣"
+  },
+  {
+   "id": "mw95dsk04ed",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 1,
+   "enh": 0,
+   "base": {
+    "def": 5,
+    "hp": 18
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.024
+    }
+   ],
+   "name": "布头巾"
+  }
+ ],
+ "cleared": {},
+ "best": {},
+ "runs": 0,
+ "stones": 0
+}

@@ -1,0 +1,463 @@
+{
+ "v": 1,
+ "savedAt": 1794000000000,
+ "lv": 12,
+ "xp": 0,
+ "gold": 4200,
+ "statPts": 0,
+ "stats": {
+  "str": 0,
+  "vit": 0,
+  "int": 0,
+  "agi": 0
+ },
+ "sp": 0,
+ "skills": {
+  "skill1": 1,
+  "skill2": 0,
+  "skill3": 0,
+  "skill4": 0,
+  "mastery": 0,
+  "focus": 0,
+  "flow": 0
+ },
+ "equip": {
+  "weapon": {
+   "id": "mw95dsk0779",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 12,
+   "enh": 6,
+   "base": {
+    "atk": 56,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.088
+    },
+    {
+     "k": "cdr",
+     "v": 0.044
+    }
+   ],
+   "wtype": "katana",
+   "name": "鬼切",
+   "mark": "counter"
+  },
+  "helm": {
+   "id": "mw95dsk08hq",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "def": 19,
+    "hp": 87
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.109
+    }
+   ],
+   "name": "铁额冠",
+   "reforged": 2
+  },
+  "armor": {
+   "id": "mw95dsk09gb",
+   "slot": "armor",
+   "rar": 2,
+   "ilvl": 12,
+   "enh": 4,
+   "base": {
+    "def": 38,
+    "hp": 185
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 10
+    },
+    {
+     "k": "crit",
+     "v": 0.035
+    }
+   ],
+   "name": "玄铁战甲"
+  },
+  "ring": {
+   "id": "mw95dsk0azw",
+   "slot": "ring",
+   "rar": 1,
+   "ilvl": 10,
+   "enh": 2,
+   "base": {
+    "atk": 17,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "critDmg",
+     "v": 0.109
+    }
+   ],
+   "name": "月石戒指"
+  }
+ },
+ "bag": [
+  {
+   "id": "mw95dsk0b4o",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "def": 19,
+    "hp": 87
+   },
+   "affix": [
+    {
+     "k": "int",
+     "v": 8
+    }
+   ],
+   "name": "铁额冠"
+  },
+  {
+   "id": "mw95dsk0cp7",
+   "slot": "weapon",
+   "rar": 3,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "atk": 62,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "crit",
+     "v": 0.036
+    },
+    {
+     "k": "hp",
+     "v": 109
+    },
+    {
+     "k": "vit",
+     "v": 9
+    }
+   ],
+   "wtype": "katana",
+   "mark": "air",
+   "name": "断月"
+  },
+  {
+   "id": "mw95dsk0dpa",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 13,
+   "enh": 0,
+   "base": {
+    "atk": 52,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 9
+    }
+   ],
+   "wtype": "katana",
+   "name": "鬼切"
+  },
+  {
+   "id": "mw95dsk0eqc",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 14,
+   "enh": 0,
+   "base": {
+    "def": 20,
+    "hp": 94
+   },
+   "affix": [],
+   "name": "玄铁战盔",
+   "locked": true
+  },
+  {
+   "id": "mw95dsk0f4o",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "atk": 40,
+    "crit": 0.04
+   },
+   "affix": [],
+   "wtype": "katana",
+   "name": "月影太刀"
+  },
+  {
+   "id": "mw95dsk0gm4",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 12,
+   "enh": 3,
+   "base": {
+    "atk": 56,
+    "crit": 0.04
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 9
+    },
+    {
+     "k": "crit",
+     "v": 0.015
+    }
+   ],
+   "wtype": "katana",
+   "name": "鬼切"
+  },
+  {
+   "id": "mw95dsk0hzo",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 13,
+   "enh": 0,
+   "base": {
+    "atk": 67
+   },
+   "affix": [
+    {
+     "k": "agi",
+     "v": 12
+    }
+   ],
+   "wtype": "great",
+   "name": "裂地巨剑"
+  },
+  {
+   "id": "mw95dsk0iad",
+   "slot": "helm",
+   "rar": 1,
+   "ilvl": 12,
+   "enh": 0,
+   "base": {
+    "def": 20,
+    "hp": 94
+   },
+   "affix": [
+    {
+     "k": "int",
+     "v": 11
+    }
+   ],
+   "name": "玄铁战盔"
+  },
+  {
+   "id": "mw95dsk0jrx",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 9,
+   "enh": 0,
+   "base": {
+    "atk": 57
+   },
+   "affix": [
+    {
+     "k": "mpRegen",
+     "v": 0.121
+    },
+    {
+     "k": "int",
+     "v": 7
+    }
+   ],
+   "wtype": "great",
+   "name": "镇狱巨剑"
+  },
+  {
+   "id": "mw95dsk0kwl",
+   "slot": "weapon",
+   "rar": 1,
+   "ilvl": 10,
+   "enh": 0,
+   "base": {
+    "atk": 46
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 9
+    }
+   ],
+   "wtype": "sword",
+   "name": "寒铁剑"
+  },
+  {
+   "id": "mw95dsk0ll4",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "def": 16,
+    "hp": 76
+   },
+   "affix": [],
+   "name": "铁额冠"
+  },
+  {
+   "id": "mw95dsk0mh0",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 14,
+   "enh": 0,
+   "base": {
+    "def": 20,
+    "hp": 94
+   },
+   "affix": [],
+   "name": "玄铁战盔"
+  },
+  {
+   "id": "mw95dsk0nup",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 9,
+   "enh": 0,
+   "base": {
+    "atk": 34,
+    "crit": 0.04
+   },
+   "affix": [],
+   "wtype": "katana",
+   "name": "月影太刀"
+  },
+  {
+   "id": "mw95dsk0oo3",
+   "slot": "ring",
+   "rar": 1,
+   "ilvl": 12,
+   "enh": 0,
+   "base": {
+    "atk": 20,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "crit",
+     "v": 0.014
+    }
+   ],
+   "name": "血玉戒指"
+  },
+  {
+   "id": "mw95dsk0pg0",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 13,
+   "enh": 0,
+   "base": {
+    "atk": 50
+   },
+   "affix": [],
+   "wtype": "sword",
+   "name": "玄纹长剑"
+  },
+  {
+   "id": "mw95dsk0qew",
+   "slot": "weapon",
+   "rar": 2,
+   "ilvl": 12,
+   "enh": 0,
+   "base": {
+    "atk": 72
+   },
+   "affix": [
+    {
+     "k": "cdr",
+     "v": 0.028
+    },
+    {
+     "k": "crit",
+     "v": 0.013
+    }
+   ],
+   "wtype": "great",
+   "mark": "counter",
+   "name": "裂地巨剑"
+  },
+  {
+   "id": "mw95dsk1rhf",
+   "slot": "weapon",
+   "rar": 0,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "atk": 51
+   },
+   "affix": [],
+   "wtype": "great",
+   "name": "镇狱巨剑"
+  },
+  {
+   "id": "mw95dsk1s8b",
+   "slot": "helm",
+   "rar": 0,
+   "ilvl": 10,
+   "enh": 0,
+   "base": {
+    "def": 15,
+    "hp": 70
+   },
+   "affix": [],
+   "name": "铁额冠"
+  },
+  {
+   "id": "mw95dsk1txq",
+   "slot": "ring",
+   "rar": 1,
+   "ilvl": 11,
+   "enh": 0,
+   "base": {
+    "atk": 19,
+    "crit": 0.01
+   },
+   "affix": [
+    {
+     "k": "hp",
+     "v": 71
+    }
+   ],
+   "name": "月石戒指"
+  },
+  {
+   "id": "mw95dsk1ug9",
+   "slot": "armor",
+   "rar": 1,
+   "ilvl": 13,
+   "enh": 0,
+   "base": {
+    "def": 36,
+    "hp": 173
+   },
+   "affix": [
+    {
+     "k": "vit",
+     "v": 10
+    }
+   ],
+   "name": "玄铁战甲"
+  }
+ ],
+ "cleared": {},
+ "best": {},
+ "runs": 0,
+ "stones": 3
+}
