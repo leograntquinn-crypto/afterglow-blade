@@ -26,7 +26,8 @@ const PORT = process.env.PORT || 8765;
   // 重铸第 1 条，三次（九词条仍有一个未占用属性可供替换）
   for (let k = 0; k < 3; k++) { await p.click('[data-act="reforge"][data-i="0"]'); await p.waitForTimeout(80); }
   out.reforge = await p.evaluate(() => { const it = __game.save.bag[0]; return { affix: it.affix.map(a => a.k), distinct: new Set(it.affix.map(a => a.k)).size === it.affix.length, reforged: it.reforged, gold: __game.save.gold }; });
-  // 传承
+  // 传承（饰品默认对比目标是较弱的空槽 trinket2，先切到装着 +7 旧件的 trinket1）
+  await p.click('[data-act="compareSlot"][data-slot="trinket1"]'); await p.waitForTimeout(150);
   await p.click('[data-act="inherit"]'); await p.waitForTimeout(100);
   out.inherit = await p.evaluate(() => { const it = __game.save.bag[0]; return { newEnh: it.enh, oldEnh: __game.save.equip.trinket1.enh, gold: __game.save.gold }; });
   if (out.inherit.newEnh !== 7 || out.inherit.oldEnh !== 0) throw new Error('传承应使新件+7、旧件归零');
