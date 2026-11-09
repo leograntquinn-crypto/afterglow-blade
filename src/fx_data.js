@@ -175,7 +175,7 @@ export const BOSS_FX = {
     out: { fb: 'shadow_step_out', size: 1 },
     appear: { fb: 'shadow_step_in', size: 1 },
     sigil: { tex: 'mirror_sigil', size: 0.6, z: 1.35 },
-    route: { tex: 'streak_line', height: 14, scroll: 3, alpha: 0.8 },
+    route: { tex: 'streak_line', height: 14, scroll: 3, alpha: 0.8, fallback: { color: '#ff4d5e', alpha: 0.9 } }, // fallback：残影包没载好时借敌人路线光带 lane_band（可见高约 64 里的 33）
     vertex: { fb: 'exec_mark', k: 0.35 },
     dash: { fb: 'exec_dash', k: 0.5, width: 384, z: 50 },
     read: { fb: 'habit_read', size: 1, z: 0.8 },

@@ -45,6 +45,7 @@ async function exercise() {
   for (const [id, asset] of Object.entries(pack.items)) register(id, asset);
   for (const id of ['wave_crescent']) register(id, flipbook(id));
   for (const [id, asset] of Object.entries(FX_ART.bladeTex.items)) register(id, asset);
+  { const band = FX_ART.enemyTex.items.lane_band; if (band) { images.set(band, 'lane_band'); images.set(tinted(band, '#ff4d5e'), 'lane_band'); } } // 处决路线兜底
   let draws = [], strokes = 0;
   ctx.drawImage = (img, ...args) => {
     if (images.has(img) && ctx.globalAlpha > 0) draws.push({ id: images.get(img), y: ctx.getTransform().f });
@@ -164,7 +165,7 @@ async function exercise() {
         const wave = draw(() => q.draw(ctx, 0)); parts.wave = has(wave, 'wave_crescent') && noNew(wave);
         b = scene('teleport'); finish(b); parts.teleport = noNew(air());
         b = scene('execution'); step(); const routes = g.hazards.filter((h) => h instanceof Streak);
-        const rows = draw(() => routes.forEach((h) => h.drawFloor(ctx, 0))); parts.route = routes.length === 5 && rows.length === 0 && strokes === 0;
+        const rows = draw(() => routes.forEach((h) => h.drawFloor(ctx, 0))); parts.route = routes.length === 5 && rows.filter((p) => p.id === 'lane_band').length >= 5 && noNew(rows) && strokes === 0;
         finish(b); parts.dash = !at('exec_dash').length && at('slash_sweep').length === 5;
         b = scene(); const h = g.ai.habits.h;
         try { g.ai.habits.h = () => 1; b.habitTable(g, b.B.phases[0].attacks); parts.read = !at('habit_read').length; } finally { g.ai.habits.h = h; }
@@ -206,7 +207,7 @@ async function exercise() {
     ['read', '读到同一习惯只播一次 habit_read'],
     ['channel', '读条汇聚和爆发，打断当帧全部消失'],
     ['death', '死亡一次，主角在右边时镜像'],
-    ['fallback', '素材未就绪时新加部分不画且无页面错误'],
+    ['fallback', '素材未就绪时新加部分不画（处决路线退回 lane_band）且无页面错误'],
   ];
   for (const [key, label] of checks) {
     ok(r[key]?.ok && (key !== 'fallback' || !errs.length),

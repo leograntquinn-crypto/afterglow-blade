@@ -1,0 +1,17 @@
+{
+  "columns": 4,
+  "cells": [
+    {"label": "残影 · 连斩刀光", "stage": 4, "spawn": "afterimage", "moment": "move:combo", "frames": 30},
+    {"label": "残影 · 瞬移消失", "stage": 4, "spawn": "afterimage", "moment": "move:teleport", "frames": 6},
+    {"label": "残影 · 瞬移出现", "stage": 4, "spawn": "afterimage", "moment": "move:teleport", "frames": 28},
+    {"label": "残影 · 瞬移斩", "stage": 4, "spawn": "afterimage", "moment": "move:teleport", "frames": 48},
+    {"label": "残影 · 剑气", "stage": 4, "spawn": "afterimage", "moment": "move:volley", "frames": 40},
+    {"label": "残影 · 镜像印记", "stage": 4, "spawn": "afterimage", "moment": "move:mirror", "frames": 10},
+    {"label": "残影 · 镜像反打", "stage": 4, "spawn": "afterimage", "moment": "move:mirror", "frames": 30},
+    {"label": "残影 · 处决路线", "stage": 4, "spawn": "afterimage", "moment": "move:execution", "frames": 30},
+    {"label": "残影 · 处决冲刺", "stage": 4, "spawn": "afterimage", "moment": "move:execution", "frames": 58},
+    {"label": "残影 · 读条汇聚", "stage": 4, "spawn": "afterimage", "moment": "move:channel", "frames": 60},
+    {"label": "残影 · 死亡", "stage": 4, "spawn": "afterimage", "moment": "death", "frames": 30},
+    {"label": "残影 · 死亡后段", "stage": 4, "spawn": "afterimage", "moment": "death", "frames": 60}
+  ]
+}

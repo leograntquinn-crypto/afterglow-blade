@@ -341,8 +341,16 @@ export function drawAfterimageStreak(ctx, streak, camX) {
   const [x1, y1] = toScreen(streak.b.x, streak.b.y, 0, camX);
   ctx.save();
   ctx.globalAlpha *= e.alpha;
-  if (img) tileAlong(ctx, img, x0, y0, Math.atan2(y1 - y0, x1 - x0),
-    Math.hypot(x1 - x0, y1 - y0), e.height, streak.t * e.scroll, streak.color);
+  const ang = Math.atan2(y1 - y0, x1 - x0), len = Math.hypot(x1 - x0, y1 - y0);
+  if (img) tileAlong(ctx, img, x0, y0, ang, len, e.height, streak.t * e.scroll, streak.color);
+  else {
+    // 处决有判定，路线不能消失：残影包没载好时借一直载入的敌人路线光带（成品贴图）
+    const f = e.fallback, band = enemyTex(ENEMY_FX.lane.tex);
+    if (band) {
+      ctx.globalAlpha *= f.alpha / e.alpha;
+      tileAlong(ctx, band, x0, y0, ang, len, e.height / 33 * 64, streak.t * e.scroll, f.color);
+    }
+  }
   const mark = after.vertex;
   put(ctx, frame(mark, streak.t), x0, y0, mark.k, streak.color);
   if (streak.last) put(ctx, frame(mark, streak.t), x1, y1, mark.k, streak.color);
