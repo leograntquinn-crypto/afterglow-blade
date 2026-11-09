@@ -181,4 +181,19 @@ export const BOSS_FX = {
     veil: { tex: 'night_veil' },                                     // H-2 只做读条结束的一闪；第二阶段常驻压暗是机制，我来做
     death: { fb: 'raven_death', color: '#ff4dd2', size: 1.2 },
   },
+  ironJaw: {
+    chain: { tex: 'chain_glow', color: '#ff7a2e', height: 10, alpha: 0.82 },
+    hook: { fb: 'hook_spark', color: '#ff7a2e', k: 0.5 },
+    drag: { fb: 'chain_drag', color: '#ff7a2e', k: 0.55 },
+    cleave: { fb: 'heavy_cleave', color: '#ff7a2e', k: 0.58, x: 0.12, z: 0.62 },
+    quake: { fb: 'stomp_quake', color: '#ff7a2e', k: 0.52 }, // 素材已按地面透视压扁（2:1），不要 ground（粒子的 ground 会再压到 0.32）
+    wave: { fb: 'stomp_wave', color: '#ff7a2e', k: 0.48 },
+    stompScales: [1, 1.2, 1.5],
+    charge: { fb: 'charge_sparks', color: '#ff7a2e', k: 0.56 },
+    mark: { tex: 'execution_mark', color: '#ff7a2e', rise: 0.3, alpha: 0.6 },
+    glint: { fb: 'headsman_glint', color: '#e1eeff', k: 0.43, x: 0.28, z: 1.03 },
+    drop: { fb: 'execution_drop', color: '#ff7a2e', k: 0.80, alpha: 0.72 },
+    chainBreak: { fb: 'chain_break', color: '#ff7a2e', k: 0.64 },
+    groundDeath: { fb: 'ironjaw_death', color: '#ff7a2e', size: 1.2 },
+  },
 };
