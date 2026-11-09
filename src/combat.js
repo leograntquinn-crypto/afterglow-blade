@@ -7,7 +7,7 @@ import { BOSS_SPRITES } from './enemy_sprites.js';
 import { FEINT } from './ai_data.js';
 import { ENEMY_FX } from './fx_data.js';
 import { drawWarn, drawWarnFlash, drawMeteor, drawLaneBand, drawArrow, arrowBreakFx } from './enemy_fx.js';
-import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact, drawIronJawChain } from './boss_fx.js';
+import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact, drawIronJawChain, drawAfterimageWave } from './boss_fx.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -95,6 +95,7 @@ export class Projectile {
     ctx.translate(sx, sy);
     ctx.scale(this.facing, 1);
     if (this.kind === 'wave') {
+      if (drawAfterimageWave(ctx, this)) { ctx.restore(); return; }
       // 剑气：新月形，后面拖两层渐淡的残像；外层柔光 + 刀刃白芯
       ctx.globalCompositeOperation = 'lighter';
       const a = Math.min(1, this.life / 10), sc = this.scale || 1, col = this.color || COLORS.blade, T = tex();

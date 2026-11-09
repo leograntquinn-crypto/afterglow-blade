@@ -146,3 +146,12 @@ Theme: the final boss is the hero's dark mirror. Its light is INVERTED: a bright
 - 镜像、读习惯、读条、死亡按第一节的表接。
 - 机制补强（第 9 项「你的反面」：用你的连段、你的闪避时机反制你）我来设计，和特效同一子轮验收。
 - 验收：截图对比（用 `tools/fxsheet.js`，每个招式的关键时刻，桌面 + 手机）、全套测试 + 新的确定性测试（每个时刻选对素材、只有残影换了刀光条带、处决路线不再有代码画的线）、帧率；「反面」的观感等 Quinn 试玩确认。
+
+## 九、接入记录（子轮 H 残影模块，2026-11-09）
+
+- **代码**：H-8（Codex，分支 `h8-afterimage-fx`）+ H-9（Codex，`tests/afterimagefxtest.js`，Muse 补了图集 null 帧的脚手架修正），终审通过后合进 main。
+- **处决路线的兜底（第八节留下的问题，我定）**：处决有判定，路线是躲开它的唯一提示，所以残影包没载好时路线**不能消失**。办法：借一直载入的敌人通用路线光带 `lane_band`（`fx_enemy_tex`，成品贴图，不是代码画的形状，符合第 14 项「允许用已有素材兜底」），沿每一段平铺、染红 `#ff4d5e`；数值在 `BOSS_FX.afterimage.route.fallback`。折点 `exec_mark` 兜底时不画。确定性测试 `fallback` 一项改成要求兜底时画 `lane_band`、不画任何残影包里的东西、不调用 `stroke`。
+- **读条**：残影读条时不再画通用法阵 `fx.rune`（换成身上的 `reversal_gather`）。读条爆炸是全场判定（`rx 900`），范围提示一直是全场红色预警，那圈 170 半径的法阵只是装饰，去掉不影响躲避信息——和夜鸦、铁颚的处理一致。
+- **死亡朝向**：`afterimage_death` 素材默认往左飘，`towardHero` 时主角在右就镜像，残光点飘向主角（截图核对过两侧）。
+- **截图**：`tools/fxsheet_cases/afterimage.json`（12 个时刻），桌面左右对照 main + 手机，全部核对。
+- **观感待 Quinn 试玩**：「反面」刀光（`rev_ribbon` 暗芯）和主角刀光在小尺寸下区别偏细；镜像印记和头顶的「!」预警叠在同一高度，读起来像框住了预警，暂不改。

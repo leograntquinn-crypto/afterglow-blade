@@ -210,7 +210,7 @@ export function typeFx(game, e, kind, o = {}) {
   const E = typeFxEntry(e, kind);
   if (!E?.fb || E.attached || !typeFlipbook(e, E.fb)) return false;
   const color = (o.feint && E.feintColor) || E.color || '#ffffff';
-  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0), facing = o.dir ?? e.facing;
+  const ox = e.h * (E.x ?? 0), oz = e.h * (E.z ?? 0), facing = E.towardHero ? (game.player.x > e.x ? -1 : 1) : o.dir ?? e.facing;
   const [x, z] = o.at ?? [e.x + facing * ox, e.z + oz];
   return !!game.fx.flip(E.fb, x, e.y, z, {
     color, size: (e.h / FIG) * (E.size ?? 1), facing, hold: E.hold, holdFade: !!E.hold,
