@@ -444,3 +444,68 @@ export function boneShards(game, boss) {
     });
   }
 }
+
+// 守护者的火按拉取目标镜像；素材朝左，目标在右时才翻转。
+const warden = BOSS_FX.warden;
+export const wardenColor = (b) => warden.colors[b.phase];
+export function hasWardenGather(b) {
+  return b.key === 'warden' && !!flipbook(warden.gather.fb);
+}
+export function playWardenFx(game, b, kind, x = b.x, y = b.y, length = null) {
+  if (b.key !== 'warden') return false;
+  const e = warden[kind], k = b.h / FIG * e.size;
+  // 横扫原图锚点在宽度的 15%，把画布起点对齐判定起点。
+  if (length != null) x += b.facing * length * e.anchorX;
+  return !!game.fx.flip(e.fb, x, y, b.z, {
+    size: k, color: wardenColor(b), facing: b.facing,
+    scaleX: length == null ? 1 : length / (e.width * k),
+  });
+}
+export function updateWardenFlame(b, game) {
+  if (b.key !== 'warden' || !b.alive) return;
+  b.wardenFlameTime = (b.wardenFlameTime ?? 0) + (b.phase === 2 ? warden.flame.speed : 1);
+  b.wardenJump = false;
+  if (b.phase !== 2) { b.wardenJumpAt = null; return; }
+  if (b.wardenJumpAt == null || game.ticks >= b.wardenJumpAt) {
+    b.wardenJump = b.wardenJumpAt != null;
+    const [lo, hi] = warden.flame.jumpInterval;
+    b.wardenJumpAt = game.ticks + lo + Math.floor(Math.random() * (hi - lo + 1));
+  }
+}
+export function drawWardenBodyFx(ctx, b, sx, sy, alpha) {
+  if (b.key !== 'warden' || !b.alive) return false;
+  const nearest = b.game.enemies.filter(e => e.owner === b && e.hp > 0 && !e.remove)
+    .reduce((best, e) => !best || Math.hypot(e.x - b.x, e.y - b.y) < Math.hypot(best.x - b.x, best.y - b.y) ? e : best, null);
+  const dir = nearest ? Math.sign(nearest.x - b.x) || -b.facing : -b.facing;
+  const e = warden.flame;
+  const drawn = put(ctx, frame(e, b.wardenFlameTime ?? 0), sx, sy, b.h / FIG * e.size,
+    wardenColor(b), alpha * e.alpha * (b.wardenJump ? e.jumpAlpha : 1), -dir);
+  if (b.state === 'attack' && b.act?.name === 'channel' && b.channel === b.act.d) {
+    const g = warden.gather;
+    put(ctx, frame(g, b.act.t - 1), sx, sy, b.h / FIG * g.size, wardenColor(b), alpha, b.facing);
+  }
+  return drawn;
+}
+export function drawWardenBrazier(ctx, b, sx, sy) {
+  const e = warden.brazier;
+  put(ctx, frame(e, b.t), sx, sy, e.k, null);
+  const f = warden.brazierFlame, dir = Math.sign(b.owner.x - b.x) || b.owner.facing;
+  return put(ctx, frame(f, b.t), sx, sy - e.mouth, f.k, wardenColor(b.owner), 1, -dir);
+}
+export function breakWardenBrazier(game, b) {
+  const e = warden.break;
+  return !!game.fx.flip(e.fb, b.x, b.y, 0, { size: e.k, facing: b.owner.x > b.x ? -1 : 1 });
+}
+export function drawWardenLane(ctx, lane, sx, sy, len, alpha) {
+  if (lane.warden?.key !== 'warden') return false;
+  const e = warden.lane, img = bossTex('wardenv2', e.tex);
+  if (!img) return false;
+  ctx.save();
+  ctx.globalAlpha *= alpha * e.alpha;
+  // 只翻水平轴，地面火舌不会因向左铺而上下倒置。
+  ctx.translate(sx, sy);
+  ctx.scale(lane.facing, 1);
+  tileAlong(ctx, img, 0, 0, 0, len, lane.half * e.height, lane.t * e.scroll, wardenColor(lane.warden));
+  ctx.restore();
+  return true;
+}

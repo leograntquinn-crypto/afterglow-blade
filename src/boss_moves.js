@@ -6,7 +6,7 @@ import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { BOSS_FX } from './fx_data.js';
 import { tex, tinted } from './fx_tex.js';
-import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak, boneCageFx } from './boss_fx.js';
+import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak, boneCageFx, playWardenFx, drawWardenBrazier, breakWardenBrazier } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const dist = (b, p) => Math.abs(p.x - b.x);
@@ -260,13 +260,13 @@ export const SIGNATURE = {
         b.facing = sign(p.x - b.x);
         const off = p.y > DEPTH / 2 ? -58 : 58;
         d.y1 = clamp(p.y, 8, DEPTH - 8); d.y2 = clamp(p.y + off, 8, DEPTH - 8);
-        g.hazards.push(new Lane({ x: b.x, y: d.y1, facing: b.facing, life: D, half: 30 }));
-        g.hazards.push(new Lane({ x: b.x, y: d.y2, facing: b.facing, life: D + 18, half: 30, color: '#ffb347' }));
+        g.hazards.push(new Lane({ x: b.x, y: d.y1, facing: b.facing, life: D, half: 30, length: 460, warden: b }));
+        g.hazards.push(new Lane({ x: b.x, y: d.y2, facing: b.facing, life: D + 18, half: 30, length: 460, warden: b, color: '#ffb347' }));
         sfx('warn');
       }
       const sweep = (y) => {
         const x0 = b.x, x1 = clamp(b.x + b.facing * 460, 0, world.w);
-        g.fx.arc(b.x + b.facing * 20, y, 50, b.facing, 220, -0.9, 0.5, b.B.glow, 18, 12);
+        if (!playWardenFx(g, b, 'sweep', x0, y, Math.abs(x1 - x0))) g.fx.arc(b.x + b.facing * 20, y, 50, b.facing, 220, -0.9, 0.5, b.B.glow, 18, 12);
         if (p.z < 70 && Math.abs(p.y - y) < 26 && (p.x - x0) * b.facing > -20 && (p.x - x1) * b.facing < 20) {
           g.applyHit(b, p, { dmg: 18, kb: 7, launch: 5, stop: 7, shake: 8, heavy: true }, b.facing);
         }
@@ -402,9 +402,10 @@ export class Brazier {
   }
   shatter(game) {
     this.remove = true;
-    game.fx.flip('impact_ground', this.x, this.y, 0, { color: this.owner.B.glow, scale: 0.5 });
+    const broken = breakWardenBrazier(game, this);
+    if (!broken) game.fx.flip('impact_ground', this.x, this.y, 0, { color: this.owner.B.glow, scale: 0.5 });
     game.fx.emit('soul', this.x, this.y, 30, { color: this.owner.B.glow });
-    game.fx.chips(this.x, this.y, 30, 1, 8, '#6a7a6e');
+    if (!broken) game.fx.chips(this.x, this.y, 30, 1, 8, '#6a7a6e');
     sfx('break');
   }
   update(game) {
@@ -426,31 +427,19 @@ export class Brazier {
   }
   draw(ctx, camX, t) {
     let [sx, sy] = toScreen(this.x, this.y, 0, camX);
-    if (this.shakeT > 0) sx += (Math.random() - 0.5) * 4;
-    const T = tex(), col = this.owner.B.glow;
-    // 石炉：底座 + 炉口
-    ctx.save();
-    ctx.fillStyle = '#2e3a32';
-    ctx.beginPath();
-    ctx.moveTo(sx - 18, sy);
-    ctx.lineTo(sx + 18, sy);
-    ctx.lineTo(sx + 12, sy - 34);
-    ctx.lineTo(sx - 12, sy - 34);
-    ctx.closePath();
-    ctx.fill();
-    ctx.strokeStyle = 'rgba(160,220,180,0.55)';
-    ctx.lineWidth = 1.5;
-    ctx.stroke();
-    ctx.fillStyle = '#4a5a4e';
-    ctx.fillRect(sx - 16, sy - 38, 32, 6);
-    // 炉火：魂火序列帧（素材没到时画一团光）
-    ctx.globalCompositeOperation = 'lighter';
-    const warm = this.t % 150 > 30 && this.t % 150 < 60 ? 1.6 : 1; // 吐火前变亮
-    ctx.globalAlpha = 0.5 * warm;
-    ctx.drawImage(tinted(T.glow, col), sx - 26, sy - 70, 52, 52);
-    ctx.globalAlpha = 0.9;
-    ctx.drawImage(tinted(T.core, col), sx - 8, sy - 58, 16, 22);
-    ctx.restore();
+    if (this.shakeT > 0) sx += (Math.random() - 0.5) * BOSS_FX.warden.brazier.shake;
+    if (!drawWardenBrazier(ctx, this, sx, sy)) {
+      // 炉口素材缺失时沿用旧光晕，炉身不再用程序绘制。
+      const T = tex(), col = this.owner.B.glow;
+      ctx.save();
+      ctx.globalCompositeOperation = 'lighter';
+      const warm = this.t % 150 > 30 && this.t % 150 < 60 ? 1.6 : 1;
+      ctx.globalAlpha = 0.5 * warm;
+      ctx.drawImage(tinted(T.glow, col), sx - 26, sy - 70, 52, 52);
+      ctx.globalAlpha = 0.9;
+      ctx.drawImage(tinted(T.core, col), sx - 8, sy - 58, 16, 22);
+      ctx.restore();
+    }
   }
 }
 

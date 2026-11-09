@@ -9,8 +9,8 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
   const r = await p.evaluate(async () => {
     const g = __game; const { FX_ART } = await import('./src/fx_art.js');
     for (const s of ['s1', 's2', 's3', 's4']) g.save.cleared[s] = true;
-    const packs = ['bone', 'bonev2', 'raven', 'ironjaw', 'warden', 'afterimage'];
-    const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden'], 4: ['afterimage'] };
+    const packs = ['bone', 'bonev2', 'raven', 'ironjaw', 'warden', 'wardenv2', 'afterimage'];
+    const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden', 'wardenv2'], 4: ['afterimage'] };
     const out = {};
     for (const st of [0, 1, 2, 3, 4, 2, 0]) {
       g.story.clear(); g.startStage(st, 0, false); g.story.clear();
@@ -22,7 +22,7 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
     return out;
   });
   console.log(JSON.stringify(r));
-  const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden'], 4: ['afterimage'] };
+  const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden', 'wardenv2'], 4: ['afterimage'] };
   for (const [k, v] of Object.entries(r)) {
     const st = +k.split('_')[0];
     const only = Object.entries(v.state).every(([name, ready]) => ready === want[st].includes(name));
