@@ -1,11 +1,11 @@
 // 掉落物：金币和装备。装备会冒出对应品质颜色的光柱（光照包 loot_beam 序列帧，按稀有度染色），品质越高光柱越高
 import { toScreen, FONT_TITLE } from './config.js';
-import { RARITY, itemGlyph } from './items.js';
+import { RARITY, isLegend, itemGlyph } from './items.js';
 import { lightFb } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { drawLightTex } from './draw.js';
 
-const BEAM = [36, 90, 150, 260];
+const BEAM = [36, 90, 150, 210, 260];
 
 export class Loot {
   // { x, y, item } 或 { x, y, gold }
@@ -66,7 +66,7 @@ export class Loot {
       // 光柱：loot_beam 6 帧循环（12 fps），锚点在底部；高度按品质（原画布 384 高 → BEAM），宽度跟着按比例
       const fb = lightFb('loot_beam');
       if (fb) {
-        const H = BEAM[it.rar] * (0.9 + 0.1 * Math.sin(t * 0.08 + this.x)), k = H / (fb.h * 0.95), n = fb.frames.length;
+        const H = BEAM[isLegend(it) ? 4 : it.rar] * (0.9 + 0.1 * Math.sin(t * 0.08 + this.x)), k = H / (fb.h * 0.95), n = fb.frames.length;
         const fr = fb.frames[(Math.floor(t / (60 / fb.fps) + this.x * 0.1) % n + n) % n];
         if (fr) {
           ctx.save();

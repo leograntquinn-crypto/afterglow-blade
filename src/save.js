@@ -3,6 +3,8 @@
 // 策略：启动时先读本地存档立刻开玩；云端连上后，哪边的 savedAt 更新就用哪边。
 // 云端写入一次只发一个请求，期间的新改动合并成下一次写入。
 
+import { migrateSave } from './gear/migrate.js';
+
 import { newSave } from './progression.js';
 
 const KEY = 'afterglow-blade-save-v1';
@@ -10,7 +12,7 @@ const KEY = 'afterglow-blade-save-v1';
 function loadLocal() {
   try {
     const s = JSON.parse(localStorage.getItem(KEY));
-    return s && s.v === 1 ? s : null;
+    return migrateSave(s);
   } catch {
     return null;
   }
@@ -38,9 +40,9 @@ export class SaveStore {
       this.ref = db.doc(`data/users/${id}/save`);
       const snap = await withTimeout(this.ref.get(), 10000);
       this.status = 'cloud';
-      const cloud = snap.exists ? snap.data() : null;
-      if (cloud && cloud.v === 1 && (cloud.savedAt || 0) > (this.data.savedAt || 0)) {
-        if (onNewer(() => (this.data = JSON.parse(JSON.stringify(cloud))))) this.writeLocal();
+      const cloud = snap.exists ? migrateSave(snap.data()) : null;
+      if (cloud && cloud.v === 2 && (cloud.savedAt || 0) > (this.data.savedAt || 0)) {
+        if (onNewer(() => (this.data = migrateSave(cloud)))) this.writeLocal();
       } else if (this.data.savedAt) {
         this.pushCloud();
       }

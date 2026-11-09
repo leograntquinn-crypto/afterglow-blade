@@ -169,7 +169,7 @@ export class Hub {
         <button class="btn mini" data-act="stat" data-k="${a.key}" ${s.statPts > 0 ? '' : 'disabled'} aria-label="${a.name}加一点">+</button>
       </div>`).join('');
     const bag = s.bag.map((it) => {
-      const better = itemScore(it) > itemScore(s.equip[it.slot]);
+      const better = itemScore(it) > itemScore(s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot]);
       return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
         <span class="glyph">${itemGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}${better ? '<i class="up">▲</i>' : ''}${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
       </button>`;
@@ -227,7 +227,7 @@ export class Hub {
   // ---------------- 装备详情弹窗 ----------------
   findItem(id) {
     const s = this.save;
-    for (const k of SLOT_KEYS) if (s.equip[k]?.id === id) return { it: s.equip[k], equipped: true };
+    for (const k of SLOT_KEYS) if (s.equip[k]?.id === id) return { it: s.equip[k], equipped: true, slot: k };
     const it = s.bag.find((x) => x.id === id);
     return it ? { it, equipped: false } : null;
   }
@@ -251,7 +251,7 @@ export class Hub {
       this.modal.hidden = false;
       return;
     }
-    const cur = equipped ? null : s.equip[it.slot];
+    const cur = equipped ? null : s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot];
     const mine = itemStats(it), other = cur ? itemStats(cur) : {};
     const keys = Object.keys(it.base);
     const statRows = keys.map((k) => {
@@ -283,7 +283,7 @@ export class Hub {
       ${it.mark && MARKS[it.mark] ? `<p class="mark">刻印「${MARKS[it.mark].name}」${MARKS[it.mark].desc}<small>适合：${MARKS[it.mark].style}${!equipped && this.g.stats.marks.has(it.mark) ? ' · 身上已有同名刻印，不叠加' : ''}</small></p>` : ''}
       ${compare}
       <div class="actions">
-        ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : `<button class="btn primary" data-act="equip">穿戴</button>`}
+        ${equipped ? `<button class="btn" data-act="unequip">卸下</button>` : it.slot === 'trinket' ? ['trinket1','trinket2'].map((slot) => `<button class="btn primary" data-act="equip" data-slot="${slot}">穿戴至${SLOT_NAME[slot]}</button>`).join('') : `<button class="btn primary" data-act="equip">穿戴</button>`}
         ${enhBtn}
         ${inh ? `<button class="btn" data-act="inherit" ${s.gold >= inh ? '' : 'disabled'} title="把「${itemTitle(cur)}」的强化等级转到这件上，旧装备变回 +0">传承 +${cur.enh} 强化 · ${inh} 金币</button>` : ''}
         ${it.rar >= 2 ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
@@ -410,17 +410,19 @@ export class Hub {
     if (!f) return;
     const { it, equipped } = f;
     if (act === 'equip') {
-      const old = s.equip[it.slot];
+      const target = it.slot === 'trinket' ? el.dataset.slot : it.slot;
+      if (!SLOT_KEYS.includes(target) || (it.slot === 'trinket' && !['trinket1','trinket2'].includes(target))) return;
+      const old = s.equip[target];
       s.bag = s.bag.filter((x) => x !== it);
       if (old) s.bag.push(old);
-      s.equip[it.slot] = it;
+      s.equip[target] = it;
       sfx('pickup');
       this.closeModal();
       commit();
       this.toast(`已穿戴 ${itemTitle(it)}`, RARITY[it.rar].color);
     } else if (act === 'unequip') {
       if (s.bag.length >= BAG_MAX) return this.toast('背包已满');
-      s.equip[it.slot] = null;
+      s.equip[f.slot] = null;
       s.bag.push(it);
       this.closeModal();
       commit();
@@ -444,7 +446,7 @@ export class Hub {
       const a = it.affix[i];
       this.toast(`${STAT_INFO[before.k][0]} → ${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}`, '#7ff3ff');
     } else if (act === 'inherit' && !equipped) {
-      const cur = s.equip[it.slot];
+      const cur = s.equip[it.slot === 'trinket' ? 'trinket1' : it.slot];
       if (!cur || cur.enh <= it.enh) return;
       const cost = inheritCost(it, cur);
       if (s.gold < cost) return;

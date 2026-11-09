@@ -1,3 +1,4 @@
+import { CATALOG } from './gear/catalog.js';
 // 成长系统：经验与等级、属性点、技能树、最终属性计算
 //
 // 所有「成长」都汇总到 computeStats() 一个函数里：
@@ -8,7 +9,7 @@ import { SLOT_KEYS, itemStats, starterGear, RARITY, WTYPES, MARKS } from './item
 import { SKILLS } from './moves.js';
 
 export const MAX_LV = 30;
-export const BAG_MAX = 40;
+export const BAG_MAX = 60;
 export const xpToNext = (lv) => Math.round(50 * Math.pow(lv, 1.5) + 30);
 
 export const ATTRS = [
@@ -33,8 +34,8 @@ for (const n of SKILL_TREE) if (n.active) Object.assign(n, { name: SKILLS[n.key]
 
 export function newSave() {
   return {
-    v: 1, savedAt: 0,
-    lv: 1, xp: 0, gold: 0,
+    v: 2, savedAt: 0,
+    lv: 2, xp: 0, gold: 0,
     statPts: 0, stats: { str: 0, vit: 0, int: 0, agi: 0 },
     sp: 0, skills: { skill1: 1, skill2: 0, skill3: 0, skill4: 0, mastery: 0, focus: 0, flow: 0 },
     equip: starterGear(), bag: [],
@@ -72,9 +73,14 @@ export function addXp(save, n) {
 }
 
 export function computeStats(save) {
-  const eq = {};
+  const eq = {}, setCount = {}, imbues = {};
   for (const slot of SLOT_KEYS) {
     const it = save.equip[slot];
+    const d = CATALOG[it?.def];
+    if (d && !d.fixed) {
+      if (d.set) setCount[d.set] = (setCount[d.set] || 0) + 1;
+      if (d.imbue && it.imbueLv) (imbues[d.imbue] ||= []).push({slot,uid:it.uid,def:it.def,lv:it.imbueLv});
+    }
     if (it) for (const [k, v] of Object.entries(itemStats(it))) eq[k] = (eq[k] || 0) + v;
   }
   const g = (k) => eq[k] || 0;
@@ -84,7 +90,7 @@ export function computeStats(save) {
   const int = save.stats.int + g('int');
   const agi = save.stats.agi + g('agi');
   return {
-    lv, str, vit, int, agi,
+    lv, str, vit, int, agi, setCount, imbues,
     atk: (6 + lv * 3 + g('atk') + str * 2) * (1 + g('atkPct')),
     def: g('def') + vit * 0.5,
     maxHp: Math.round(280 + lv * 20 + vit * 12 + g('hp')),
@@ -96,8 +102,8 @@ export function computeStats(save) {
     normalMul: 1 + sk.mastery * 0.06,
     intMul: 1 + int * 0.012,
     skillLv: { skill1: sk.skill1, skill2: sk.skill2, skill3: sk.skill3, skill4: sk.skill4 },
-    school: save.equip.weapon?.wtype || 'sword', // 武器流派（见 items.js 的 WTYPES）
-    marks: new Set(SLOT_KEYS.map((k) => save.equip[k]?.mark).filter((m) => m && MARKS[m])), // 已激活的刻印（同名不叠加）
+    school: CATALOG[save.equip.weapon?.def]?.kind || save.equip.weapon?.wtype || 'sword', // 武器流派（见 items.js 的 WTYPES）
+    marks: new Set(SLOT_KEYS.filter((k) => !CATALOG[save.equip[k]?.def]?.fixed).map((k) => save.equip[k]?.mark).filter((m) => m && MARKS[m])), // 已激活的刻印（同名不叠加）
   };
 }
 
@@ -123,7 +129,7 @@ export function resetSkills(save) {
 
 // 主角外观由装备决定：武器类型和品质光、护甲镶边、头盔
 export function playerLook(save) {
-  const w = save.equip.weapon, a = save.equip.armor, h = save.equip.helm;
+  const w = save.equip.weapon, a = save.equip.chest, h = save.equip.helm;
   const WT = WTYPES[w?.wtype || 'sword'];
   return {
     rig: 'hero', h: 86,

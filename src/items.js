@@ -5,16 +5,13 @@
 
 import { rand } from './config.js';
 
-export const RARITY = [
-  { name: '普通', color: '#d8d3c8', mul: 1.0, w: 62 },
-  { name: '精良', color: '#4fa3ff', mul: 1.15, w: 27 },
-  { name: '稀有', color: '#b46bff', mul: 1.32, w: 9 },
-  { name: '传说', color: '#ff9a2e', mul: 1.55, w: 2 },
-];
-
-export const SLOT_KEYS = ['weapon', 'helm', 'armor', 'ring'];
-export const SLOT_NAME = { weapon: '武器', helm: '头盔', armor: '护甲', ring: '戒指' };
-const SLOT_GLYPH = { helm: '盔', armor: '甲', ring: '戒' };
+import { CATALOG, defsBy } from './gear/catalog.js';
+import { BUDGET, AFFIX_SHARE, AFFIX_MAX, ITEM_RULES, RARITY } from './gear/rules.js';
+export { RARITY };
+export const SLOT_KEYS = ['weapon','helm','chest','legs','boots','bracers','wings','veil','trinket1','trinket2'];
+export const RESERVED_SLOTS = ['class'];
+export const SLOT_NAME = {weapon:'武器',helm:'头盔',chest:'胸甲',legs:'护腿',boots:'战靴',bracers:'护腕',wings:'翅膀',veil:'光幕',trinket:'饰品',trinket1:'饰品一',trinket2:'饰品二'};
+const SLOT_GLYPH = {helm:'盔',chest:'甲',legs:'腿',boots:'靴',bracers:'腕',wings:'翼',veil:'幕',trinket:'饰'};
 
 // 武器类型：影响攻击力倍率、外观长度，太刀自带暴击
 // 武器类型 = 流派：除了数值，每种武器还有一个改变打法的特性（school），绯隼的动作不变
@@ -25,21 +22,6 @@ export const WTYPES = {
   sword: { name: '长剑', glyph: '剑', atkMul: 1.0, len: 64, school: '游刃', schoolDesc: '破招、极限闪避、弹刀成功时，技能冷却回转 3 秒（其他武器 1.5 秒）' },
   katana: { name: '太刀', glyph: '刀', atkMul: 0.92, len: 72, crit: 0.04, school: '疾斩', schoolDesc: '普攻和技能的取消窗口提前 3 帧，连段更快' },
   great: { name: '巨剑', glyph: '巨', atkMul: 1.18, len: 70, school: '崩山', schoolDesc: '削霸体 ×1.6；普攻破招也能直接打断有霸体的敌人' },
-};
-
-const TIER_NAMES = {
-  sword: ['铁剑', '青钢剑', '寒铁剑', '玄纹长剑', '星陨剑'],
-  katana: ['打刀', '霜纹太刀', '月影太刀', '鬼切', '天羽太刀'],
-  great: ['阔剑', '断岩巨剑', '镇狱巨剑', '裂地巨剑', '天崩巨剑'],
-  helm: ['布头巾', '皮盔', '铁额冠', '玄铁战盔', '星纹头冠'],
-  armor: ['布衣', '皮甲', '锁子甲', '玄铁战甲', '星纹战衣'],
-  ring: ['铜戒', '银戒', '月石戒指', '血玉戒指', '星辰指环'],
-};
-const LEGEND_NAMES = {
-  weapon: ['断月', '霜烬', '无归', '烛龙之牙'],
-  helm: ['不眠者之冠', '烬灭头冠'],
-  armor: ['残光战衣', '渊海鳞甲'],
-  ring: ['时之环', '永夜之誓'],
 };
 
 // 词条池：k = 属性键，roll(物品等级) 生成数值
@@ -99,7 +81,7 @@ export const newId = () => `${Date.now().toString(36)}${(seq++).toString(36)}${M
 
 // 掉落品质：关卡越深，高品质权重越高；精英怪有额外幸运
 export function rollRarity(L, { minRar = 0, luck = 0 } = {}) {
-  const w = RARITY.map((r, i) => (i === 0 ? r.w : r.w * (1 + L * 0.05 + luck) * (i === 3 ? 1 + L * 0.06 : 1)));
+  const w = RARITY.map((r, i) => (i === 0 ? r.w : r.w * (1 + L * 0.05 + luck) * (i === 4 ? 1 + L * 0.06 : 1)));
   let x = Math.random() * w.reduce((a, b) => a + b, 0);
   let rar = 0;
   for (let i = 0; i < w.length; i++) {
@@ -109,35 +91,57 @@ export function rollRarity(L, { minRar = 0, luck = 0 } = {}) {
   return Math.max(minRar, rar);
 }
 
-export function makeItem(slot, ilvl, rar, wtype) {
-  const R = RARITY[rar];
-  const it = { id: newId(), slot, rar, ilvl, enh: 0, base: {}, affix: [] };
-  if (slot === 'weapon') {
-    it.wtype = wtype || pick(Object.keys(WTYPES));
-    const W = WTYPES[it.wtype];
-    it.base.atk = Math.round((8 + ilvl * 3.2) * R.mul * W.atkMul);
-    if (W.crit) it.base.crit = W.crit;
-  } else if (slot === 'helm') {
-    it.base.def = Math.round((3 + ilvl * 1.2) * R.mul);
-    it.base.hp = Math.round((10 + ilvl * 6) * R.mul);
-  } else if (slot === 'armor') {
-    it.base.def = Math.round((5 + ilvl * 2) * R.mul);
-    it.base.hp = Math.round((20 + ilvl * 10) * R.mul);
-  } else {
-    it.base.atk = Math.round((3 + ilvl * 1.2) * R.mul);
-    it.base.crit = 0.01;
+// 定义属性通过访问器读取，JSON 存档只保存实例字段；旧界面继续使用原字段名。
+export function hydrateItem(it) {
+  if (!it?.def || !CATALOG[it.def]) return it;
+  const d = CATALOG[it.def];
+  for (const [k,get] of Object.entries({id:()=>it.uid,slot:()=>d.slot,rar:()=>d.rar,name:()=>d.name,
+    wtype:()=>d.slot === 'weapon' ? d.kind : undefined,base:()=>itemBase(it)})) {
+    Object.defineProperty(it,k,{get,configurable:true,enumerable:false});
   }
-  // 词条：普通 0 条、精良 1 条、稀有 2 条、传说 3 条（数值 ×1.3）
-  const boost = rar === 3 ? 1.3 : 1;
-  it.affix = shuffle(Object.keys(AFFIX)).slice(0, rar).map((k) => {
-    const v = AFFIX[k].roll(ilvl) * boost;
-    return { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
-  });
-  // 刻印：稀有 40% 带一条，传说必带一条
-  if (rar === 3 || (rar === 2 && Math.random() < 0.4)) it.mark = pick(Object.keys(MARKS));
-  const tier = Math.min(4, Math.floor(ilvl / 4));
-  it.name = rar === 3 ? pick(LEGEND_NAMES[slot]) : TIER_NAMES[slot === 'weapon' ? it.wtype : slot][tier];
   return it;
+}
+export const isLegend = (it) => !!it && (CATALOG[it.def]?.rar ?? it.rar) === 4;
+export function itemBase(it) {
+  const d = CATALOG[it.def];
+  if (!d) return it.base || {};
+  if (d.fixed) return {...d.fixed};
+  const base = {};
+  for (const [k,[a,b]] of Object.entries(BUDGET[d.slot])) {
+    const v = (a+b*it.ilvl) * (k === 'crit' ? 1 : RARITY[d.rar].mul);
+    base[k] = v;
+  }
+  if (d.slot === 'weapon') {
+    base.atk *= WTYPES[d.kind].atkMul;
+    if (WTYPES[d.kind].crit) base.crit = WTYPES[d.kind].crit;
+  }
+  for (const [k,v] of Object.entries(it.legacyBase || {})) base[k] = Math.max(base[k] || 0,v);
+  return base;
+}
+export function makeItem(defId, ilvl, opts = {}, wtype) {
+  // G-3 前保留旧调用签名，掉落分布与养成逻辑留给下一检查点。
+  if (!CATALOG[defId]) {
+    const slot = {armor:'chest',ring:'trinket'}[defId] || defId;
+    const rar = typeof opts === 'number' ? opts : 0;
+    const pool = defsBy({slot,rar,...(slot === 'weapon' ? {kind:wtype || pick(Object.keys(WTYPES))} : {})});
+    if (!pool.length) throw new Error(`没有对应装备定义：${defId}`);
+    defId = pick(pool).id;
+    opts = {};
+  }
+  const d = CATALOG[defId], R = RARITY[d.rar];
+  const it = {uid:newId(),def:defId,ilvl,enh:0,affix:[],mark:null,imbueLv:0,reforged:0,locked:false,skin:null};
+  if (!d.fixed) {
+    it.affix = shuffle(Object.keys(AFFIX)).slice(0,R.affixes).map((k) => {
+      const [a,b] = AFFIX_MAX[k];
+      const v = (a+b*ilvl)*rand(ITEM_RULES.affixMin,1)*AFFIX_SHARE[d.slot]*R.quality;
+      return {k,v:STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v)};
+    });
+    if (Math.random() < R.mark) it.mark = pick(Object.keys(MARKS));
+    if (d.imbue && R.imbue.length) it.imbueLv = pick(R.imbue);
+  }
+  Object.assign(it,opts);
+  if (d.fixed) Object.assign(it,{affix:[],mark:null,imbueLv:0});
+  return hydrateItem(it);
 }
 
 export function randomDrop(L, opts) {
@@ -148,10 +152,8 @@ export function randomDrop(L, opts) {
 }
 
 export function starterGear() {
-  const weapon = makeItem('weapon', 1, 0, 'sword');
-  weapon.name = '旧铁剑';
-  const armor = makeItem('armor', 1, 0);
-  return { weapon, helm: null, armor, ring: null };
+  return {...Object.fromEntries(SLOT_KEYS.map((k)=>[k,null])),
+    weapon:makeItem('sword_wayfarer_r0',1),chest:makeItem('chest_wayfarer_r0',1)};
 }
 
 export const itemGlyph = (it) => (it.slot === 'weapon' ? WTYPES[it.wtype].glyph : SLOT_GLYPH[it.slot]);
@@ -160,9 +162,12 @@ export const itemKind = (it) => (it.slot === 'weapon' ? WTYPES[it.wtype].name : 
 
 // 装备提供的全部属性（强化只加成基础属性，每级 +8%）
 export function itemStats(it) {
+  if (!it) return {};
+  const d = CATALOG[it.def];
+  if (d?.fixed) return {...d.fixed};
   const s = {};
-  const m = 1 + it.enh * 0.08;
-  for (const [k, v] of Object.entries(it.base)) s[k] = (s[k] || 0) + (k === 'crit' ? v : v * m);
+  const m = 1 + it.enh * ITEM_RULES.enhPer;
+  for (const [k, v] of Object.entries(itemBase(it))) s[k] = (s[k] || 0) + (k === 'crit' ? v : v * m);
   for (const a of it.affix) s[a.k] = (s[a.k] || 0) + a.v;
   return s;
 }
@@ -190,7 +195,7 @@ export function reforgeAffix(it, i) {
   const pool = Object.keys(AFFIX).filter((k) => !used.has(k));
   if (!pool.length) return false;
   const k = pick(pool);
-  const v = AFFIX[k].roll(it.ilvl) * (it.rar === 3 ? 1.3 : 1);
+  const v = AFFIX[k].roll(it.ilvl) * (isLegend(it) ? 1.3 : 1);
   it.affix[i] = { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
   it.reforged = (it.reforged || 0) + 1;
   return true;

@@ -41,7 +41,7 @@ import { Boss, BOSSES } from './boss.js';
 import { Chest, Shrine, Urn } from './props.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX, power } from './progression.js';
-import { RARITY, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
+import { RARITY, isLegend, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
 import { drawDoors, drawVignette, drawShadow } from './draw.js';
@@ -832,7 +832,7 @@ class Game {
 
   dropItem(x, y, item) {
     this.loots.push(new Loot({ x, y, item, vx: rand(-3, 3) }));
-    if (item.rar === 3) { sfx('legend'); this.fx.flash(RARITY[3].color, 0.25); this.fx.shake(6, 20); }
+    if (isLegend(item)) { sfx('legend'); this.fx.flash(RARITY[item.rar].color, 0.25); this.fx.shake(6, 20); }
     else if (item.rar === 2) sfx('rare');
   }
 
@@ -845,7 +845,7 @@ class Game {
     const luck = D.luck + sp * 1.5;
     if (e.isBoss) {
       // 首领：两件稀有以上（第一关是精良以上），传说概率大幅提高；地狱难度第一件必定是传说
-      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 3 : L > 1 ? 2 : 1, luck: 2 + luck }));
+      for (let i = 0; i < 2; i++) this.dropItem(e.x, e.y, randomDrop(L, { minRar: this.diff === 2 && i === 0 ? 4 : L > 1 ? 2 : 1, luck: 2 + luck }));
     } else if (Math.random() < (e.elite ? 1 : e.T.drop * (1 + D.luck * 0.3) * (1 + sp))) {
       this.dropItem(e.x, e.y, randomDrop(L, { minRar: e.elite ? (this.diff ? 2 : 1) : 0, luck: (e.elite ? 0.6 : 0) + luck }));
     }
