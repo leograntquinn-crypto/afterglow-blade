@@ -180,8 +180,38 @@ const PORT = process.env.PORT || 8765;
       check(requests.some(url => url.endsWith(mobile ? 'gear_icons_m.json' : 'gear_icons.json')), '9 分辨率清单 '+mobile);
       check(await page.locator('.bag .glyph [style*="background-image"]').count()===2,'9 背包图标 '+mobile);
       check(await page.locator('.slots .glyph [data-gear-icon]').count()>0,'9 槽位图标 '+mobile);
+      const geometry = await page.evaluate(() => {
+        const rect = node => node.getBoundingClientRect();
+        const canvas = rect(document.querySelector('#preview'));
+        const slots = [...document.querySelectorAll('.slots .slot')].map(rect);
+        const icons = [...document.querySelectorAll('.bag [data-gear-icon]')].map(node => {
+          const icon = rect(node), cell = rect(node.closest('.cell'));
+          return {width:icon.width, height:icon.height, ratio:Math.min(icon.width/cell.width, icon.height/cell.height)};
+        });
+        const cx = canvas.x + canvas.width/2;
+        return {
+          left:slots.filter(r => r.x+r.width/2 < cx).length,
+          right:slots.filter(r => r.x+r.width/2 > cx).length,
+          square:slots.length===10 && slots.every(r => Math.abs(r.width-r.height)<1),
+          min:Math.min(...slots.map(r => r.width)),
+          below:slots.every(r => r.top >= canvas.bottom),
+          rows:[...new Set(slots.map(r => Math.round(r.top)))].map(y => slots.filter(r => Math.round(r.top)===y).length),
+          icons,
+          emptyDisabled:[...document.querySelectorAll('.slots .empty')].every(node => node.disabled),
+        };
+      });
+      check(geometry.square && geometry.min >= (mobile ? 56 : 64), '9 方形大槽位 '+mobile, JSON.stringify(geometry));
+      check(geometry.emptyDisabled, '9 空槽禁用 '+mobile);
+      if (mobile) check(geometry.below && geometry.rows.length===2 && geometry.rows.every(n=>n===5), '9 手机立绘下五列 '+mobile);
+      else check(geometry.left>=3 && geometry.right>=3, '9 桌面槽位环绕');
+      check(geometry.icons.length===2 && geometry.icons.every(r=>r.width>=56 && r.height>=56 && r.ratio>=0.9), '9 背包图标尺寸与占格 '+mobile, JSON.stringify(geometry.icons));
       await page.locator('.bag [data-act="sel"]').first().click();
       check(await page.locator('#hub-modal [data-act="close"]').count()>0,'9 装备详情 '+mobile);
+      const detailIcon = await page.locator('#hub-modal .glyph.big').first().boundingBox();
+      check(detailIcon.width>=76 && detailIcon.height>=76, '9 详情大图标 '+mobile);
+      await page.locator('#hub-modal [data-act="close"]').click();
+      await page.locator('.slots .slot:not(:disabled)').first().click();
+      check(await page.locator('#hub-modal [data-act="close"]').count()>0, '9 槽位详情 '+mobile);
       await page.locator('#hub-modal [data-act="close"]').click();
       await page.locator('.bag [data-act="sel"]').nth(1).click();
       await page.locator('[data-act="compareSlot"][data-slot="trinket2"]').click();

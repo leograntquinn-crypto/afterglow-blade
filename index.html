@@ -56,7 +56,7 @@
     pointer-events: auto; touch-action: none;
   }
   #stick .knob {
-    position: absolute; left: 50%; top: 50%; width: 52px; height: 52px; margin: -26px 0 0 -26px; border-radius: 50%;
+    position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -26px 0 0 -26px; border-radius: 50%;
     background: rgba(127, 243, 255, .28); border: 2px solid rgba(127, 243, 255, .6);
   }
   .pad {
@@ -85,7 +85,7 @@
   .tbtn.s2 { right: 140px; bottom: 82px; }
   .tbtn.s3 { right: 96px; bottom: 134px; }
   .tbtn.s4 { right: 40px; bottom: 158px; }
-  .tbtn.ult { right: 4px; bottom: 222px; width: 52px; height: 52px; color: var(--gold); border-color: rgba(233, 207, 142, .5); font-size: 22px; }
+  .tbtn.ult { right: 4px; bottom: 222px; width: 76px; height: 76px; color: var(--gold); border-color: rgba(233, 207, 142, .5); font-size: 22px; }
 
   #pause-btn {
     position: fixed; top: calc(10px + env(safe-area-inset-top, 0px)); left: 50%; transform: translateX(-50%);
@@ -256,21 +256,26 @@
   .lock { font-size: 12px; color: var(--mute); }
 
   /* 角色 */
-  .hero { display: grid; grid-template-columns: minmax(0, 300px) minmax(0, 1fr) minmax(0, 1.2fr); gap: 14px; align-items: start; }
-  @media (max-width: 960px) { .hero { grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); } .hero .panel:last-child { grid-column: 1 / -1; } }
-  @media (max-width: 600px) { .hero { grid-template-columns: minmax(0, 1fr); } }
+  .hero { display: grid; grid-template-columns: minmax(360px, 1.35fr) minmax(220px, 1fr) minmax(220px, 1fr); gap: 14px; align-items: start; }
+  @media (max-width: 1100px) { .hero { grid-template-columns: minmax(360px, 1.35fr) minmax(220px, 1fr); } .hero .panel:last-child { grid-column: 1 / -1; } }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-  .figure { display: grid; gap: 10px; }
-  #preview { width: 100%; max-width: 260px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
-  .slots { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
-  .slot {
-    display: flex; align-items: center; gap: 8px; min-width: 0; padding: 6px 8px; border-radius: 6px; cursor: pointer;
-    background: rgba(0, 0, 0, .3); border: 1px solid var(--rc, var(--line)); text-align: left;
+  .figure { container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
+  #preview { grid-column: 2; grid-row: 1; width: 100%; max-width: 300px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
+  .slots { grid-column: 1 / -1; grid-row: 1; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; pointer-events: none; }
+  .slot { box-sizing: border-box; grid-column: var(--slot-col); grid-row: var(--slot-row); position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 6px; cursor: pointer; pointer-events: auto; background: rgba(0,0,0,.3); border: 1px solid var(--rc, var(--line)); }
+  .slot.empty { cursor: default; color: var(--mute); border-style: dashed; opacity: 1; }
+  .slot .glyph, .cell .glyph { position: absolute; inset: 0; display: grid; place-items: center; font: 40px var(--font-title); color: var(--rc, var(--mute)); }
+  .slot-label { position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; line-height: 13px; text-align: center; color: var(--ink); background: rgba(0,0,0,.65); pointer-events: none; }
+  @media (max-width: 680px) {
+    .hero { grid-template-columns: minmax(0, 1fr); }
   }
-  .slot.empty { cursor: default; color: var(--mute); border-style: dashed; }
-  .slot .glyph { font: 22px var(--font-title); color: var(--rc, var(--mute)); width: 24px; text-align: center; flex: none; }
-  .slot-label { font-size: 12px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-  .r0 { --rc: var(--r0); } .r1 { --rc: var(--r1); } .r2 { --rc: var(--r2); } .r3 { --rc: var(--r3); }
+  /* 三栏桌面的面板更窄；下限排除桌面，上限覆盖无 viewport meta 的手机两栏面板。 */
+  @container (min-width: 440px) and (max-width: 620px) {
+    .figure > #preview { grid-column: 1 / -1; grid-row: 1; max-width: 280px; }
+    .figure > .slots { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(5, minmax(56px, 1fr)); gap: 4px; }
+    .figure > .slots > .slot { grid-column: auto; grid-row: auto; }
+  }
+  .r0 { --rc: var(--r0); } .r1 { --rc: var(--r1); } .r2 { --rc: var(--r2); } .r3 { --rc: #ff5aa0; } .r4 { --rc: #ff9a2e; }
   .kvs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-bottom: 16px; }
   .kv { display: flex; justify-content: space-between; align-items: baseline; font-size: 13px; color: var(--mute); border-bottom: 1px solid var(--line); padding-block: 4px; }
   .kv b { font: 500 20px var(--font-num); color: var(--ink); font-variant-numeric: tabular-nums; }
@@ -283,18 +288,18 @@
   .attr small { display: block; font-size: 11px; color: var(--mute); }
   .attr + .btn.ghost { margin-top: 10px; padding-inline: 0; }
   .bag-tools { display: flex; gap: 4px; }
-  .bag { display: grid; grid-template-columns: repeat(auto-fill, minmax(48px, 1fr)); gap: 6px; }
+  .bag { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
   .cell {
     position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 6px; cursor: pointer; padding: 0;
     background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--rc) 22%, transparent), rgba(0, 0, 0, .35) 70%);
     border: 1px solid var(--rc);
   }
   .cell.blank { background: rgba(0, 0, 0, .2); border: 1px dashed var(--line); cursor: default; }
-  .cell .glyph { font: 24px var(--font-title); color: var(--rc); }
-  .cell i { position: absolute; font-style: normal; font: 500 13px/1 var(--font-num); }
+
+  .cell i { position: absolute; font-style: normal; font: 500 15px/1 var(--font-num); }
   .cell .enh { left: 4px; top: 3px; color: var(--gold); }
-  .cell .up { right: 4px; bottom: 3px; color: #6fe38a; font-size: 10px; }
-  .cell .lk { right: 3px; top: 2px; font-size: 10px; font-style: normal; }
+  .cell .up { right: 4px; bottom: 3px; color: #6fe38a; font-size: 15px; }
+  .cell .lk { right: 3px; top: 2px; font-size: 15px; font-style: normal; }
   .istats .affix { display: flex; align-items: center; gap: 8px; }
   .istats .affix .reforge { margin-left: auto; padding: 2px 8px; font-size: 11px; }
   .reforge-hint { margin: 4px 0 0; }
@@ -348,7 +353,7 @@
   .card-head > div { flex: 1; min-width: 0; }
   .card-head h3 { font: 26px var(--font-title); }
   .isub { margin: 2px 0 0; font-size: 12px; color: var(--mute); }
-  .glyph.big { flex: none; width: 52px; height: 52px; display: grid; place-items: center; border-radius: 8px; font: 30px var(--font-title); color: var(--rc); border: 1px solid var(--rc); }
+  .glyph.big { flex: none; width: 76px; height: 76px; display: grid; place-items: center; border-radius: 8px; font: 44px var(--font-title); color: var(--rc); border: 1px solid var(--rc); }
   .close { background: none; border: 0; font-size: 28px; color: var(--mute); cursor: pointer; align-self: flex-start; line-height: 1; padding: 0 4px; }
   .istats { list-style: none; padding: 0; margin: 14px 0 0; display: grid; gap: 4px; }
   .istats li { display: flex; gap: 10px; align-items: baseline; font-size: 14px; }

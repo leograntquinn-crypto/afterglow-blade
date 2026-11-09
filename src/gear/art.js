@@ -45,7 +45,7 @@ export const GEAR_ART = {
     return pos && this.frames[it.rar] ? pos : null;
   },
 };
-// 在既有 glyph 里铺底板和图标，不增加槽位或改变页面分区。
+// 图标与底板都铺满 glyph：图集每个 cell 映射为完整格子（100%，不留缩小边距）。
 export function gearGlyph(it) {
   const pos = GEAR_ART.entry(it);
   if (!pos) return it ? itemGlyph(it) : '';
@@ -53,7 +53,7 @@ export function gearGlyph(it) {
   const {file, width, height} = meta.pages[page];
   const px = width === cell ? 0 : x / (width - cell) * 100;
   const py = height === cell ? 0 : y / (height - cell) * 100;
-  return `<span data-gear-icon data-gear-glyph="${itemGlyph(it)}" aria-hidden="true" style="display:inline-block;width:1em;height:1em;background-image:url('${DIR}${file}'),url('${DIR}${meta.frames[it.rar]}');background-size:${width / cell * 100}% ${height / cell * 100}%,100% 100%;background-position:${px}% ${py}%,center;background-repeat:no-repeat"></span>`;
+  return `<span data-gear-icon data-gear-glyph="${itemGlyph(it)}" aria-hidden="true" style="display:inline-block;width:100%;height:100%;background-image:url('${DIR}${file}'),url('${DIR}${meta.frames[it.rar]}');background-size:${width / cell * 100}% ${height / cell * 100}%,100% 100%;background-position:${px}% ${py}%,center;background-repeat:no-repeat"></span>`;
 }
 export function drawGearIcon(ctx, it, x, y, size) {
   const pos = GEAR_ART.entry(it);

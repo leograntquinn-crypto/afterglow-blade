@@ -1,3 +1,4 @@
+import { FX_ART } from './fx_art.js';
 import { GEAR_ART, gearGlyph } from './gear/art.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 import { CATALOG } from './gear/catalog.js';
@@ -159,11 +160,11 @@ export class Hub {
       if (ready && !this.root.hidden && this.tab === 'hero' && this.g.scene !== 'play') this.render();
     });
     const s = this.save, S = this.g.stats;
-    const slots = SLOT_KEYS.map((k) => {
+    const slots = ['weapon','helm','chest','legs','boots','bracers','wings','veil','trinket1','trinket2'].map((k, i) => {
       const it = s.equip[k];
-      return `<button class="slot ${it ? `r${it.rar}` : 'empty'}" data-act="sel" data-id="${it ? it.id : ''}" data-slot="${k}" ${it ? '' : 'disabled'}>
+      return `<button class="slot ${it ? `r${it.rar}` : 'empty'}" data-act="sel" data-id="${it ? it.id : ''}" data-slot="${k}" style="--slot-row:${i % 5 + 1};--slot-col:${i < 5 ? 1 : 3}" title="${it ? itemTitle(it) : SLOT_NAME[k]}" aria-label="${SLOT_NAME[k]}${it ? `：${itemTitle(it)}` : `（空）`}" ${it ? '' : 'disabled'}>
         <span class="glyph">${it ? gearGlyph(it) : ''}</span>
-        <span class="slot-label">${it ? itemTitle(it) : `${SLOT_NAME[k]}（空）`}</span>
+        <span class="slot-label">${SLOT_NAME[k]}</span>
       </button>`;
     }).join('');
     const marks = [...S.marks].map((k) => `<div class="mk"><b>${MARKS[k].name}</b><span>${MARKS[k].desc}</span></div>`).join('');
@@ -515,11 +516,52 @@ export class Hub {
     const ctx = c.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
+    const equip = this.save.equip;
+    const defs = Object.values(equip).filter(Boolean).map(it => ({it, def: CATALOG[it.def]}));
+    const palette = {chill:'#75dfff', burn:'#ff8148', shock:'#b795ff', poison:'#a3e66e', bleed:'#f45b83', shield:'#ffe7a0'};
+    const weapon = CATALOG[equip.weapon?.def];
+    const imbues = defs.filter(({it, def}) => it.imbueLv > 0 && def?.imbue).map(({def}) => def.imbue);
+    const primary = SERIES[weapon?.series]?.element || imbues[0];
+    const colors = [...new Set([primary, SERIES[CATALOG[equip.wings?.def]?.series]?.element, ...imbues].filter(Boolean))]
+      .map(key => palette[key]).filter(Boolean);
+    if (!colors.length) colors.push('#7ff3ff');
+    const rgba = (hex, alpha) => `rgba(${[1,3,5].map(i => parseInt(hex.slice(i,i+2),16)).join(',')},${alpha})`;
+    // Cache only tinted copies of existing textures; never generate substitute FX shapes.
+    const texture = (id, color) => {
+      const source = FX_ART.light.ready && FX_ART.light.items[id];
+      if (!source?.width) return null;
+      this.previewFx ||= new Map();
+      const key = `${id}/${color}`, cached = this.previewFx.get(key);
+      if (cached?.source === source) return cached.canvas;
+      const canvas = document.createElement('canvas');
+      canvas.width = source.width; canvas.height = source.height;
+      const paint = canvas.getContext('2d');
+      paint.drawImage(source, 0, 0);
+      paint.globalCompositeOperation = 'source-in';
+      paint.fillStyle = color; paint.fillRect(0, 0, canvas.width, canvas.height);
+      this.previewFx.set(key, {source, canvas});
+      return canvas;
+    };
+    const fx = (id, color, x, y, w, h, alpha) => {
+      const image = texture(id, color);
+      if (!image) return;
+      ctx.save(); ctx.globalCompositeOperation = 'lighter'; ctx.globalAlpha = alpha;
+      ctx.drawImage(image, x-w/2, y-h/2, w, h); ctx.restore();
+    };
+    const breath = 0.875 + Math.sin(t * 0.018) * 0.125;
     const g = ctx.createRadialGradient(220, 330, 10, 220, 330, 220);
-    g.addColorStop(0, 'rgba(127,243,255,0.16)');
-    g.addColorStop(1, 'rgba(127,243,255,0)');
+    g.addColorStop(0, rgba(colors[0], 0.16));
+    g.addColorStop(1, rgba(colors[0], 0));
     ctx.fillStyle = g;
     ctx.fillRect(0, 0, c.width, c.height);
+    if (equip.wings) {
+      const wide = ctx.createRadialGradient(220, 235, 15, 220, 235, 290);
+      wide.addColorStop(0, rgba(colors[1] || colors[0], 0.22 * breath));
+      wide.addColorStop(1, rgba(colors[1] || colors[0], 0));
+      ctx.fillStyle = wide; ctx.fillRect(0, 0, c.width, c.height);
+    }
+    colors.forEach(color => fx('glow_soft', color, 220, 235, equip.wings ? 420 : 290,
+      equip.wings ? 430 : 350, breath * (equip.wings ? 0.65 : 0.42) / Math.sqrt(colors.length)));
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.beginPath();
     ctx.ellipse(220, 410, 80, 14, 0, 0, Math.PI * 2);
@@ -527,12 +569,16 @@ export class Hub {
     if (heroSprite.ready && heroSprite.full) {
       const H = 440, W = H * (heroSprite.full.width / heroSprite.full.height);
       ctx.drawImage(heroSprite.full, 220 - W / 2, 6 + Math.sin(t * 0.03) * 3, W, H);
-      return;
+    } else {
+      const look = this.g.playerLook();
+      const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };
+      ctx.save();
+      ctx.translate(168, 405);
+      ctx.scale(3.1, 3.1);
+      drawFighter(ctx, 0, 0, look, pose, { facing: 1, t });
+      ctx.restore();
     }
-    const look = this.g.playerLook();
-    const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };
-    ctx.translate(168, 405);
-    ctx.scale(3.1, 3.1);
-    drawFighter(ctx, 0, 0, look, pose, { facing: 1, t });
+    if (equip.veil) fx('light_magic', colors[0], 220 + Math.sin(t * 0.012) * 5,
+      245 + Math.cos(t * 0.015) * 4, 340, 400, 0.15 * breath);
   }
 }
