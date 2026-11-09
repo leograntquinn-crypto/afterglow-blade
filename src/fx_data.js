@@ -173,7 +173,7 @@ export const BOSS_FX = {
     tether: { tex: 'marrow_tether', color: '#ff5a3c', height: 6, scroll: 1.5 },
     drag: { fb: 'drag_sparks', color: '#ff5a3c', size: 1, x: 0.55, rendTail: 40 },
     shard: { fb: 'shard_return', size: 0.45, count: [3, 5], scatter: 18, pause: 10, back: 24,
-      chest: 0.6, speed: 3.5, lift: 4, gravity: 0.22, arc: 45, trail: 0.2 },
+      chest: 0.6, speed: 3.5, lift: 4, gravity: 0.22, arc: 45, trail: 0.2, light: 16 }, // light：每枚骨片的补光半径 rx（光照按 rx × 1.5 画）
     reform: { fb: 'bone_reform', size: 1 },
     sigil: { tex: 'bone_sigil', color: '#ff5a3c', spin: 0.004 },
     glow: { fb: 'marrow_glow', color: '#ff5a3c', size: 1 },

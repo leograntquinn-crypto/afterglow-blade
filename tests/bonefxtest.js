@@ -41,6 +41,8 @@ async function exercise() {
   }
   const at = (id) => flips.filter((p) => p.id === id);
   const near = (a, b) => Math.abs(a - b) < 1e-6;
+  // 画布变换按单精度存，读回的屏幕坐标有约 1e-5 的误差：比对画出来的线段端点用 0.01 逻辑像素
+  const nearPx = (a, b) => Math.abs(a - b) < 0.01;
   const cv = document.createElement('canvas'); cv.width = 960; cv.height = 540;
   const ctx = cv.getContext('2d'), paint = ctx.drawImage.bind(ctx), stroke = ctx.stroke.bind(ctx);
   const images = new Map();
@@ -100,7 +102,7 @@ async function exercise() {
       const b = scene('boneCage'); step(4);
       const art = floor(), segments = clips.map(p => ({ ...p })), slots = b.act.d.boneSlots;
       const pairs = slots.flatMap((a, i) => a && slots[(i + 1) % slots.length] ? [[a, slots[(i + 1) % slots.length]]] : []);
-      const matched = pairs.map(([a, z]) => { const p = toScreen(a.x, a.y, 0, 0), q = toScreen(z.x, z.y, 0, 0); return segments.some(s => near(s.x, p[0]) && near(s.y, p[1]) && near(s.ex, q[0]) && near(s.ey, q[1])); });
+      const matched = pairs.map(([a, z]) => { const p = toScreen(a.x, a.y, 0, 0), q = toScreen(z.x, z.y, 0, 0); return segments.some(s => nearPx(s.x, p[0]) && nearPx(s.y, p[1]) && nearPx(s.ex, q[0]) && nearPx(s.ey, q[1])); });
       const warning = b.tele && has(art, 'cage_tighten');
       return { ok: warning && pairs.length === 5 && segments.length === pairs.length && matched.every(Boolean), warning, expected: pairs.length, observed: segments.length, matched, gap: slots.findIndex(p => !p), segments };
     });

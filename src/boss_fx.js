@@ -397,7 +397,8 @@ function boneTether(ctx, a, b, t) {
 export function boneCageFx(game, boss, data, life, radius) {
   if (boss.key !== 'boneLord') return;
   const act = boss.act;
-  game.hazards.push({ x: data.cx, y: data.cy, t: 0, dead: false,
+  // 借地面队列绘制；光照系统按 rx 给队列里每一项补光，取骨牢半径（不另加默认的大光）
+  game.hazards.push({ x: data.cx, y: data.cy, rx: radius, t: 0, dead: false,
     update() { if (++this.t >= life || boss.act !== act) this.dead = true; },
     drawFloor(ctx, camX) {
       if (this.dead || boss.act !== act) return;
@@ -428,7 +429,8 @@ export function boneShards(game, boss) {
       return { x: end.x + (boss.x - end.x) * u, y: end.y + (boss.y - end.y) * u,
         z: end.z + (boss.z + boss.h * e.chest - end.z) * u + Math.sin(u * Math.PI) * e.arc };
     };
-    game.hazards.push({ ...origin, t: 0, dead: false,
+    // rx：每枚骨片只带一小团髓光；不写的话光照系统按默认 140 补一盏大光，重击一次地面亮 3～5 团
+    game.hazards.push({ ...origin, rx: e.light, t: 0, dead: false,
       update() { this.t++; Object.assign(this, pos(this.t)); if (this.t >= e.scatter + e.pause + e.back) this.dead = true; },
       drawFloor(ctx, camX) {
         if (this.dead) return;
