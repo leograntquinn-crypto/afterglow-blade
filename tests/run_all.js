@@ -175,7 +175,7 @@ async function startServer(firstPort) {
 
 // 控制台报的错里，网络层的资源载入失败（net::ERR_*）是外部环境问题——比如没有外网时 index.html 的 Google 字体样式表拉不到——不算测试失败。
 // 仍然算失败的：HTTP 状态错误（自己的素材 404 / 500，消息里是 "status of 404"）、页面脚本报错。
-const NET_RESOURCE_ERROR = /^Failed to load resource: net::ERR_[A-Z_]+$/;
+const NET_RESOURCE_ERROR = /^(?:console: )?Failed to load resource: net::ERR_[A-Z_]+$/; // soakd / soakd60 给控制台消息加了 "console: " 前缀
 function realErrors(text) {
   return text.split(/\s*\|\s*/).map((s) => s.trim()).filter((s) => s && s !== 'none' && !NET_RESOURCE_ERROR.test(s));
 }
