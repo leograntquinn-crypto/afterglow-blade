@@ -3,6 +3,7 @@
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
 python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录> [fx_enemy_v1_types 目录]   （只打敌人特效包，不动别的图集）
 python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage> <包目录>   （只打指定首领特效包，不动别的图集）
+python3 -I tools/build_fx.py --scene <fx_scene_v1 目录>   （只打场景特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
   fx_tex     FX-1 单张贴图。桌面原尺寸，手机 50%，裁掉透明边（记下原画布尺寸和偏移）。碎片图按 docs/chip_regions.json 切成 16 块单独的碎片
@@ -20,6 +21,7 @@ python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage> <包目录>   （
              第 2 批的 zip 多一层顶层目录 fx_enemy_v1_types/，传那一层；fx.json 只列了单帧，没写总图路径，所以直接用单帧（不读 sheets/）
   fx_boss_raven / fx_boss_ironjaw / fx_boss_afterimage  首领专属贴图与序列帧共用图集，按首领载入。
              night_veil、chain_glow、rev_ribbon、streak_line 保留整张画布
+  fx_scene   场景贴图与火把序列帧共用图集；stairs_down、stairs_glow 保留整张画布以便对齐。一直载入
 序列帧：桌面存交付尺寸的 50%、手机 25%（docs/ART_FX.md 第二节）；每帧裁掉透明边再打包，记下裁切偏移，锚点不变。
 JSON 里的坐标都是「图集像素」：pos 每块的左上角，dims 每块的宽高；scale 是图集像素相对交付尺寸的比例，引擎用它换算成游戏里的大小。
 """
@@ -181,21 +183,33 @@ BOSS_PACKS = {
 }
 
 
-def validate_boss(name, root, m):
+# 场景包的画布和帧数见 docs/ART_FX_SCENE_V1.md 第三节
+SCENE_PACK = {
+    "out": "fx_scene",
+    "textures": {
+        "stairs_down": (256, 128), "stairs_glow": (256, 128),
+        "trial_runes": (128, 128), "torch_glow_base": (64, 64),
+    },
+    "flipbooks": {"torch_flame": (64, 128, 8)},
+    "keep_full": {"stairs_down", "stairs_glow"},
+}
+
+
+def validate_mixed_pack(name, root, m, spec):
     if m.get("schema") != "afterglow.fxpack.v1":
         raise ValueError("fx.json 的 schema 应为 afterglow.fxpack.v1")
     for group in ("textures", "flipbooks"):
-        spec = BOSS_PACKS[name][group]
+        expected = spec[group]
         entries = m[group]
         ids = [t["id"] for t in entries]
         found = set(ids)
-        missing, extra = sorted(spec.keys() - found), sorted(found - spec.keys())
+        missing, extra = sorted(expected.keys() - found), sorted(found - expected.keys())
         repeats = len(ids) - len(found)
         if missing or extra or repeats:
             raise ValueError(f"{group} 的 id 与 {name} 规格不符（缺少 {missing}，多出 {extra}，重复 {repeats} 项）")
         for item in entries:
             ident = item["id"]
-            w, h, *count = spec[ident]
+            w, h, *count = expected[ident]
             if (item["w"], item["h"]) != (w, h):
                 raise ValueError(f"{ident}: fx.json 画布 {item['w']}×{item['h']}，规格应为 {w}×{h}")
             files = item["frames"] if count else [item["file"]]
@@ -209,8 +223,7 @@ def validate_boss(name, root, m):
                     im.verify()
 
 
-def build_boss(name, root):
-    spec = BOSS_PACKS[name]
+def build_mixed_pack(name, root, spec):
     # 兼容解压后平铺的包，以及工具自动加了一层顶层目录的包
     root = Path(root)
     if not (root / "fx.json").is_file():
@@ -220,7 +233,7 @@ def build_boss(name, root):
         root = choices[0]
     with (root / "fx.json").open(encoding="utf-8") as manifest:
         m = json.load(manifest)
-    validate_boss(name, root, m)
+    validate_mixed_pack(name, root, m, spec)
     fbs = {f["id"]: (root, f) for f in m["flipbooks"]}
     for suffix, sc, width in (("", 0.5, 2048), ("_m", 0.25, 1024)):
         tex_scale = sc * 2
@@ -240,9 +253,20 @@ if sys.argv[1:2] == ["--boss"]:
         sys.exit(f"用法：python3 -I tools/build_fx.py --boss <{choices}> <包目录>")
     name = sys.argv[2]
     try:
-        build_boss(name, sys.argv[3])
+        build_mixed_pack(name, sys.argv[3], BOSS_PACKS[name])
     except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
         sys.exit(f"{name} 特效包构建失败：{exc}")
+    sys.exit(0)
+
+
+# ---------- 场景特效包 fx_scene_v1（单独打，不需要别的包）----------
+if sys.argv[1:2] == ["--scene"]:
+    if len(sys.argv) != 3:
+        sys.exit("用法：python3 -I tools/build_fx.py --scene <fx_scene_v1 目录>")
+    try:
+        build_mixed_pack("fx_scene", sys.argv[2], SCENE_PACK)
+    except (KeyError, TypeError, ValueError, OSError, SyntaxError) as exc:
+        sys.exit(f"场景特效包构建失败：{exc}")
     sys.exit(0)
 
 

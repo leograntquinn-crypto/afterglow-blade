@@ -15,6 +15,7 @@ import { settings } from './settings.js';
 import { sfx } from './audio.js';
 import { WORLD_ART, maskCover } from './world_art.js';
 import { lightTex } from './fx_art.js';
+import { drawSceneRunes } from './scene_fx.js';
 import { releaseBoot } from './boot.js';
 import { NPCS, INSCRIPTIONS, SPEAKERS, worldSave, hasNew, pendingEvents, progress, TALKS, BEACON_LINES, TRIAL_LINES, ENDING_LINES } from './world_story.js';
 
@@ -915,18 +916,16 @@ export class World {
     ctx.globalCompositeOperation = 'lighter';
     for (const g of this.frameGlows) {
       const [x, y] = scr(g.x, g.y, g.z), f = g.flicker ? 0.85 + 0.15 * Math.sin(t * 0.37 + g.x) : 1;
-      ctx.globalAlpha = g.a * f;
-      if (!T.light) continue;
-      const warm = g.flicker || g.warm, r = g.r * (warm ? 2.5 : 3.2) * f; // 火光（烽灯、灯塔）用 glow_warm：它中心更集中、外圈更亮，画小一点
-      ctx.drawImage(tinted(warm ? T.warm : T.glow, g.c), x - r, y - r, r * 2, r * 2);
-      ctx.globalAlpha = Math.min(1, g.a * 1.2);
-      ctx.drawImage(tinted(T.core, '#fff2d0'), x - g.r * 0.5, y - g.r * 0.8, g.r, g.r * 1.2);
+      if (T.light) {
+        ctx.globalAlpha = g.a * f;
+        const warm = g.flicker || g.warm, r = g.r * (warm ? 2.5 : 3.2) * f; // 火光（烽灯、灯塔）用 glow_warm：它中心更集中、外圈更亮，画小一点
+        ctx.drawImage(tinted(warm ? T.warm : T.glow, g.c), x - r, y - r, r * 2, r * 2);
+        ctx.globalAlpha = Math.min(1, g.a * 1.2);
+        ctx.drawImage(tinted(T.core, '#fff2d0'), x - g.r * 0.5, y - g.r * 0.8, g.r, g.r * 1.2);
+      }
       if (g.rune) {
-        ctx.globalAlpha = g.a * 0.8;
-        ctx.strokeStyle = '#7ff3ff';
-        ctx.lineWidth = 1.2;
-        const [r0, step, w] = g.rune;
-        for (let k = 0; k < 4; k++) { ctx.beginPath(); ctx.ellipse(x, y + r0 + k * step, w - k, 3.5, 0, 0, Math.PI); ctx.stroke(); }
+        ctx.globalAlpha = 1;
+        drawSceneRunes(ctx, x, y, t, g.rune, g.a);
       }
     }
     // 光点：深渊冒的光用 mote，烽灯 / 灯塔的火星用 ember（光照包，按颜色染色）
