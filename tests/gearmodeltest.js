@@ -180,6 +180,23 @@ const PORT = process.env.PORT || 8765;
       check(requests.some(url => url.endsWith(mobile ? 'gear_icons_m.json' : 'gear_icons.json')), '9 分辨率清单 '+mobile);
       check(await page.locator('.bag .glyph [style*="background-image"]').count()===2,'9 背包图标 '+mobile);
       check(await page.locator('.slots .glyph [data-gear-icon]').count()>0,'9 槽位图标 '+mobile);
+      check(await page.locator('.slots .slot').evaluateAll(nodes => nodes.every(node => !node.textContent.trim())),
+        '9 槽位瓷砖无可见名称文字 '+mobile);
+      if (!mobile) {
+        const expected = await page.evaluate(async () => {
+          const {itemTitle, STAT_INFO} = await import('./src/items.js');
+          const it = __game.save.equip.weapon;
+          return {name:itemTitle(it), stat:STAT_INFO[Object.keys(it.base)[0]][0]};
+        });
+        await page.hover('.slots .slot[data-slot="weapon"]');
+        const tooltip = page.locator('#hub-gear-tooltip');
+        check(await tooltip.isVisible(), '9 桌面悬停浮层出现');
+        check((await tooltip.textContent()).includes(expected.name) &&
+          (await tooltip.locator('.tooltip-stat').allTextContents()).some(text => text.includes(expected.stat)),
+          '9 悬停包含装备名与基础属性');
+        await page.mouse.move(0, 0);
+        check(await tooltip.isHidden(), '9 移开隐藏悬停浮层');
+      }
       const geometry = await page.evaluate(() => {
         const rect = node => node.getBoundingClientRect();
         const canvas = rect(document.querySelector('#preview'));

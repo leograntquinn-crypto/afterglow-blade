@@ -265,7 +265,6 @@
   .slot { box-sizing: border-box; grid-column: var(--slot-col); grid-row: var(--slot-row); position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 6px; cursor: pointer; pointer-events: auto; background: rgba(0,0,0,.3); border: 1px solid var(--rc, var(--line)); }
   .slot.empty { cursor: default; color: var(--mute); border-style: dashed; opacity: 1; }
   .slot .glyph, .cell .glyph { position: absolute; inset: 0; display: grid; place-items: center; font: 40px var(--font-title); color: var(--rc, var(--mute)); }
-  .slot-label { position: absolute; bottom: 0; left: 0; right: 0; font-size: 10px; line-height: 13px; text-align: center; color: var(--ink); background: rgba(0,0,0,.65); pointer-events: none; }
   @media (max-width: 680px) {
     .hero { grid-template-columns: minmax(0, 1fr); }
   }
@@ -339,6 +338,17 @@
   .site-hint { margin: 8px 0 0; text-align: center; font-size: 12px; color: var(--mute); }
   @media (pointer: coarse) { .site-hint { display: none; } }
   .tabs .back { margin-left: auto; font: 15px var(--font-ui); }
+
+  #hub-gear-tooltip {
+    position: fixed; left: 0; top: 0; z-index: 7; pointer-events: none;
+    box-sizing: border-box; width: max-content; max-width: min(260px, calc(100vw - 16px));
+    max-height: calc(100vh - 16px); overflow: hidden; overflow-wrap: anywhere;
+    padding: 10px 12px; border: 1px solid var(--line); border-radius: 6px;
+    background: #15111e; color: var(--ink); box-shadow: 0 6px 20px #0009;
+    font: 12px/1.5 var(--font-ui);
+  }
+  #hub-gear-tooltip b { font-size: 13px; }
+  #hub-gear-tooltip ul { list-style: none; margin: 5px 0; padding: 0; }
 
   /* 装备弹窗 */
   #hub-modal {

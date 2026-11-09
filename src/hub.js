@@ -32,6 +32,23 @@ export class Hub {
     this.sel = null; // 选中的装备 id
     this.body = root.querySelector('#hub-body');
     this.modal = root.querySelector('#hub-modal');
+    this.tooltip = document.createElement('div');
+    this.tooltip.id = 'hub-gear-tooltip';
+    this.tooltip.setAttribute('role', 'tooltip');
+    this.tooltip.hidden = true;
+    root.append(this.tooltip);
+    this.finePointer = matchMedia('(pointer: fine)');
+    root.addEventListener('mouseenter', e => {
+      if (e.target.matches?.('.slots .slot, .bag .cell[data-act="sel"][data-id]')) this.showGearTooltip(e);
+    }, true);
+    root.addEventListener('mousemove', e => this.moveGearTooltip(e));
+    root.addEventListener('mouseleave', e => {
+      if (e.target === this.hoverTile || e.target === root) this.hideGearTooltip();
+    }, true);
+    for (const event of ['pointerdown', 'dragstart', 'wheel']) root.addEventListener(event, () => this.hideGearTooltip(), {capture: true, passive: true});
+    document.addEventListener('scroll', () => this.hideGearTooltip(), {capture: true, passive: true});
+    this.finePointer.addEventListener('change', () => this.hideGearTooltip());
+    window.addEventListener('resize', () => this.hideGearTooltip());
     this.toastEl = document.getElementById('hub-toast'); // 在 #hub 外面：地图上也要能弹提示
     root.addEventListener('click', (e) => this.onClick(e));
   }
@@ -58,6 +75,7 @@ export class Hub {
 
   // ---------------- 渲染 ----------------
   render() {
+    this.hideGearTooltip();
     const s = this.save, S = this.g.stats;
     const need = xpToNext(s.lv);
     this.root.querySelector('#h-lv').textContent = s.lv;
@@ -162,9 +180,8 @@ export class Hub {
     const s = this.save, S = this.g.stats;
     const slots = ['weapon','helm','chest','legs','boots','bracers','wings','veil','trinket1','trinket2'].map((k, i) => {
       const it = s.equip[k];
-      return `<button class="slot ${it ? `r${it.rar}` : 'empty'}" data-act="sel" data-id="${it ? it.id : ''}" data-slot="${k}" style="--slot-row:${i % 5 + 1};--slot-col:${i < 5 ? 1 : 3}" title="${it ? itemTitle(it) : SLOT_NAME[k]}" aria-label="${SLOT_NAME[k]}${it ? `：${itemTitle(it)}` : `（空）`}" ${it ? '' : 'disabled'}>
+      return `<button class="slot ${it ? `r${it.rar}` : 'empty'}" data-act="sel" data-id="${it ? it.id : ''}" data-slot="${k}" style="--slot-row:${i % 5 + 1};--slot-col:${i < 5 ? 1 : 3}" aria-label="${SLOT_NAME[k]}${it ? `：${itemTitle(it)}` : `（空）`}" ${it ? '' : 'disabled'}>
         <span class="glyph">${it ? gearGlyph(it) : ''}</span>
-        <span class="slot-label">${SLOT_NAME[k]}</span>
       </button>`;
     }).join('');
     const marks = [...S.marks].map((k) => `<div class="mk"><b>${MARKS[k].name}</b><span>${MARKS[k].desc}</span></div>`).join('');
@@ -178,8 +195,8 @@ export class Hub {
       </div>`).join('');
     const bag = s.bag.map((it) => {
       const cmp = compareItem(s,it), label = COMPARISON[cmp.verdict];
-      return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" title="${itemTitle(it)}">
-        <span class="glyph">${gearGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}<i class="up" style="color:${label.color}" title="${label.text} ${cmp.total.toFixed(1)}%">${label.symbol}</i>${it.mark ? '<i class="mk-dot" title="带刻印"></i>' : ''}${it.locked ? '<i class="lk" title="已锁定">🔒</i>' : ''}
+      return `<button class="cell r${it.rar}" data-act="sel" data-id="${it.id}" aria-label="${itemTitle(it)}">
+        <span class="glyph">${gearGlyph(it)}</span>${it.enh ? `<i class="enh">+${it.enh}</i>` : ''}<i class="up" style="color:${label.color}">${label.symbol}</i>${it.mark ? '<i class="mk-dot"></i>' : ''}${it.locked ? '<i class="lk">🔒</i>' : ''}
       </button>`;
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
@@ -232,6 +249,50 @@ export class Hub {
     return `<div class="skills-top"><span>剩余技能点 <b>${s.sp}</b>（每升 1 级获得 1 点）</span><button class="btn ghost" data-act="resetSkills">重置技能（免费）</button></div><div class="skills">${cards}</div>`;
   }
 
+  // 悬停内容仅在进入瓷砖时生成；逐帧预览不参与浮层生命周期。
+  hideGearTooltip() {
+    this.tooltip.hidden = true;
+    this.hoverTile = null;
+  }
+
+  showGearTooltip(e) {
+    if (!this.finePointer.matches || !this.modal.hidden || this.root.hidden || this.tab !== 'hero') return;
+    const tile = e.target, found = this.findItem(tile.dataset.id);
+    if (!found && !tile.dataset.slot) return;
+    this.hoverTile = tile;
+    if (!found) {
+      this.tooltip.textContent = `${SLOT_NAME[tile.dataset.slot]} · 空`;
+    } else {
+      const {it, equipped} = found, def = CATALOG[it.def];
+      // 与详情一致：基础属性先去除词条再经 itemStats / fmtStat 格式化。
+      const base = itemStats(hydrateItem({...it, affix: []}));
+      const comparison = equipped ? null : compareItem(this.save, it);
+      const label = comparison && COMPARISON[comparison.verdict];
+      this.tooltip.innerHTML = `<b style="color:${RARITY[it.rar].color}">${itemTitle(it)}</b>
+        <div>${itemKind(it)} · ${SERIES[def?.series]?.name || def?.series || '无'} · 物品等级 ${it.ilvl} · 强化 +${it.enh}</div>
+        <ul>${Object.keys(it.base).map(k => `<li class="tooltip-stat">${STAT_INFO[k][0]} ${fmtStat(k, base[k])}</li>`).join('')}
+        ${it.affix.map(a => `<li>${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}</li>`).join('')}</ul>
+        <div>刻印：${MARKS[it.mark]?.name || '无'}${it.mark ? '（条件型）' : ''}</div>
+        ${def ? `<div>状态：${def.imbue || '无'} ${it.imbueLv || 0} 档（条件型）</div><div>套装：${SERIES[def.set]?.name || def.set || '无'}</div>` : ''}
+        ${comparison ? `<div style="color:${label.color}">${label.symbol} ${label.text}（${comparison.total.toFixed(1)}%） · 对比${SLOT_NAME[comparison.slot]} · 折算 +${comparison.enhAs}</div>` : ''}`;
+    }
+    this.tooltip.hidden = false;
+    const rect = this.tooltip.getBoundingClientRect();
+    this.tooltipSize = {width: rect.width, height: rect.height};
+    this.moveGearTooltip(e);
+  }
+
+  moveGearTooltip(e) {
+    if (this.tooltip.hidden) return;
+    const {width, height} = this.tooltipSize, gap = 14, margin = 8;
+    let x = e.clientX + gap, y = e.clientY + gap;
+    if (x + width > innerWidth - margin) x = e.clientX - width - gap;
+    if (y + height > innerHeight - margin) y = e.clientY - height - gap;
+    x = Math.max(margin, Math.min(x, innerWidth - width - margin));
+    y = Math.max(margin, Math.min(y, innerHeight - height - margin));
+    this.tooltip.style.transform = `translate(${x}px, ${y}px)`;
+  }
+
   // ---------------- 装备详情弹窗 ----------------
   findItem(id) {
     const s = this.save;
@@ -241,6 +302,7 @@ export class Hub {
   }
 
   renderModal() {
+    this.hideGearTooltip();
     const f = this.findItem(this.sel);
     if (!f) return this.closeModal();
     const { it, equipped } = f;
