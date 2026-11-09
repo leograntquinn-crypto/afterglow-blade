@@ -4,8 +4,9 @@
 import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
+import { BOSS_FX } from './fx_data.js';
 import { tex, tinted } from './fx_tex.js';
-import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt } from './boss_fx.js';
+import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const dist = (b, p) => Math.abs(p.x - b.x);
@@ -299,7 +300,7 @@ export const SIGNATURE = {
       }
       if (d.skill === 'whirl') {
         b.vx = sign(p.x - b.x) * 2.4;
-        if (k % 10 === 0) { d.set = new Set(); g.fx.flip('slash_spin', b.x, b.y, 46, { color: b.B.glow, facing: b.facing }); sfx('swing'); }
+        if (k % 10 === 0) { d.set = new Set(); if (!playAfterimageFx(g, b, 'spin', k * BOSS_FX.afterimage.spin.turn)) g.fx.flip('slash_spin', b.x, b.y, 46, { color: b.B.glow, facing: b.facing }); sfx('swing'); }
         melee(b, g, { box: { x: 0, w: 170, d: 44, z0: 0, z1: 120 }, dmg: 7, kb: 3, stun: 14, stop: 3, shake: 3 }, d.set ?? (d.set = new Set()));
         b.pa = (k % 10) / 5 - 1;
         return k >= 40;
@@ -312,7 +313,7 @@ export const SIGNATURE = {
       // 千刃：冲到你面前连斩
       if (k === 0) { d.set = new Set(); b.vx = b.facing * 12; }
       b.vx *= 0.9;
-      if (k % 6 === 0) { d.set = new Set(); g.fx.arc(b.x + b.facing * 20, b.y, 55, b.facing, 70, -2, 1, b.B.glow, 12); }
+      if (k % 6 === 0) { d.set = new Set(); g.fx.arc(b.x + b.facing * 20, b.y, 55, b.facing, 70, -2, 1, b.B.glow, 12, 9, afterimageRibbon(b)); playAfterimageFx(g, b, 'slash'); }
       melee(b, g, { box: { x: 34, w: 130, d: 36, z0: 0, z1: 120 }, dmg: 6, kb: 1, stun: 18, stop: 2, shake: 2 }, d.set);
       b.pa = (k % 6) < 3 ? -2 : 1;
       return k >= 36;
@@ -333,7 +334,7 @@ export const SIGNATURE = {
           const last = i === 4, side = i % 2 ? 1 : -1;
           d.pts.push(last ? { x: p.x, y: p.y } : { x: clamp(p.x + side * rand(140, 220), 50, world.w - 50), y: clamp(p.y + rand(-60, 60), 8, DEPTH - 8) });
         }
-        for (let i = 0; i < 5; i++) g.hazards.push(new Streak(d.pts[i], d.pts[i + 1], 40 + i * STEP, b.B.glow));
+        for (let i = 0; i < 5; i++) g.hazards.push(new Streak(d.pts[i], d.pts[i + 1], 40 + i * STEP, b.B.glow, i === 4));
         d.hits = 0;
         g.fx.label(b.x, b.y, b.h + 46, '残 光 处 决', b.B.glow, 28);
         sfx('ultStart');
@@ -345,7 +346,7 @@ export const SIGNATURE = {
         b.facing = sign(c.x - a.x);
         b.x = c.x; b.y = c.y;
         b.invuln = 2;
-        g.fx.flip('slash_sweep', (a.x + c.x) / 2, (a.y + c.y) / 2, 50, { color: b.B.glow, facing: b.facing, scale: 1.2 });
+        if (!afterimageDash(g, b, a, c)) g.fx.flip('slash_sweep', (a.x + c.x) / 2, (a.y + c.y) / 2, 50, { color: b.B.glow, facing: b.facing, scale: 1.2 });
         // 沿这一段有判定：你离这条线足够近就挨刀（极限闪避照常生效）
         const vx = c.x - a.x, vy = c.y - a.y, L2 = vx * vx + vy * vy || 1;
         const u = clamp(((p.x - a.x) * vx + (p.y - a.y) * vy) / L2, 0, 1);
@@ -451,8 +452,8 @@ export class Brazier {
 
 // ---------------- 地面折线预警（残光处决）----------------
 export class Streak {
-  constructor(a, b, life, color) {
-    Object.assign(this, { a, b, life, t: 0, color, dead: false });
+  constructor(a, b, life, color, last = true) {
+    Object.assign(this, { a, b, life, t: 0, color, last, dead: false });
     // 光照系统按 x / y / rx 给地面预警加光：取线段中点和半长
     this.x = (a.x + b.x) / 2; this.y = (a.y + b.y) / 2; this.rx = Math.hypot(b.x - a.x, b.y - a.y) / 2;
   }
@@ -460,20 +461,6 @@ export class Streak {
     if (++this.t >= this.life) this.dead = true;
   }
   drawFloor(ctx, camX) {
-    const [x0, y0] = toScreen(this.a.x, this.a.y, 0, camX), [x1, y1] = toScreen(this.b.x, this.b.y, 0, camX);
-    const u = this.t / this.life;
-    ctx.save();
-    ctx.globalCompositeOperation = 'lighter';
-    ctx.lineCap = 'round';
-    for (const [w, a, c] of [[14, 0.18 + 0.2 * u, this.color], [3, 0.5 + 0.4 * u, '#ff4d5e']]) {
-      ctx.globalAlpha = a * (0.8 + 0.2 * Math.sin(this.t * 0.6));
-      ctx.strokeStyle = c;
-      ctx.lineWidth = w;
-      ctx.beginPath();
-      ctx.moveTo(x0, y0);
-      ctx.lineTo(x1, y1);
-      ctx.stroke();
-    }
-    ctx.restore();
+    drawAfterimageStreak(ctx, this, camX);
   }
 }

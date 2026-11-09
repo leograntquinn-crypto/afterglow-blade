@@ -101,7 +101,7 @@ export class FX {
     p.size = 1; p.rot = 0; p.vr = 0;
     p.drag = 1; p.grav = 0; p.bounce = 0; p.stretch = 0; p.sway = 0; p.seed = Math.random() * 100; p.alpha = 1;
     p.sizeC = CURVES.one; p.alphaC = CURVES.fade; p.ramp = null; p.add = true; p.img = null; p.bounced = false; p.tx = p.tx2 = null;
-    p.follow = null; p.fb = null; p.ground = false;
+    p.follow = null; p.fb = null; p.ground = false; p.scaleX = 1; p.cancelToken = null;
     this.live.push(p);
     return p;
   }
@@ -160,11 +160,12 @@ export class FX {
   chips(x, y, z, dir, n, color) {
     this.emit('chip', x, y + rand(-6, 6), z, { dir, n, color });
   }
+  // ribbon 可传首领专属条带，缺素材时沿用通用条带。
   // 刀光：一段新月形的弧，a0 -> a1（弧度，0 = 正前方，负数 = 向上）。刀头先扫过去，刀尾随后追上收窄
-  arc(x, y, z, facing, r, a0, a1, color, w = 14, life = 9) {
+  arc(x, y, z, facing, r, a0, a1, color, w = 14, life = 9, ribbon = null) {
     const p = this.spawn('arc', x, y, z, life + 3);
     if (!p) return;
-    Object.assign(p, { facing, r0: r, a0, a1, color, w });
+    Object.assign(p, { facing, r0: r, a0, a1, color, w, ribbon });
   }
   // 蓄力：光点从四周加速吸向中心，带拖尾
   converge(x, y, z, n, color) {
@@ -242,7 +243,7 @@ export class FX {
   }
   // 手绘序列帧特效（FX-2 / FX-3）。素材没载好时返回 false，调用方照常有程序特效兜底
   // o：facing 朝向、flipY 上下翻转、color 染色、scale 大小倍数、alpha、rot 旋转、ground 贴地（压扁成地面透视，画在角色下面）、
-  //    hold 播完后停在最后一帧多少帧（法阵读条）、life 循环素材的总时长、follow 跟随的对象 + ox / oz 相对位置
+  //    scaleX 横向拉伸（处决斩按线段长度）；hold 播完后停在最后一帧多少帧（法阵读条）、life 循环素材的总时长、follow 跟随的对象 + ox / oz 相对位置
   flip(id, x, y, z, o = {}) {
     const fb = flipbook(id);
     if (!fb) return false;
@@ -251,6 +252,7 @@ export class FX {
     const p = this.spawn('flip', x, y, z, life);
     if (!p) return false;
     const color = o.color ?? '#ffffff';
+    p.scaleX = o.scaleX ?? 1;
     p.fb = fb; p.add = fb.add; p.color = color; p.facing = o.facing ?? 1; p.w = o.flipY ?? 1; p.rot = o.rot ?? 0;
     p.size = o.size ?? (FB_SCALE[id] ?? 0.5) * (o.scale ?? 1); p.alpha = o.alpha ?? 1; p.ground = !!o.ground; p.holdFade = !!o.holdFade; // size：直接给「逻辑像素 / 交付像素」（敌人特效按身高算）；holdFade 见 drawFlip
     p.tx = fb.frames.map((c) => c && tinted(c, color, fb.add ? 'fill' : 'mul'));
@@ -381,6 +383,7 @@ export class FX {
 
   // 序列帧：按年龄取帧（30 帧 / 秒的素材在 60 帧的游戏里每帧停 2 个刻）；hold 期间停在最后一帧轻轻脉动
   drawFlip(ctx, p, sx, sy, glowPass) {
+    if (p.life <= 0 || p.cancelToken?.cancelled) return;
     const fb = p.fb, n = fb.frames.length, age = p.max - p.life, step = 60 / fb.fps;
     let i = Math.floor(age / step), a = p.alpha;
     if (fb.loop) i %= n;
@@ -393,7 +396,7 @@ export class FX {
     if (p.ground) {
       const cs = Math.cos(p.rot), sn = Math.sin(p.rot), q = 0.32;
       this.putM(ctx, img, sx, sy, k * cs * p.facing, q * k * sn, -k * sn, q * k * cs, img.cx, img.cy);
-    } else this.put(ctx, img, sx, sy, p.rot, k * p.facing, k * p.w);
+    } else this.put(ctx, img, sx, sy, p.rot, k * p.facing * p.scaleX, k * p.w);
   }
 
   // 贴地的环：压扁成地面透视（纵向 0.32）
@@ -630,7 +633,7 @@ export class FX {
     const head = easeOut(Math.min(1, age / Math.max(1, T0 * 0.4)));
     const tail = Math.max(0, (age - T0 * 0.25) / (T0 * 0.75 + 3)) ** 1.6;
     if (head - tail < 0.02) return;
-    const img = ribbonTex(p.w >= 14 ? 'heavy' : 'light');
+    const img = p.ribbon || ribbonTex(p.w >= 14 ? 'heavy' : 'light');
     if (!img) return;
     const fade = Math.min(1, (p.life / p.max) * 1.8);
     const SEG = 16, da = p.a1 - p.a0, outer = p.r0 + p.w * 0.25, inner = Math.max(2, p.r0 - p.w * 1.7);

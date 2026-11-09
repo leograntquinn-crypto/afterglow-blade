@@ -25,7 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
-import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop } from './boss_fx.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -132,7 +132,8 @@ const ATTACKS = {
         if (t === s) {
           d.set = new Set();
           b.vx = b.facing * 6;
-          if (!ironJawCleave(g, b, up)) g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.62, b.facing, 70 * sz, up ? 1.2 : -2.3, up ? -1.8 : 1.2, b.B.glow, 14);
+          if (!ironJawCleave(g, b, up)) g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.62, b.facing, 70 * sz, up ? 1.2 : -2.3, up ? -1.8 : 1.2, b.B.glow, 14, 9, afterimageRibbon(b));
+          playAfterimageFx(g, b, 'slash');
           if (b.key === 'boneLord') g.fx.flip('bone_rend', b.x + b.facing * 14, b.y, b.h * 0.6, { facing: b.facing, flipY: up ? -1 : 1, color: b.B.glow, scale: sz / 1.5 });
           sfx('swing');
         }
@@ -290,7 +291,7 @@ const ATTACKS = {
     tick(b, g, t, d) {
       const p = g.player;
       if (t === 0) {
-        if (!ravenBodyFx(g, b, 'burst')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
+        if (!playAfterimageFx(g, b, 'out') && !ravenBodyFx(g, b, 'burst')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
         sfx('dash');
       }
       if (t < 22) { b.fade = 1 - t / 22; b.invuln = 2; }
@@ -298,14 +299,15 @@ const ATTACKS = {
         b.x = clamp(p.x - p.facing * 110, 40, world.w - 40);
         b.y = p.y;
         b.facing = sign(p.x - b.x);
-        if (!ravenBodyFx(g, b, 'appear')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
+        if (!playAfterimageFx(g, b, 'appear') && !ravenBodyFx(g, b, 'appear')) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 10, 8, 14, 4);
       }
       if (t >= 22 && t < 44) { b.fade = (t - 22) / 22; b.tele = true; b.pa = -2.3; b.pc = 0.3; }
       if (t === 44) {
         d.set = new Set();
         b.fade = 1;
         b.tele = false;
-        g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.6, b.facing, 76 * b.B.scale, -2.3, 1.2, b.B.glow, 16);
+        g.fx.arc(b.x + b.facing * 10, b.y, b.h * 0.6, b.facing, 76 * b.B.scale, -2.3, 1.2, b.B.glow, 16, 9, afterimageRibbon(b));
+        playAfterimageFx(g, b, 'slash');
         sfx('swing');
       }
       if (t >= 44 && t < 50) {
@@ -331,7 +333,7 @@ const ATTACKS = {
           ...ironJawChannelArt(b),
           hit: { dmg: 34, kb: 10, launch: 9, stop: 10, shake: 16, heavy: true } }));
         g.fx.label(b.x, b.y, b.h + 70, `「${b.B.channel}」`, b.B.glow, 34);
-        if (!ravenSigil(g, b, 170, d.T) && !ironJawMark(g, b, 170, d.T)
+        if (!hasAfterimageGather(b) && !ravenSigil(g, b, 170, d.T) && !ironJawMark(g, b, 170, d.T)
           && (b.key !== 'warden' || !g.fx.flip('summon_circle', b.x, b.y, 0, { ground: true, hold: d.T, color: b.B.glow, scale: 0.9 }))) g.fx.rune(b.x, b.y, 1, b.B.glow, 170, d.T, -0.008);
         g.toast(`${b.B.name}在读条「${b.B.channel}」：打断它，或者跳起来 / 极限闪避躲开`, b.B.glow);
         sfx('roar');
@@ -339,10 +341,10 @@ const ATTACKS = {
       b.tele = true;
       b.vx = b.vy = 0;
       b.pa = -2.6; b.pc = 0.3; b.pl = -4;
-      if (t % 20 === 0 && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t % 20 === 0 && !hasAfterimageGather(b) && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
       if (t >= d.T) {
         b.channel = null;
-        if (!flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
+        if (!playAfterimageFx(g, b, 'burst') && !flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
         g.fx.shake(18, 34);
         return true;
       }
@@ -395,6 +397,11 @@ export class Boss extends Enemy {
   get spd() { return (1 + this.phase * 0.18) * (this.game.D?.bossSpd ?? 1); } // 阶段越高、难度越高，出招越快
 
   setState(s) {
+    // 爆发可在正常收招后播完；受击、倒地或死亡时立即清掉。
+    if (s !== 'idle' && s !== 'attack' && this.afterimageBurst) {
+      this.afterimageBurst.cancelled = true;
+      this.afterimageBurst = null;
+    }
     if (s !== 'attack') {
       if (this.split) disperseRavenCopies(this.game, this, 8);
       this.act = null; this.tele = false; this.fade = 1; this.split = null;
@@ -477,6 +484,7 @@ export class Boss extends Enemy {
     if (top && !this.readShown?.[top.habit]) {
       (this.readShown ??= {})[top.habit] = true;
       game.toast?.(READ_TOAST[top.habit], this.B.glow);
+      playAfterimageFx(game, this, 'read');
       game.fx.label(this.x, this.y, this.h + 50, '它在学你', this.B.glow, 22);
     }
     return out;
@@ -543,6 +551,7 @@ export class Boss extends Enemy {
       drawIronJawBodyFx(ctx, this, sx, sy, alpha);
       drawBody(sx, sy, alpha);
       drawRavenBodyFx(ctx, this, sx, sy, alpha);
+      drawAfterimageBodyFx(ctx, this, sx, sy, alpha);
     }
     ctx.save();
     ctx.textAlign = 'center';

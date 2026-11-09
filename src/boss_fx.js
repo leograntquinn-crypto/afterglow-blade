@@ -287,3 +287,64 @@ export function ironJawChannelArt(boss) {
 export function hasIronJawDrop(boss) {
   return boss.key === 'ironJaw' && !!flipbook(iron.drop.fb);
 }
+
+// 残影只替换表现，缺素材时由调用处保留旧效果。
+const after = BOSS_FX.afterimage;
+export function afterimageRibbon(boss) {
+  return boss.key === 'afterimage' ? bossTex('afterimage', 'rev_ribbon') : null;
+}
+export function hasAfterimageGather(boss) {
+  return boss.key === 'afterimage' && !!flipbook(after.gather.fb);
+}
+export function playAfterimageFx(game, boss, kind, rot = 0) {
+  if (boss.key !== 'afterimage') return false;
+  const e = after[kind];
+  const fx = game.fx.flip(e.fb, boss.x, boss.y, boss.z + boss.h * (e.z ?? 0), {
+    size: boss.h / FIG * e.size, color: boss.B.glow, facing: boss.facing, rot,
+  });
+  if (kind === 'burst' && fx) {
+    boss.afterimageBurst = { cancelled: false };
+    fx.cancelToken = boss.afterimageBurst;
+  }
+  return !!fx;
+}
+export function drawAfterimageBodyFx(ctx, boss, sx, sy, alpha) {
+  if (boss.key !== 'afterimage' || boss.state !== 'attack') return;
+  const act = boss.act;
+  if (act?.name === 'mirror') {
+    const e = after.sigil;
+    put(ctx, bossTex('afterimage', e.tex), sx, sy - boss.h * e.z,
+      boss.h / FIG * e.size, boss.B.glow, alpha);
+  }
+  if (act?.name === 'channel' && boss.channel === act.d) {
+    const e = after.gather;
+    put(ctx, frame(e, act.t - 1), sx, sy, boss.h / FIG * e.size, boss.B.glow, alpha, boss.facing);
+  }
+}
+export function drawAfterimageWave(ctx, shot) {
+  if (shot.owner?.key !== 'afterimage') return false;
+  const e = after.wave, sc = shot.scale || 1;
+  return put(ctx, frame(e, shot.age), e.x * sc, -e.z * sc, e.k * sc,
+    shot.color || shot.owner.B.glow, Math.min(1, shot.life / 10));
+}
+export function afterimageDash(game, boss, a, b) {
+  if (boss.key !== 'afterimage') return false;
+  const e = after.dash, dx = b.x - a.x, dy = b.y - a.y;
+  return !!game.fx.flip(e.fb, (a.x + b.x) / 2, (a.y + b.y) / 2, e.z, {
+    size: e.k, color: boss.B.glow, rot: Math.atan2(dy, dx),
+    scaleX: Math.hypot(dx, dy) / (e.width * e.k),
+  });
+}
+export function drawAfterimageStreak(ctx, streak, camX) {
+  const e = after.route, img = bossTex('afterimage', e.tex);
+  const [x0, y0] = toScreen(streak.a.x, streak.a.y, 0, camX);
+  const [x1, y1] = toScreen(streak.b.x, streak.b.y, 0, camX);
+  ctx.save();
+  ctx.globalAlpha *= e.alpha;
+  if (img) tileAlong(ctx, img, x0, y0, Math.atan2(y1 - y0, x1 - x0),
+    Math.hypot(x1 - x0, y1 - y0), e.height, streak.t * e.scroll, streak.color);
+  const mark = after.vertex;
+  put(ctx, frame(mark, streak.t), x0, y0, mark.k, streak.color);
+  if (streak.last) put(ctx, frame(mark, streak.t), x1, y1, mark.k, streak.color);
+  ctx.restore();
+}
