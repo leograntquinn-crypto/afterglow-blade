@@ -59,6 +59,10 @@ export class Hub {
       if (e.target === this.preview) {
         this.statsLocked = !this.statsLocked;
         this.statsHovered = false;
+      } else if (e.target.closest('.stats-pop') && !e.target.closest('button, a, input, select, textarea')) {
+        // 锁定浮层盖住了立绘中部：点浮层的非交互区域等同于再点立绘，解除锁定
+        this.statsLocked = false;
+        this.statsHovered = false;
       } else if (!e.target.closest('.stats-pop')) {
         this.statsLocked = false;
         this.statsHovered = false;

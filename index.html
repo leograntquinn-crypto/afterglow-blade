@@ -260,7 +260,7 @@
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
   .figure { position: relative; container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
   #preview { grid-column: 2; grid-row: 1; width: 100%; max-width: 300px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
-  .stats-pop { pointer-events: none; position: absolute; z-index: 5; top: 14px; right: 88px; width: min(320px, calc(100% - 176px)); max-height: min(580px, 65vh); overflow: auto; }
+  .stats-pop { pointer-events: none; position: absolute; z-index: 5; top: 14px; right: 88px; width: min(320px, calc(100% - 176px)); max-height: calc(100% - 28px); overflow: auto; }
   .stats-pop.is-locked { pointer-events: auto; }
   .stats-pop[hidden] { display: none; }
   #preview { cursor: pointer; }
