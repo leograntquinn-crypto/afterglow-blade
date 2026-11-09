@@ -12,27 +12,28 @@ import { shade } from './rig.js';
 import { MOBILE } from './sprite.js';
 import { propsS } from './props_sprites.js';
 import { drawLightTex } from './draw.js';
+import { drawSceneTorch } from './scene_fx.js';
 
 export const THEMES = {
   crypt: {
     brick: '#2c2232', mortar: '#0e0a12', pillar: '#30263a', floor: '#3a2e3a', banner: '#6a1e2a', emblem: '#c9a45c',
-    torch: '255,170,80', flame: '#ffcf7a', ambient: 'rgba(5,3,10,0.6)', fog: '150,110,170', mote: '255,214,160', grade: '#6a3a8a', embers: false,
+    torch: '255,170,80', ambient: 'rgba(5,3,10,0.6)', fog: '150,110,170', mote: '255,214,160', grade: '#6a3a8a', embers: false,
   },
   hall: {
     brick: '#232a38', mortar: '#0a0d14', pillar: '#2a3346', floor: '#2e3442', banner: '#1f3a6a', emblem: '#9fb3c8',
-    torch: '150,190,255', flame: '#d6e8ff', ambient: 'rgba(3,5,12,0.62)', fog: '120,150,200', mote: '200,220,255', grade: '#2a4a8a', embers: false,
+    torch: '150,190,255', ambient: 'rgba(3,5,12,0.62)', fog: '120,150,200', mote: '200,220,255', grade: '#2a4a8a', embers: false,
   },
   gallows: {
     brick: '#34221e', mortar: '#120a08', pillar: '#3a2622', floor: '#3e2c28', banner: '#7a1a10', emblem: '#d8b25a',
-    torch: '255,110,60', flame: '#ffb07a', ambient: 'rgba(10,3,2,0.6)', fog: '170,90,70', mote: '255,150,90', grade: '#8a2a1a', embers: true,
+    torch: '255,110,60', ambient: 'rgba(10,3,2,0.6)', fog: '170,90,70', mote: '255,150,90', grade: '#8a2a1a', embers: true,
   },
   altar: {
     brick: '#1e2e26', mortar: '#08100c', pillar: '#24382e', floor: '#283830', banner: '#1a4a2a', emblem: '#8fe3a8',
-    torch: '110,227,138', flame: '#d6ffe0', ambient: 'rgba(2,8,5,0.62)', fog: '90,170,120', mote: '160,255,190', grade: '#1a6a3a', embers: true,
+    torch: '110,227,138', ambient: 'rgba(2,8,5,0.62)', fog: '90,170,120', mote: '160,255,190', grade: '#1a6a3a', embers: true,
   },
   abyss: {
     brick: '#1c1c3a', mortar: '#06060f', pillar: '#22244a', floor: '#22243e', banner: '#3a1a6a', emblem: '#c49bff',
-    torch: '180,107,255', flame: '#efe0ff', ambient: 'rgba(3,2,12,0.66)', fog: '130,100,220', mote: '210,180,255', grade: '#4a2a9a', embers: true,
+    torch: '180,107,255', ambient: 'rgba(3,2,12,0.66)', fog: '130,100,220', mote: '210,180,255', grade: '#4a2a9a', embers: true,
   },
 };
 
@@ -339,14 +340,7 @@ export function drawScenery(ctx, camX, t, name = 'crypt', room = null) {
     const fl = 0.85 + Math.sin(t * 0.31 + i * 1.7) * 0.1 + Math.sin(t * 0.73 + i) * 0.06;
     torches.push([tx, ty, fl]);
     drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, ty, 300 * fl, 300 * fl, 0.35); // 火光：光照包 glow_warm（可见半径约 90）
-    ctx.fillStyle = `rgba(${th.torch},0.9)`;
-    ctx.beginPath();
-    ctx.ellipse(tx, ty + 2, 7 * fl, 13 * fl, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = th.flame;
-    ctx.beginPath();
-    ctx.ellipse(tx, ty + 4, 4 * fl, 8 * fl, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawSceneTorch(ctx, tx, ty + 8, t, i, fl, `rgb(${th.torch})`);
   }
 
   // 地面：踢脚线 + 每行不同速度的地砖
@@ -388,39 +382,7 @@ export function drawFog(ctx, camX, t, name = 'crypt') {
 export function drawForeground(ctx, camX, t, name = 'crypt', room = null) {
   const th = THEMES[name];
   if (envReady()) drawEnvForeground(ctx, camX, room);
-  else drawProcForeground(ctx, camX, t);
   drawParticles(ctx, camX, t, th);
-}
-
-function drawProcForeground(ctx, camX, t) {
-  const off = camX * 1.35;
-  ctx.fillStyle = '#030205';
-  ctx.strokeStyle = '#030205';
-  for (let i = Math.floor(off / 700) - 1; i <= Math.floor((off + VIEW_W) / 700) + 1; i++) {
-    const x = i * 700 + 230 - off;
-    // 锁链
-    ctx.lineWidth = 4;
-    const len = 70 + ((i * 37) % 60);
-    for (let y = -4; y < len; y += 11) {
-      ctx.beginPath();
-      ctx.ellipse(x + Math.sin(t * 0.02 + i) * 2, y, 4, 6.5, 0, 0, Math.PI * 2);
-      ctx.stroke();
-    }
-    // 碎石和骨头
-    ctx.beginPath();
-    ctx.moveTo(x + 120, VIEW_H);
-    ctx.lineTo(x + 140, VIEW_H - 14);
-    ctx.lineTo(x + 170, VIEW_H - 20);
-    ctx.lineTo(x + 196, VIEW_H - 8);
-    ctx.lineTo(x + 230, VIEW_H - 12);
-    ctx.lineTo(x + 250, VIEW_H);
-    ctx.fill();
-    ctx.lineWidth = 5;
-    ctx.beginPath();
-    ctx.moveTo(x + 260, VIEW_H - 6);
-    ctx.lineTo(x + 300, VIEW_H - 16);
-    ctx.stroke();
-  }
 }
 
 function drawParticles(ctx, camX, t, th) {
@@ -623,7 +585,8 @@ function drawEnv(ctx, camX, t, name, room) {
   ctx.restore();
 
   // 墙上的火把台和旗帜（ENV-3 道具；旗帜是灰白布料，按关卡染色）
-  const torches = [];
+  const torches = [], torchPhases = [];
+  const wallTorches = deco.torches ?? [], fixtures = [...wallTorches, ...(deco.sconces ?? [])];
   for (let i = i0; i <= i1; i++) {
     const ox = i * W - par;
     if (propsS.ready) {
@@ -640,11 +603,13 @@ function drawEnv(ctx, camX, t, name, room) {
         ctx.restore();
       }
     }
-    for (const [bx, by] of [...(deco.torches ?? []), ...(propsS.ready ? deco.sconces ?? [] : [])]) {
+    for (const [j, [bx, by]] of fixtures.entries()) {
+      if (j >= wallTorches.length && !propsS.ready) continue;
       const tx = ox + bx;
       if (tx < -120 || tx > VIEW_W + 120) continue;
       const k = i * 7 + bx;
       torches.push([tx, by, 0.85 + Math.sin(t * 0.31 + k * 1.7) * 0.1 + Math.sin(t * 0.73 + k) * 0.06]);
+      torchPhases.push(i * fixtures.length + j);
     }
   }
 
@@ -679,16 +644,9 @@ function drawEnv(ctx, camX, t, name, room) {
   ctx.restore();
 
   // 火焰（引擎画，会动，也是光照系统的光源）
-  for (const [tx, ty, fl2] of torches) {
+  for (const [i, [tx, ty, fl2]] of torches.entries()) {
     drawLightTex(ctx, 'glow_warm', `rgb(${th.torch})`, tx, ty, 300 * fl2, 300 * fl2, 0.35); // 火光：光照包 glow_warm（可见半径约 90）
-    ctx.fillStyle = `rgba(${th.torch},0.9)`;
-    ctx.beginPath();
-    ctx.ellipse(tx, ty - 6, 6 * fl2, 12 * fl2, 0, 0, Math.PI * 2);
-    ctx.fill();
-    ctx.fillStyle = th.flame;
-    ctx.beginPath();
-    ctx.ellipse(tx, ty - 4, 3.5 * fl2, 7 * fl2, 0, 0, Math.PI * 2);
-    ctx.fill();
+    drawSceneTorch(ctx, tx, ty, t, torchPhases[i], fl2, `rgb(${th.torch})`);
   }
 
   // 墙脚的接触阴影 + 火光在地面上的倒影
