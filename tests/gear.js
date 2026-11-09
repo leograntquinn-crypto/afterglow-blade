@@ -11,8 +11,9 @@ const PORT = process.env.PORT || 8765;
   await p.evaluate(async () => {
     const { makeItem } = await import('./src/items.js');
     const g = __game, s = g.save; s.gold = 100000; s.lv = 14; g.refreshStats();
-    const old = makeItem('ring', 10, 1); old.enh = 7; s.equip.ring = old;
-    const nw = makeItem('ring', 14, 3); nw.mark = 'air'; s.bag = [nw];
+    const old = makeItem('ring', 10, 1); old.enh = 7; s.equip.trinket1 = old;
+    const nw = makeItem('ring', 14, 4); s.bag = [nw]; // 新传说：九词条、必带刻印
+    if (nw.rar !== 4 || nw.affix.length !== 9 || !nw.mark) throw new Error('传说品质样本不符合新表');
     for (let k = 0; k < 6; k++) s.bag.push(makeItem('helm', 5, k % 2));       // 普通 / 精良
     const keep = makeItem('armor', 5, 1); keep.locked = true; s.bag.push(keep); // 锁定的精良
     const enh = makeItem('armor', 5, 0); enh.enh = 2; s.bag.push(enh);          // 强化过的普通
@@ -22,12 +23,13 @@ const PORT = process.env.PORT || 8765;
   await p.click(`[data-act="sel"][data-id="${await p.evaluate(() => window.__ids.nw)}"]`); await p.waitForTimeout(150);
   await p.screenshot({ path: process.argv[2] + '/gear_modal.png' });
   out.before = await p.evaluate(() => { const it = __game.save.bag[0]; return { affix: it.affix.map(a => a.k), enh: it.enh, gold: __game.save.gold, inheritBtn: document.querySelector('[data-act="inherit"]')?.textContent.trim() }; });
-  // 重铸第 1 条，三次
+  // 重铸第 1 条，三次（九词条仍有一个未占用属性可供替换）
   for (let k = 0; k < 3; k++) { await p.click('[data-act="reforge"][data-i="0"]'); await p.waitForTimeout(80); }
   out.reforge = await p.evaluate(() => { const it = __game.save.bag[0]; return { affix: it.affix.map(a => a.k), distinct: new Set(it.affix.map(a => a.k)).size === it.affix.length, reforged: it.reforged, gold: __game.save.gold }; });
   // 传承
   await p.click('[data-act="inherit"]'); await p.waitForTimeout(100);
-  out.inherit = await p.evaluate(() => { const it = __game.save.bag[0]; return { newEnh: it.enh, oldEnh: __game.save.equip.ring.enh, gold: __game.save.gold }; });
+  out.inherit = await p.evaluate(() => { const it = __game.save.bag[0]; return { newEnh: it.enh, oldEnh: __game.save.equip.trinket1.enh, gold: __game.save.gold }; });
+  if (out.inherit.newEnh !== 7 || out.inherit.oldEnh !== 0) throw new Error('传承应使新件+7、旧件归零');
   // 锁定 → 出售按钮禁用
   await p.click('[data-act="lock"]'); await p.waitForTimeout(80);
   out.lock = await p.evaluate(() => ({ locked: __game.save.bag[0].locked, sellDisabled: document.querySelector('[data-act="sell"]')?.disabled }));

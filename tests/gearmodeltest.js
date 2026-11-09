@@ -18,9 +18,29 @@ const PORT = process.env.PORT || 8765;
     browser = await chromium.launch();
     for (const mobile of [false, true]) {
       const context = await browser.newContext({ viewport: mobile ? {width:390,height:844} : {width:1280,height:720}, isMobile:mobile, hasTouch:mobile });
-      const page = await context.newPage(), errors = [], requests = [];
+      const page = await context.newPage(), errors = [], requests = [], resourceFailures = [];
       page.on('pageerror', error => errors.push(error.message));
-      page.on('console', message => { if (message.type() === 'error') errors.push(message.text()); });
+      page.on('requestfailed', request => {
+        const failure = {url:request.url(), error:request.failure()?.errorText || 'unknown request failure'};
+        resourceFailures.push(failure);
+        if (!/^net::ERR_[A-Z_]+$/.test(failure.error)) errors.push(JSON.stringify(failure));
+      });
+      page.on('response', response => {
+        if (response.status() < 400) return;
+        const failure = {url:response.url(), status:response.status()};
+        resourceFailures.push(failure);
+        if (!(failure.status === 404 && new URL(failure.url).pathname === '/favicon.ico')) errors.push(JSON.stringify(failure));
+      });
+      page.on('console', message => {
+        if (message.type() !== 'error') return;
+        const text=message.text(), url=message.location().url;
+        // 只豁免浏览器资源错误：网络层失败，或根目录 favicon 的 404。
+        const network=/^Failed to load resource: net::ERR_[A-Z_]+$/.test(text);
+        const favicon=text === 'Failed to load resource: the server responded with a status of 404 (Not Found)' &&
+          url && new URL(url).pathname === '/favicon.ico';
+        resourceFailures.push({url,text});
+        if (!network && !favicon) errors.push(`${text} [URL: ${url || 'unknown'}]`);
+      });
       page.on('request', request => { if (/gear_(icons|frame)/.test(request.url())) requests.push(request.url()); });
       await page.goto(`http://localhost:${PORT}/index.html`);
       await page.waitForFunction(() => !!window.__game);
@@ -180,6 +200,7 @@ const PORT = process.env.PORT || 8765;
         return {retained,released,fallback,race,missing};
       });
       for(const [label,ok] of Object.entries(lifecycle)) check(ok,'9 '+label+' '+mobile);
+      console.log('9 资源失败 URL '+mobile+' '+JSON.stringify(resourceFailures));
       check(errors.length===0,'9 页面无报错 '+mobile,errors.join('; '));
       await context.close();
     }

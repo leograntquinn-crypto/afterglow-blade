@@ -1,10 +1,12 @@
 // 装备预算与随机质量集中放表，逻辑只按表执行。
+// 高档以词条覆盖面和质量拉开差距；最多九条，为重铸保留未占用属性。
+// 普通/精良、基础倍率保持原值，维持七槽基础预算及精良 REF_POWER。
 export const RARITY = [
  {name:'普通',color:'#d8d3c8',mul:1,w:58,affixes:0,quality:0,mark:0,imbue:[]},
  {name:'精良',color:'#4fa3ff',mul:1.15,w:27,affixes:1,quality:0.8,mark:0,imbue:[]},
- {name:'稀有',color:'#b46bff',mul:1.30,w:10,affixes:2,quality:0.9,mark:0.4,imbue:[1,2]},
- {name:'史诗',color:'#ff5aa0',mul:1.42,w:4,affixes:2,quality:1,mark:0.7,imbue:[2,3]},
- {name:'传说',color:'#ff9a2e',mul:1.55,w:1,affixes:3,quality:1.15,mark:1,imbue:[3]},
+ {name:'稀有',color:'#b46bff',mul:1.30,w:10,affixes:5,quality:0.9,mark:0.4,imbue:[1,2]},
+ {name:'史诗',color:'#ff5aa0',mul:1.42,w:4,affixes:7,quality:1.7,mark:0.7,imbue:[2,3]},
+ {name:'传说',color:'#ff9a2e',mul:1.55,w:1,affixes:9,quality:2.7,mark:1,imbue:[3]},
 ];
 export const BUDGET = {
  weapon:{atk:[8,3.2]}, chest:{def:[3,1.2],hp:[12,6]}, helm:{def:[1.5,0.6],hp:[6,3.5]},
