@@ -2,7 +2,7 @@
 
 python3 -I tools/build_fx.py <fx_textures_v1 目录> <fx_hero_v1 目录> <fx_boss_v1 目录> [fx_blade_v1 目录] [fx_light_v1 目录]
 python3 -I tools/build_fx.py --enemy <fx_enemy_v1_common 目录> [fx_enemy_v1_types 目录]   （只打敌人特效包，不动别的图集）
-python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage|bone> <包目录>   （只打指定首领特效包，不动别的图集）
+python3 -I tools/build_fx.py --boss <raven|ironjaw|afterimage|bone|warden> <包目录>   （只打指定首领特效包，不动别的图集）
 python3 -I tools/build_fx.py --scene <fx_scene_v1 目录>   （只打场景特效包，不动别的图集）
 
 输出到 assets/fx/（每套两份：桌面 <名字>.webp/json，手机 <名字>_m.webp/json）：
@@ -192,6 +192,18 @@ BOSS_PACKS = {
             "summon_rise": (256, 256, 8), "bonelord_death": (384, 384, 10),
         },
         "keep_full": {"marrow_tether"},
+    },
+    "warden": {
+        "out": "fx_boss_warden_v2",
+        "textures": {"fire_lane": (256, 64)},
+        "flipbooks": {
+            "brazier": (128, 192, 4), "brazier_flame": (128, 192, 8),
+            "brazier_break": (192, 192, 8), "judgment_sweep": (512, 256, 8),
+            "warden_flame": (256, 384, 8), "phase_ignite": (384, 384, 10),
+            "inferno_gather": (256, 384, 8), "inferno_burst": (512, 384, 8),
+            "warden_death": (384, 384, 10),
+        },
+        "keep_full": {"fire_lane"},
     },
 }
 

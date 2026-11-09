@@ -88,6 +88,7 @@ export const FX_ART = {
   bone: new FxPack('fx_bone'),
   bonev2: new FxPack('fx_boss_bone_v2'),
   warden: new FxPack('fx_warden'),
+  wardenv2: new FxPack('fx_boss_warden_v2'),
   raven: new FxPack('fx_boss_raven'),
   ironjaw: new FxPack('fx_boss_ironjaw'),
   afterimage: new FxPack('fx_boss_afterimage'),
@@ -120,7 +121,7 @@ export const enemyFb = (id) => (FX_ART.enemy.ready && FX_ART.enemy.items[id]) ||
 afterBoot(() => { FX_ART.tex.load(); FX_ART.hero.load(); FX_ART.bladeTex.load(); FX_ART.blade.load(); FX_ART.enemyTex.load(); FX_ART.enemy.load(); }); // 大地图和主角先载（见 boot.js）
 
 // 首领专属特效：只载入这一关首领需要的各套，释放其他的（和首领图集一样，见 enemy_sprites.js 的 prepareBossSprites）
-const BOSS_FX = { boneLord: ['bone', 'bonev2'], nightRaven: 'raven', ironJaw: 'ironjaw', warden: 'warden', afterimage: 'afterimage' };
+const BOSS_FX = { boneLord: ['bone', 'bonev2'], nightRaven: 'raven', ironJaw: 'ironjaw', warden: ['warden', 'wardenv2'], afterimage: 'afterimage' };
 export function prepareBossFx(key) {
   for (const [k, name] of Object.entries(BOSS_FX)) {
     for (const pack of Array.isArray(name) ? name : [name]) {
@@ -156,6 +157,6 @@ export const enemyTypeFb = (rig, id) => (FX_ART.enemyType[rig]?.ready && FX_ART.
 // 取一组序列帧（没载好返回 null）
 export function flipbook(id) {
   // 刀光包排在最前：它的五组刀光覆盖 fx_hero 里的旧组（fx_hero 打包时已经不含这几组）
-  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.bonev2, FX_ART.warden, FX_ART.raven, FX_ART.ironjaw, FX_ART.afterimage, FX_ART.scene, FX_ART.enemy, ...Object.values(FX_ART.enemyType)]) if (p.ready && p.items[id]?.frames) return p.items[id];
+  for (const p of [FX_ART.blade, FX_ART.hero, FX_ART.bone, FX_ART.bonev2, FX_ART.warden, FX_ART.wardenv2, FX_ART.raven, FX_ART.ironjaw, FX_ART.afterimage, FX_ART.scene, FX_ART.enemy, ...Object.values(FX_ART.enemyType)]) if (p.ready && p.items[id]?.frames) return p.items[id];
   return null;
 }
