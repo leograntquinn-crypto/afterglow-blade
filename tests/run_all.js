@@ -47,6 +47,7 @@ const TESTS = [
   test('ravennighttest', 300),
   test('bosspacktest', 300),
   test('bossfxtest', 300),
+  test('scenefxtest', 300),
   ...[
     'afftest', 'traintest', 'train2', 'countertest', 'walktest', 'difftest',
     'coretest', 'contracttest', 'trialtest', 'trialsoak', 'gear', 'settest',
