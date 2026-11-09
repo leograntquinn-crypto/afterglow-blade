@@ -182,6 +182,34 @@ const PORT = process.env.PORT || 8765;
       check(await page.locator('.slots .glyph [data-gear-icon]').count()>0,'9 槽位图标 '+mobile);
       check(await page.locator('.slots .slot').evaluateAll(nodes => nodes.every(node => !node.textContent.trim())),
         '9 槽位瓷砖无可见名称文字 '+mobile);
+      const singleFrame = await page.locator('.slots .slot:not(.empty), .bag .cell:not(.blank)').evaluateAll(nodes =>
+        nodes.length > 0 && nodes.every(node => {
+          const style = getComputedStyle(node);
+          return (style.borderTopStyle === 'none' || parseFloat(style.borderTopWidth) === 0) &&
+            [...node.querySelectorAll('.gearGlyph, .glyph')].every(glyph => !glyph.textContent.trim());
+        }));
+      check(singleFrame, '9 已填充格无可见外框且无字形回退 '+mobile);
+      const missingIcon = await page.evaluate(async () => {
+        const {gearGlyph} = await import('./src/gear/art.js');
+        const {makeItem} = await import('./src/items.js');
+        const g = __game, saved = g.save.equip.helm;
+        const it = makeItem('lg_duanyue',10);
+        // 同时覆盖真实槽位/背包渲染，不改变后续几何及饰品断言的样本。
+        g.save.equip.helm = it; g.save.bag.push(it);
+        try {
+          g.hub.render();
+          const tiles = [...document.querySelectorAll('.slots .slot[data-id], .bag .cell[data-id]')]
+            .filter(node => node.dataset.id === String(it.id));
+          const glyph = document.createElement('div'); glyph.innerHTML = gearGlyph(it);
+          return tiles.length === 2 && tiles.every(tile =>
+            tile.getAttribute('aria-label') && tile.querySelector('[data-gear-frame]') &&
+            !tile.querySelector('.glyph').textContent.trim()) &&
+            !!glyph.querySelector('[data-gear-frame]') && !glyph.textContent.trim();
+        } finally {
+          g.save.equip.helm = saved; g.save.bag.pop(); g.hub.render();
+        }
+      });
+      check(missingIcon, '9 图集就绪缺图仅保留框与装备无障碍名称 '+mobile);
       if (!mobile) {
         const expected = await page.evaluate(async () => {
           const {itemTitle, STAT_INFO} = await import('./src/items.js');

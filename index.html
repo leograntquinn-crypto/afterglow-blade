@@ -262,8 +262,8 @@
   .figure { container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
   #preview { grid-column: 2; grid-row: 1; width: 100%; max-width: 300px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
   .slots { grid-column: 1 / -1; grid-row: 1; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; pointer-events: none; }
-  .slot { box-sizing: border-box; grid-column: var(--slot-col); grid-row: var(--slot-row); position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 6px; cursor: pointer; pointer-events: auto; background: rgba(0,0,0,.3); border: 1px solid var(--rc, var(--line)); }
-  .slot.empty { cursor: default; color: var(--mute); border-style: dashed; opacity: 1; }
+  .slot { box-sizing: border-box; grid-column: var(--slot-col); grid-row: var(--slot-row); position: relative; aspect-ratio: 1; width: 100%; min-width: 0; padding: 0; border-radius: 0; cursor: pointer; pointer-events: auto; background: none; border: none; box-shadow: none; }
+  .slot.empty { cursor: default; color: var(--mute); border: 1px dashed var(--rc, var(--line)); border-radius: 6px; background: rgba(0,0,0,.3); opacity: 1; }
   .slot .glyph, .cell .glyph { position: absolute; inset: 0; display: grid; place-items: center; font: 40px var(--font-title); color: var(--rc, var(--mute)); }
   @media (max-width: 680px) {
     .hero { grid-template-columns: minmax(0, 1fr); }
@@ -289,11 +289,14 @@
   .bag-tools { display: flex; gap: 4px; }
   .bag { display: grid; grid-template-columns: repeat(auto-fill, minmax(64px, 1fr)); gap: 6px; }
   .cell {
-    position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 6px; cursor: pointer; padding: 0;
-    background: radial-gradient(circle at 50% 60%, color-mix(in srgb, var(--rc) 22%, transparent), rgba(0, 0, 0, .35) 70%);
-    border: 1px solid var(--rc);
+    position: relative; aspect-ratio: 1; display: grid; place-items: center; border-radius: 0; cursor: pointer; padding: 0;
+    background: none; border: none; box-shadow: none;
   }
-  .cell.blank { background: rgba(0, 0, 0, .2); border: 1px dashed var(--line); cursor: default; }
+  .cell.blank { border-radius: 6px; background: rgba(0, 0, 0, .2); border: 1px dashed var(--line); cursor: default; }
+
+  .slot:not(.empty):hover, .cell:not(.blank):hover { filter: brightness(1.18); }
+  .slot.is-selected, .cell.is-selected { filter: drop-shadow(0 0 5px var(--rc)); }
+  .slot.is-selected:hover, .cell.is-selected:hover { filter: brightness(1.18) drop-shadow(0 0 5px var(--rc)); }
 
   .cell i { position: absolute; font-style: normal; font: 500 15px/1 var(--font-num); }
   .cell .enh { left: 4px; top: 3px; color: var(--gold); }

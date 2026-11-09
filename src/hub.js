@@ -302,6 +302,9 @@ export class Hub {
   }
 
   renderModal() {
+    for (const tile of this.root.querySelectorAll('.slot[data-id], .cell[data-id]')) {
+      tile.classList.toggle('is-selected', tile.dataset.id === this.sel);
+    }
     this.hideGearTooltip();
     const f = this.findItem(this.sel);
     if (!f) return this.closeModal();
@@ -377,6 +380,7 @@ export class Hub {
   }
 
   closeModal() {
+    for (const tile of this.root.querySelectorAll('.is-selected')) tile.classList.remove('is-selected');
     this.sel = null;
     this.engrave = false;
     this.modal.hidden = true;

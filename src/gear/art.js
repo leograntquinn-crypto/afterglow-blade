@@ -48,7 +48,13 @@ export const GEAR_ART = {
 // 图标与底板都铺满 glyph：图集每个 cell 映射为完整格子（100%，不留缩小边距）。
 export function gearGlyph(it) {
   const pos = GEAR_ART.entry(it);
-  if (!pos) return it ? itemGlyph(it) : '';
+  if (!pos) {
+    if (!it) return '';
+    // 整体未加载沿用 D-1 降级；图集已就绪的缺图装备只显示稀有度框。
+    if (!GEAR_ART.ready) return itemGlyph(it);
+    const frame = GEAR_ART.frames[it.rar] && GEAR_ART.meta.frames[it.rar];
+    return frame ? `<span data-gear-icon data-gear-frame data-gear-glyph="" aria-hidden="true" style="display:inline-block;width:100%;height:100%;background-image:url('${DIR}${frame}');background-size:100% 100%;background-position:center;background-repeat:no-repeat"></span>` : '';
+  }
   const [page, x, y] = pos, meta = GEAR_ART.meta, cell = meta.cell;
   const {file, width, height} = meta.pages[page];
   const px = width === cell ? 0 : x / (width - cell) * 100;
