@@ -9,8 +9,8 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
   const r = await p.evaluate(async () => {
     const g = __game; const { FX_ART } = await import('./src/fx_art.js');
     for (const s of ['s1', 's2', 's3', 's4']) g.save.cleared[s] = true;
-    const packs = ['bone', 'raven', 'ironjaw', 'warden', 'afterimage'];
-    const want = { 0: ['bone'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden'], 4: ['afterimage'] };
+    const packs = ['bone', 'bonev2', 'raven', 'ironjaw', 'warden', 'afterimage'];
+    const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden'], 4: ['afterimage'] };
     const out = {};
     for (const st of [0, 1, 2, 3, 4, 2, 0]) {
       g.story.clear(); g.startStage(st, 0, false); g.story.clear();
@@ -22,11 +22,11 @@ let bad = 0; const ok = (c, m) => { console.log((c ? 'ok   ' : 'FAIL ') + m); if
     return out;
   });
   console.log(JSON.stringify(r));
-  const want = { 0: 'bone', 1: 'raven', 2: 'ironjaw', 3: 'warden', 4: 'afterimage' };
+  const want = { 0: ['bone', 'bonev2'], 1: ['raven'], 2: ['ironjaw'], 3: ['warden'], 4: ['afterimage'] };
   for (const [k, v] of Object.entries(r)) {
     const st = +k.split('_')[0];
-    const only = Object.entries(v.state).every(([name, ready]) => ready === (name === want[st]));
-    ok(only && v.items[0] > 0, `第 ${st + 1} 关（${v.boss}）：只载入 ${want[st]}（${v.items[0]} 项），其他首领的特效包都释放了`);
+    const only = Object.entries(v.state).every(([name, ready]) => ready === want[st].includes(name));
+    ok(only && v.items.every((n) => n > 0), `第 ${st + 1} 关（${v.boss}）：只载入 ${want[st].join(' + ')}（${v.items.join(' + ')} 项），其他首领的特效包都释放了`);
   }
   ok(!errs.length, 'PAGE ERRORS ' + (errs.join(' | ') || 'none'));
   console.log(bad ? `BOSSPACKTEST FAIL ${bad}` : 'BOSSPACKTEST ok');
