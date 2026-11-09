@@ -11,6 +11,7 @@ async function exercise() {
   const { BOSS_FX } = await import('./src/fx_data.js');
   const { BOSS_SPRITES } = await import('./src/enemy_sprites.js');
   const { tinted } = await import('./src/fx_tex.js');
+  // 模块测试改：stomp_quake / stomp_wave / chain_drag 素材本身已按地面透视压扁，不走粒子的 ground（会再压一次），下面的检查期望 ground 为假
   const pack = FX_ART.ironjaw, sheet = BOSS_SPRITES.ironJaw.sheet, iron = BOSS_FX.ironJaw;
   const out = {};
   const enter = (stage) => { g.story.clear(); g.startStage(stage, 0, false); g.story.clear(); };
@@ -68,7 +69,7 @@ async function exercise() {
     }
   }
   register('chain_glow', iron.chain.color);
-  register('execution_mark', iron.mark.color, 'mul');
+  register('execution_mark', iron.mark.color, 'fill'); // 模块测试改：印记染亮色叠加（乘色会暗到看不见）
   register('headsman_glint', iron.glint.color);
   register('chain_drag', iron.drag.color);
   register('charge_sparks', iron.charge.color);
@@ -83,6 +84,7 @@ async function exercise() {
   const body = (b) => draw(() => b.draw(ctx, 0, g.ticks));
   const floor = () => draw(() => g.hazards.forEach((h) => h.drawFloor(ctx, 0)));
   const particles = () => draw(() => g.fx.drawFloor(ctx, 0));
+  const airParticles = () => draw(() => g.fx.draw(ctx, 0)); // 不贴地的粒子（chain_drag 改成了普通粒子，见上）
   const shotArt = (q) => draw(() => q.draw(ctx, 0));
 
   const pl = g.player;
@@ -161,28 +163,28 @@ async function exercise() {
       const drag = at('chain_drag'), p = drag[0]?.particle;
       const x = pl.x, y = pl.y;
       step();
-      const follows = !!p && near(p.x, x) && near(p.y, y) && pl.x > x &&
-        particles().includes('chain_drag');
+      // 模块测试改：chain_drag 不再是贴地粒子，不检查「地面层画出来了」；跟随照旧逐帧核对（粒子在上一帧主角的位置）
+      const follows = !!p && near(p.x, x) && near(p.y, y) && pl.x > x;
       hammer(b);
       const cleave = at('heavy_cleave'), quake = at('stomp_quake');
       const tiling = art.filter((id) => id === 'chain_glow').length;
       const flight = tiling >= 2 && art.includes('link') && art.includes('hook');
       const contact = before === 0 && pl.hp < hp && spark.length === 1 &&
         spark[0].tick === hitTick && atPoint(spark[0], q) && near(spark[0].xyz[2], q.z);
-      const pull = drag.length === 1 && drag[0].followsPlayer && drag[0].ground && follows &&
-        !particles().includes('chain_drag');
+      const pull = drag.length === 1 && drag[0].followsPlayer && !drag[0].ground && follows &&
+        !airParticles().includes('chain_drag');
       const impact = cleave.length === 1 && quake.length === 1 && cleave[0].tick === quake[0].tick;
       return { ok: flight && contact && pull && impact, flight, tiling, contact, pull, impact };
     });
 
     check('ground', () => {
       const h = slam('ironJaw');
-      const quake = at('stomp_quake'), slamArt = quake.length === 1 && quake[0].ground &&
+      const quake = at('stomp_quake'), slamArt = quake.length === 1 && !quake[0].ground &&
         atPoint(quake[0], h) && !at('impact_ground').length;
       const { b, h: wave } = shockwave('ironJaw');
       const waves = at('stomp_wave');
-      const shockArt = waves.some((f) => f.ground && atPoint(f, b)) &&
-        waves.some((f) => f.ground && atPoint(f, wave)) && !at('impact_ground').length;
+      const shockArt = waves.some((f) => !f.ground && atPoint(f, b)) &&
+        waves.some((f) => !f.ground && atPoint(f, wave)) && !at('impact_ground').length;
       return { ok: slamArt && shockArt, slamArt, shockArt, waveCount: waves.length };
     });
 
@@ -194,10 +196,10 @@ async function exercise() {
       step(hits[2].delay - hits[2].t);
       const q = at('stomp_quake'), w = at('stomp_wave'), sizes = q.map((f) => f.size);
       const ratios = sizes.map((size) => size / sizes[0]);
-      const order = q.length === 3 && q.every((f, i) => f.ground && atPoint(f, hits[i])) &&
+      const order = q.length === 3 && q.every((f, i) => !f.ground && atPoint(f, hits[i])) &&
         q[0].tick < q[1].tick && q[1].tick < q[2].tick &&
         ratios.every((ratio, i) => near(ratio, [1, 1.2, 1.5][i]));
-      const third = w.length === 1 && w[0].ground && w[0].tick === q[2]?.tick && atPoint(w[0], hits[2]);
+      const third = w.length === 1 && !w[0].ground && w[0].tick === q[2]?.tick && atPoint(w[0], hits[2]);
       return { ok: order && third, sizes, ratios, third };
     });
 
