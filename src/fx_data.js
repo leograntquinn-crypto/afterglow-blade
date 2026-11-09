@@ -168,6 +168,19 @@ export const ENEMY_TYPE_FX = {
 
 // ---------- 首领专属特效（画法见 boss_fx.js）----------
 export const BOSS_FX = {
+  warden: {
+    colors: ['#ffb347', '#6fe38a', '#d6ffe0'],
+    flame: { fb: 'warden_flame', size: 1, speed: 1.6, jumpInterval: [20, 40], jumpAlpha: 1.8, alpha: 0.75 },
+    brazier: { fb: 'brazier', k: 0.42, mouth: 38, shake: 4 },
+    brazierFlame: { fb: 'brazier_flame', k: 0.42 },
+    break: { fb: 'brazier_break', k: 0.42 },
+    lane: { tex: 'fire_lane', height: 2, scroll: 3, alpha: 1 },
+    sweep: { fb: 'judgment_sweep', size: 1, width: 512, anchorX: 0.15 },
+    ignite: { fb: 'phase_ignite', size: 1.2 },
+    gather: { fb: 'inferno_gather', size: 1 },
+    burst: { fb: 'inferno_burst', size: 1.4 },
+    groundDeath: { fb: 'warden_death', size: 1.2 },
+  },
   boneLord: {
     cage: { fb: 'cage_tighten', color: '#ff5a3c', width: 512, shrink: 0.6 },
     tether: { tex: 'marrow_tether', color: '#ff5a3c', height: 6, scroll: 1.5 },

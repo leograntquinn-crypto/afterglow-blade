@@ -25,7 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
-import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather, playBoneFx, boneSigil, hasBoneGlow, drawBoneBodyFx, boneShards } from './boss_fx.js';
+import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather, playBoneFx, boneSigil, hasBoneGlow, drawBoneBodyFx, boneShards, playWardenFx, hasWardenGather, updateWardenFlame, drawWardenBodyFx } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
 const PHASE_TITLES = ['', '第 二 阶 段', '最 终 阶 段'];
@@ -345,10 +345,10 @@ const ATTACKS = {
       b.tele = true;
       b.vx = b.vy = 0;
       b.pa = -2.6; b.pc = 0.3; b.pl = -4;
-      if (t % 20 === 0 && !hasBoneGlow(b) && !hasAfterimageGather(b) && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
+      if (t % 20 === 0 && !hasWardenGather(b) && !hasBoneGlow(b) && !hasAfterimageGather(b) && !hasRavenChannelFx(b) && !hasIronJawMark(b)) g.fx.ring(b.x, b.y, b.h * 0.5, b.B.glow, 16, 6, 24, 4);
       if (t >= d.T) {
         b.channel = null;
-        if (!playBoneFx(g, b, 'burst') && !playAfterimageFx(g, b, 'burst') && !flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
+        if (!playWardenFx(g, b, 'burst') && !playBoneFx(g, b, 'burst') && !playAfterimageFx(g, b, 'burst') && !flashRavenVeil(b, g) && !hasIronJawDrop(b)) g.fx.flash(b.B.glow, 0.45);
         g.fx.shake(18, 34);
         return true;
       }
@@ -363,7 +363,7 @@ const ATTACKS = {
       b.pl = -8;
       if (t === 1) {
         g.banner = { title: PHASE_TITLES[b.phase], sub: b.B.phases[b.phase].line, t: 0, color: b.B.glow };
-        if (b.phase !== 1 || (!playBoneFx(g, b, 'reform') && !playIronJawFx(g, b, 'chainBreak'))) g.fx.flash(b.B.glow, 0.35);
+        if (!playWardenFx(g, b, 'ignite') && (b.phase !== 1 || (!playBoneFx(g, b, 'reform') && !playIronJawFx(g, b, 'chainBreak')))) g.fx.flash(b.B.glow, 0.35);
         g.fx.shake(14, 40);
         sfx('roar');
       }
@@ -441,6 +441,7 @@ export class Boss extends Enemy {
       this.startAct('roar');
     }
     super.update(game);
+    updateWardenFlame(this, game);
     updateNight(this, game); // 夜鸦第二阶段的夜色（raven_night.js）
     updateRavenDeathFx(game, this);
     // 出招预警的一瞬间：脚下的红圈往里收、红光往身上聚（和「!」一起出现，告诉你要闪了）
@@ -563,8 +564,9 @@ export class Boss extends Enemy {
     };
     // 三个身影共享身体淡入和所有身上特效。脚下的影子仍由游戏原来的影子层绘制。
     for (const [sx, sy] of spots) {
+      const wardenFlame = drawWardenBodyFx(ctx, this, sx, sy, alpha);
       if (this.tele) drawEnemyAura(ctx, this, sx, sy, 'bossThreat', t, alpha);
-      else if (this.alive) {
+      else if (this.alive && !wardenFlame) {
         const I = ENEMY_FX.aura.bossIdle;
         drawEnemyAura(ctx, this, sx, sy, 'bossIdle', t, alpha * (1 + (this.phase * I.phase) / I.alpha), this.armor > 0 ? this.B.glow : COLORS.ember);
       }

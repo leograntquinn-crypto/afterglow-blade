@@ -7,7 +7,7 @@ import { BOSS_SPRITES } from './enemy_sprites.js';
 import { FEINT } from './ai_data.js';
 import { ENEMY_FX } from './fx_data.js';
 import { drawWarn, drawWarnFlash, drawMeteor, drawLaneBand, drawArrow, arrowBreakFx } from './enemy_fx.js';
-import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact, drawIronJawChain, drawAfterimageWave } from './boss_fx.js';
+import { drawRavenArrow, drawRavenFeather, ravenFeatherTurn, drawRavenRain, ravenRainImpact, drawIronJawChain, drawAfterimageWave, drawWardenLane } from './boss_fx.js';
 
 // 把招式里「相对角色」的判定框，换算成世界坐标
 // box: { x: 向前偏移, w: 宽, d: 纵深容差, z0/z1: 高度范围 }
@@ -332,9 +332,9 @@ export class Lane {
   }
   drawFloor(ctx, camX) {
     const [sx, sy] = toScreen(this.x, this.y, 0, camX);
-    const len = this.facing > 0 ? world.w - this.x : this.x;
+    const len = Math.min(this.length ?? Infinity, this.facing > 0 ? world.w - this.x : this.x);
     const a = 0.12 + 0.18 * (this.t / this.life) + 0.08 * Math.sin(this.t * 0.6);
     // 素材（fx_enemy_v1 的 lane_band）：沿路线平铺、往前流。素材没载好时不画
-    drawLaneBand(ctx, sx, sy, this.facing, len, this.half, this.t, this.color, a * 2.2);
+    if (!drawWardenLane(ctx, this, sx, sy, len, a * 2.2)) drawLaneBand(ctx, sx, sy, this.facing, len, this.half, this.t, this.color, a * 2.2);
   }
 }
