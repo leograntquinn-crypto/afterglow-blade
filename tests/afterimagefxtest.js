@@ -37,6 +37,7 @@ async function exercise() {
   const images = new Map();
   function register(id, asset) {
     for (const img of asset?.frames || (asset ? [asset] : [])) {
+      if (!img) continue; // 图集里全透明帧存为 null，跳过
       images.set(img, id);
       for (const color of ['#b46bff', g.player.glow]) for (const mode of ['fill', 'mul']) images.set(tinted(img, color, mode), id);
     }
