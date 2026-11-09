@@ -296,6 +296,14 @@ export class Hub {
     this.tooltip.style.transform = `translate(${x}px, ${y}px)`;
   }
 
+  // compareSlot 是饰品详情留下的界面提示，可能与当前物品槽位不符；
+  // 传给 compareItem 前先校验，不符则回退默认选槽（compareItem 对不匹配槽位会抛错）。
+  cmpSlotFor(it) {
+    const slot = CATALOG[it.def]?.slot || it.slot;
+    const slots = slot === 'trinket' ? ['trinket1', 'trinket2'] : [slot];
+    return slots.includes(this.compareSlot) ? this.compareSlot : undefined;
+  }
+
   // ---------------- 装备详情弹窗 ----------------
   findItem(id) {
     const s = this.save;
@@ -328,7 +336,7 @@ export class Hub {
       this.modal.hidden = false;
       return;
     }
-    const comparison = equipped ? null : compareItem(s,it,{slot:this.compareSlot});
+    const comparison = equipped ? null : compareItem(s,it,{slot:this.cmpSlotFor(it)});
     const cur = comparison?.against;
     const allowed = canImprove(it);
     const mine = itemStats(hydrateItem({...it,enh:comparison?.enhAs ?? it.enh,affix:[]})), other = cur ? itemStats(hydrateItem({...cur,enh:comparison.enhAs,affix:[]})) : {};
@@ -542,7 +550,7 @@ export class Hub {
       const a = it.affix[i];
       this.toast(`${STAT_INFO[before.k][0]} → ${STAT_INFO[a.k][0]} +${fmtStat(a.k, a.v)}`, '#7ff3ff');
     } else if (act === 'inherit' && !equipped) {
-      const cur = compareItem(s,it,{slot:this.compareSlot}).against;
+      const cur = compareItem(s,it,{slot:this.cmpSlotFor(it)}).against;
       if (!canImprove(it) || !canImprove(cur) || !cur || cur.enh <= it.enh) return;
       const cost = inheritCost(it, cur);
       if (s.gold < cost) return;
