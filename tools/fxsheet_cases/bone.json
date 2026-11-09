@@ -1,0 +1,13 @@
+{
+  "columns": 4,
+  "cells": [
+    {"label": "骸骨统领 · 骨牢预警（收紧+光丝）", "stage": 0, "spawn": "boneLord", "moment": "move:boneCage", "frames": 14},
+    {"label": "骸骨统领 · 裂地追斩（拖地火星）", "stage": 0, "spawn": "boneLord", "moment": "move:rendChase", "frames": 16},
+    {"label": "骸骨统领 · 冲锋（拖地火星）", "stage": 0, "spawn": "boneLord", "moment": "move:charge", "frames": 26},
+    {"label": "骸骨统领 · 重击骨片", "stage": 0, "spawn": "boneLord", "moment": "hit", "frames": 20},
+    {"label": "骸骨统领 · 读条（骨印+髓光）", "stage": 0, "spawn": "boneLord", "moment": "move:channel", "frames": 40},
+    {"label": "骸骨统领 · 召唤（升起）", "stage": 0, "spawn": "boneLord", "moment": "move:summon", "frames": 30},
+    {"label": "骸骨统领 · 死亡", "stage": 0, "spawn": "boneLord", "moment": "death", "frames": 40},
+    {"label": "骸骨统领 · 重砸（旧特效不变）", "stage": 0, "spawn": "boneLord", "moment": "move:slam", "frames": 52}
+  ]
+}
