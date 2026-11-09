@@ -80,6 +80,9 @@ async function captureCell({ cell, vw, vh, tw, th }) {
     }
     g.ticks = 60; g.banner = null;
     g.fx.live.length = 0; g.fx.texts.length = 0; g.fx.flashA = 0; g.fx.shakeT = 0;
+    // 截图冻结帧：清掉地图淡入黑场（W.enter 置 fadeIn=24，只有 W.update 才递减；
+    // 冻结 g.update 后直接 render 会整屏盖黑，试炼格因此全黑）。
+    if (g.world) g.world.fadeIn = 0;
     g.render();
     const canvas = document.querySelector('canvas#game, #game canvas') || g.ctx.canvas;
     // 保留完整逻辑画面：南台阶贴近下沿，不能沿用敌人截图的中心裁切。
