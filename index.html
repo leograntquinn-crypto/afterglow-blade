@@ -369,6 +369,21 @@
     width: min(400px, 100%); max-height: calc(100% - 8px); overflow-y: auto; background: linear-gradient(180deg, #1c1626, #0f0c14); border: 1px solid var(--line);
     border-radius: 12px; padding: 18px; box-shadow: 0 20px 60px rgba(0, 0, 0, .6);
   }
+  .artframe {
+    background:
+      url('assets/ui/frame_corner_tl.webp') 0 0 / 92px 92px no-repeat,
+      url('assets/ui/frame_corner_tr.webp') 100% 0 / 92px 92px no-repeat,
+      url('assets/ui/frame_corner_bl.webp') 0 100% / 92px 92px no-repeat,
+      url('assets/ui/frame_corner_br.webp') 100% 100% / 92px 92px no-repeat,
+      url('assets/ui/frame_edge_h.webp') left 92px top 6px / 141px 29px repeat-x,
+      url('assets/ui/frame_edge_h_flip.webp') left 92px bottom 6px / 141px 29px repeat-x,
+      url('assets/ui/frame_edge_v.webp') left 6px top 92px / 29px 141px repeat-y,
+      url('assets/ui/frame_edge_v_flip.webp') right 6px top 92px / 29px 141px repeat-y,
+      var(--panel);
+    border: 0;
+    border-radius: 0;
+    padding: 42px;
+  }
   .card-head { display: flex; gap: 12px; align-items: center; }
   .card-head > div { flex: 1; min-width: 0; }
   .card-head h3 { font: 26px var(--font-title); }

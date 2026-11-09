@@ -251,7 +251,7 @@ export class Hub {
     }).join('') + '<span class="cell blank"></span>'.repeat(Math.max(0, 12 - s.bag.length));
 
     return `<div class="hero">
-      <section class="panel figure">
+      <section class="panel figure artframe">
         <canvas id="preview" width="440" height="460" aria-label="角色外观预览" aria-controls="hero-stats" aria-expanded="false"></canvas>
         <div class="slots">${slots}</div>
       <div class="stats-pop" id="hero-stats" hidden>
@@ -265,7 +265,7 @@ export class Hub {
       </section>
       </div>
       </section>
-      <section class="panel">
+      <section class="panel artframe">
         <div class="attr-head"><h4>背包 <small>${s.bag.length} / ${BAG_MAX}</small></h4>
           <span class="bag-tools"><button class="btn ghost mini-text" data-act="sort">整理</button><button class="btn ghost mini-text" data-act="sellJunk" data-r="0">出售普通</button><button class="btn ghost mini-text" data-act="sellJunk" data-r="1" title="不包括锁定、强化过、带刻印的装备">出售精良及以下</button></span>
         </div>
@@ -415,7 +415,7 @@ export class Hub {
     const cost = enhCost(it);
     const enhBtn = !allowed ? '<button class="btn" disabled title="翅膀 / 光幕固定攻击 +10，不能强化">不能强化：固定攻击 +10</button>' : it.enh >= MAX_ENH ? '<button class="btn" disabled>已强化到 +10</button>'
       : `<button class="btn" data-act="enhance" ${s.gold >= cost ? '' : 'disabled'}>强化 +${it.enh + 1} · 成功率 ${Math.round(enhRate(it) * 100)}% · ${cost} 金币</button>`;
-    this.modal.innerHTML = `<div class="sheet" role="dialog" aria-label="${itemTitle(it)}">
+    this.modal.innerHTML = `<div class="sheet artframe" role="dialog" aria-label="${itemTitle(it)}">
       <div class="card-head">
         <span class="glyph big r${it.rar}">${gearGlyph(it)}</span>
         <div><h3 style="color:${R.color}">${itemTitle(it)}</h3><p class="isub">${R.name} · ${itemKind(it)} · 物品等级 ${it.ilvl}</p></div>
