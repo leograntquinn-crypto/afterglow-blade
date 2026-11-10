@@ -149,7 +149,7 @@ export class SpriteSheet {
   }
 }
 
-export const heroSprite = new SpriteSheet('assets/hero/', 'feisun', { full: 'fullbody', avatar: 'avatar' });
+export const heroSprite = new SpriteSheet('assets/hero/', 'feisun', { full: 'front_base', avatar: 'avatar' });
 heroSprite.load();
 
 // ---------- 游戏状态 → 动画帧 ----------

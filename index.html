@@ -71,6 +71,7 @@
     font: 24px var(--font-title); pointer-events: auto; touch-action: none;
   }
   .tbtn.on { background: rgba(127, 243, 255, .35); border-color: var(--blade); }
+  .tbtn img { width: 84%; height: 84%; border-radius: 50%; object-fit: cover; pointer-events: none; display: block; margin: auto; }
   .tbtn.atk { width: 84px; height: 84px; right: 0; bottom: 0; font-size: 34px; border-color: rgba(127, 243, 255, .6); }
   .tbtn.jump { right: 96px; bottom: 0; }
   .tbtn.dash { right: 0; bottom: 96px; }
@@ -451,14 +452,14 @@
 <div id="touch" hidden>
   <div id="stick"><div class="knob"></div></div>
   <div class="pad">
-    <button class="tbtn atk" data-action="attack" aria-label="攻击">攻</button>
-    <button class="tbtn jump" data-action="jump" aria-label="跳跃">跳</button>
-    <button class="tbtn dash" data-action="dash" aria-label="闪避">闪</button>
-    <button class="tbtn sk s1" data-action="skill1" aria-label="裂空斩">裂</button>
-    <button class="tbtn sk s2" data-action="skill2" aria-label="回风斩">风</button>
-    <button class="tbtn sk s3" data-action="skill3" aria-label="崩山击">崩</button>
-    <button class="tbtn sk s4" data-action="skill4" aria-label="千刃残光">千</button>
-    <button class="tbtn ult" data-action="ult" aria-label="残光终焉">觉</button>
+    <button class="tbtn atk" data-action="attack" aria-label="攻击"><img alt="" draggable="false" src="assets/ui/skills/attack.webp"></button>
+    <button class="tbtn jump" data-action="jump" aria-label="跳跃"><img alt="" draggable="false" src="assets/ui/skills/jump.webp"></button>
+    <button class="tbtn dash" data-action="dash" aria-label="闪避"><img alt="" draggable="false" src="assets/ui/skills/dash.webp"></button>
+    <button class="tbtn sk s1" data-action="skill1" aria-label="裂空斩"><img alt="" draggable="false" src="assets/ui/skills/skill1.webp"></button>
+    <button class="tbtn sk s2" data-action="skill2" aria-label="回风斩"><img alt="" draggable="false" src="assets/ui/skills/skill2.webp"></button>
+    <button class="tbtn sk s3" data-action="skill3" aria-label="崩山击"><img alt="" draggable="false" src="assets/ui/skills/skill3.webp"></button>
+    <button class="tbtn sk s4" data-action="skill4" aria-label="千刃残光"><img alt="" draggable="false" src="assets/ui/skills/skill4.webp"></button>
+    <button class="tbtn ult" data-action="ult" aria-label="残光终焉"><img alt="" draggable="false" src="assets/ui/skills/ult.webp"></button>
   </div>
 </div>
 <button class="ibtn" id="pause-btn" aria-label="暂停"><img src="assets/ui/icons/icon_pause.webp" alt=""></button>

@@ -3,6 +3,36 @@ import { GEAR_ART, gearGlyph } from './gear/art.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 import { CATALOG } from './gear/catalog.js';
 import { SERIES } from './gear/series.js';
+
+// 角色页翅膀层（正面翼对主图 + 骨骼式两段挥动）：目前只有晨辉主图，其余系列素材未到、不画（禁止占位）
+const WING_ART = {};
+function wingImg(series) {
+  if (series !== 'dawn') return null;
+  if (!WING_ART.dawn) {
+    const img = new Image();
+    img.src = 'assets/fx/wings_dawn_front.webp';
+    WING_ART.dawn = img;
+  }
+  const img = WING_ART.dawn;
+  return img.complete && img.naturalWidth ? img : null;
+}
+const FLAP_KEYS = [[0, -15], [0.16, -13], [0.40, 17], [0.50, 19], [0.72, 2], [1, -15]];
+function flapAngle(ph) {
+  ph = ((ph % 1) + 1) % 1;
+  for (let i = 0; i < FLAP_KEYS.length - 1; i++) {
+    const [p0, a0] = FLAP_KEYS[i], [p1, a1] = FLAP_KEYS[i + 1];
+    if (ph >= p0 && ph <= p1) {
+      let x = (ph - p0) / (p1 - p0);
+      x = x * x * (3 - 2 * x);
+      return a0 + (a1 - a0) * x;
+    }
+  }
+  return -15;
+}
+const MOTE_SEEDS = Array.from({ length: 28 }, (_, i) => {
+  const f = (n) => { const x = Math.sin(i * 127.1 + n * 74.7 + 311.7) * 43758.5453; return x - Math.floor(x); };
+  return { off: f(1), dx: 0.5 + f(2) * 0.5, fall: 26 + f(3) * 54, drift: 8 + f(4) * 28, size: 1.6 + f(5) * 2.2, tw: f(6) * 6.28 };
+});
 // 营地菜单（HTML）：角色与装备 / 技能 / 委托，在大地图上随时打开（Esc、B 或右上角按钮）；
 // 关卡、训练场、试炼的卡片在地图上走到对应地点时单独弹出（stageCard / trainingCard / trialCard）
 // 菜单类界面用 HTML 比在 Canvas 里画方便得多：自带滚动、点击、文字排版、适配手机。
@@ -692,7 +722,70 @@ export class Hub {
     ctx.fill();
     if (heroSprite.ready && heroSprite.full) {
       const H = 440, W = H * (heroSprite.full.width / heroSprite.full.height);
-      ctx.drawImage(heroSprite.full, 220 - W / 2, 6 + Math.sin(t * 0.03) * 3, W, H);
+      const bobY = Math.sin(t * 0.03) * 3;
+      const top = 6 + bobY;
+      // —— 翅膀层：装配参数按新底图实测标定（根点相对人物框 0.491/0.235，半翼宽 0.643*W）——
+      const wimg = wingImg(CATALOG[equip.wings?.def]?.series);
+      let wingCx = 0, wingCy = 0, wingPh = 0;
+      if (wimg) {
+        wingCx = 220 + (0.491 - 0.5) * W;
+        wingCy = top + 0.235 * H;
+        wingPh = (t % 2200) / 2200;
+        const halfW = 0.643 * W, halfH = halfW * (300 / 1024);
+        const rootOff = 0.044 * W, rootDy = -(172 / 300) * halfH;
+        const th = flapAngle(wingPh) * Math.PI / 180;
+        const lag = (flapAngle(wingPh - 0.04) - flapAngle(wingPh)) * 1.1 * Math.PI / 180;
+        const inW = 0.55 * halfW, outW = 0.45 * halfW;
+        for (const dir of [-1, 1]) {
+          const rx = wingCx + dir * rootOff, ry = wingCy;
+          const aIn = dir * th, aOut = dir * (th + lag);
+          // 内段（根→55%）：源图内侧 563px；外段（55%→翼尖）：源图外侧 461px，绕 55% 轴点滞后转
+          const sIn = dir > 0 ? [1024, 563] : [461, 563];
+          const sOut = dir > 0 ? [1587, 461] : [0, 461];
+          ctx.save();
+          ctx.translate(rx, ry);
+          ctx.rotate(aIn);
+          ctx.drawImage(wimg, sIn[0], 0, sIn[1], 300, dir > 0 ? 0 : -inW, rootDy, inW, halfH);
+          ctx.restore();
+          const px = rx + dir * Math.cos(th) * inW, py = ry + Math.sin(th) * inW;
+          ctx.save();
+          ctx.translate(px, py);
+          ctx.rotate(aOut);
+          ctx.drawImage(wimg, sOut[0], 0, sOut[1], 300, dir > 0 ? 0 : -outW, rootDy, outW, halfH);
+          ctx.restore();
+        }
+        // 根部接触阴影（翅膀从肩背生出的压暗）
+        ctx.save();
+        ctx.translate(wingCx, wingCy + 4);
+        ctx.scale(1, 0.45);
+        const sg = ctx.createRadialGradient(0, 0, 0, 0, 0, 0.11 * W);
+        sg.addColorStop(0, 'rgba(0,0,0,0.32)');
+        sg.addColorStop(1, 'rgba(0,0,0,0)');
+        ctx.fillStyle = sg;
+        ctx.beginPath();
+        ctx.arc(0, 0, 0.11 * W, 0, Math.PI * 2);
+        ctx.fill();
+        ctx.restore();
+      }
+      ctx.drawImage(heroSprite.full, 220 - W / 2, top, W, H);
+      // —— 翼尖光点（晨辉金）：下压相位更亮，位置由 t 与种子纯函数决定 ——
+      if (wimg) {
+        const press = wingPh > 0.3 && wingPh < 0.65 ? Math.sin((wingPh - 0.3) / 0.35 * Math.PI) : 0;
+        ctx.save();
+        for (let i = 0; i < MOTE_SEEDS.length; i++) {
+          const m = MOTE_SEEDS[i], side = i % 2 ? 1 : -1;
+          const life = ((t / 2600) + m.off) % 1;
+          const mx = wingCx + side * (0.10 + 0.50 * m.dx) * W + side * m.drift * life;
+          const my = wingCy + (0.02 + 0.14 * (m.tw / 6.28)) * H + m.fall * life * life;
+          const a = 0.75 * Math.sin(life * Math.PI) * (0.35 + 0.65 * press) * (0.6 + 0.4 * Math.sin(t * 0.02 + m.tw));
+          if (a <= 0.03) continue;
+          ctx.fillStyle = `rgba(255,216,138,${a.toFixed(3)})`;
+          ctx.beginPath();
+          ctx.arc(mx, my, m.size * (1 - life * 0.4), 0, Math.PI * 2);
+          ctx.fill();
+        }
+        ctx.restore();
+      }
     } else {
       const look = this.g.playerLook();
       const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };

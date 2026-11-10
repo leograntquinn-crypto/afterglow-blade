@@ -14,6 +14,14 @@ import { drawTraining } from './training.js';
 
 const GOLD_HI = '#e9cf8e', GOLD_LO = '#7a5c30';
 
+// 技能格图标（成品素材，替代原汉字字形）：懒加载，未就绪时不画（不回退字形）
+const SKILL_ICONS = {};
+for (const k of ['skill1', 'skill2', 'skill3', 'skill4']) {
+  const img = new Image();
+  img.src = `assets/ui/skills/${k}.webp`;
+  SKILL_ICONS[k] = img;
+}
+
 // 金属描边：上亮下暗的渐变，像打磨过的黄铜
 function goldStroke(ctx, y0, y1) {
   const g = ctx.createLinearGradient(0, y0, 0, y1);
@@ -215,8 +223,14 @@ function drawSkillBar(ctx, game) {
       ctx.fillRect(x, y, size, size);
       ctx.globalAlpha = 1;
     }
-    ctx.fillStyle = !learned ? '#2e2834' : ready ? p.glow : p.mp < sk.mp && cd <= 0 ? '#4a6c9a' : '#5c5466';
-    ctx.fillText(sk.glyph, x + size / 2, y + size / 2 + 2);
+    const icon = SKILL_ICONS[key];
+    if (icon?.complete && icon.naturalWidth) {
+      ctx.save();
+      if (!learned) { ctx.globalAlpha = 0.28; ctx.filter = 'grayscale(85%)'; }
+      else if (!ready) ctx.globalAlpha = 0.55;
+      ctx.drawImage(icon, x + 3, y + 3, size - 6, size - 6);
+      ctx.restore();
+    }
     ctx.shadowBlur = 0;
     if (!learned) {
       ctx.font = `500 15px ${FONT_NUM}`;
