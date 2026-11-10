@@ -259,8 +259,8 @@
   /* 角色 */
   .hero { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; align-items: stretch; max-width: 880px; margin-inline: auto; }
   .panel { background: var(--panel); border: 1px solid var(--line); border-radius: 10px; padding: 14px 16px; min-width: 0; }
-  .figure { position: relative; container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; gap: 8px; align-items: center; }
-  #preview { grid-column: 2; grid-row: 1; width: 100%; max-width: 300px; aspect-ratio: 440 / 460; height: auto; justify-self: center; }
+  .figure { position: relative; container-type: inline-size; display: grid; grid-template-columns: 64px minmax(0, 1fr) 64px; grid-template-rows: minmax(0, 1fr) auto; gap: 8px; align-items: center; height: 560px; }
+  #preview { grid-column: 1 / -1; grid-row: 1; width: 100%; height: 100%; max-width: none; justify-self: stretch; }
   .stats-pop { pointer-events: none; position: absolute; z-index: 5; inset: 12px; }
   .stats-pop > .panel { height: 100%; box-sizing: border-box; overflow: auto; margin: 0; background: linear-gradient(180deg, rgb(26, 20, 34), rgb(12, 9, 16)); }
   .stats-pop.is-locked { pointer-events: auto; }
@@ -276,10 +276,12 @@
   .slot .glyph, .cell .glyph { position: absolute; inset: 0; display: grid; place-items: center; font: 40px var(--font-title); color: var(--rc, var(--mute)); }
   @media (max-width: 680px) {
     .hero { grid-template-columns: minmax(0, 1fr); }
+    .figure { height: 540px; }
   }
   /* 触屏保留立绘下方五列槽位，不压缩装备格。 */
   @media (pointer: coarse) {
-    .figure > #preview { grid-column: 1 / -1; grid-row: 1; max-width: 280px; }
+    .figure { height: 600px; grid-template-rows: minmax(0, 1fr) auto auto; }
+    .figure > #preview { grid-column: 1 / -1; grid-row: 1; max-width: none; height: 100%; }
     .figure > .slots { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(5, minmax(56px, 1fr)); gap: 4px; }
     .figure > .slots > .slot { grid-column: auto; grid-row: auto; }
     .figure > .showctl { grid-row: 3; }

@@ -450,8 +450,10 @@ class Game {
     releaseBoot(); // 关卡素材马上开始载（平时等大地图素材载完才载，见 boot.js）
     WORLD_ART.release(); // 关卡里用不到地图素材：释放，回地图再载入
     this.training = null;
-    this.trial = { floor: 0, cleared: 0, pool: { gold: 0, stones: 0 } };
-    this.stage = trialStage(1);
+    // 从玩家纪录层开始（Quinn 2026-11-10：不要每次从第一层爬）
+    const startFloor = Math.max(1, this.save.trialBest || 1);
+    this.trial = { floor: startFloor - 1, cleared: 0, pool: { gold: 0, stones: 0 } };
+    this.stage = trialStage(startFloor);
     this.refreshStats();
     this.resetWorld();
     this.run = { xp: 0, gold: 0, items: [], ups: [], firstClear: false, ended: false, trial: true };

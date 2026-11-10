@@ -364,7 +364,7 @@ export class Hub {
   trialCard() {
     const s = this.save, open = !!s.cleared.s1;
     return `<article class="stage training trial ${open ? '' : 'locked'}">
-        <div class="stage-head"><h3>残光试炼</h3><span class="rec">${s.trialBest ? `纪录 第 ${s.trialBest} 层` : '未挑战'}</span></div>
+        <div class="stage-head"><h3>残光试炼</h3><span class="rec">${s.trialBest ? `纪录 第 ${s.trialBest} 层 · 从第 ${s.trialBest} 层开始` : '未挑战'}</span></div>
         <p>一层一个房间，越往上越强、词缀越多，每 5 层一个首领。每过一层选择：继续往上，还是带着奖励离开？</p>
         <p class="meta">每层金币，每个首领层 1 颗刻印石 · 离开拿全部奖励，阵亡只拿一半 · 一层约一分钟</p>
         <div class="stage-foot"><span class="first">${open ? '适合碎片时间' : ''}</span>${open ? '<button class="btn primary" data-act="trial" data-primary>进入试炼</button>' : '<span class="lock">通关「墓穴入口」解锁</span>'}</div>
@@ -853,6 +853,16 @@ export class Hub {
     const c = this.preview;
     if (!c || !c.isConnected) return;
     const ctx = c.getContext('2d');
+    // 画布按显示尺寸定标（Quinn 2026-11-10：角色框固定高度，背景与翅膀铺满整框）：
+    // 设计宽固定 440，设计高 HD 随框体宽高比延伸，人物锚点全部相对 HD 计算
+    const dpr = Math.min(2, window.devicePixelRatio || 1);
+    if (c.clientWidth > 40 && c.clientHeight > 40) {
+      const bw = Math.round(c.clientWidth * dpr), bh = Math.round(c.clientHeight * dpr);
+      if (c.width !== bw || c.height !== bh) { c.width = bw; c.height = bh; }
+    }
+    const HD = Math.max(460, Math.round(440 * (c.height / Math.max(1, c.width))));
+    const feetY = HD - 58; // 脚底（站台面）距设计底边的距离与旧 460 版一致
+    const kH = compact0 => compact0 ? Math.max(372, Math.min(HD - 130, 372 + (HD - 460) * 0.55)) / 372 : 1;
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
     // 展示背景（可切换，存档 showcaseBg：0 星穹神殿 / 1 暗夜祭坛 / 2 晨光庭院 / -1 无）
@@ -866,6 +876,7 @@ export class Hub {
         ctx.drawImage(bg, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
       }
     }
+    ctx.setTransform(c.width / 440, 0, 0, c.width / 440, 0, 0);
     const equip = this.save.equip;
     const defs = Object.values(equip).filter(Boolean).map(it => ({it, def: CATALOG[it.def]}));
     const palette = {chill:'#75dfff', burn:'#ff8148', shock:'#b795ff', poison:'#a3e66e', bleed:'#f45b83', shield:'#ffe7a0'};
@@ -899,21 +910,22 @@ export class Hub {
       ctx.drawImage(image, x-w/2, y-h/2, w, h); ctx.restore();
     };
     const breath = 0.875 + Math.sin(t * 0.018) * 0.125;
-    const g = ctx.createRadialGradient(220, 330, 10, 220, 330, 220);
+    const g = ctx.createRadialGradient(220, HD - 130, 10, 220, HD - 130, 220);
     g.addColorStop(0, rgba(colors[0], 0.16));
     g.addColorStop(1, rgba(colors[0], 0));
     ctx.fillStyle = g;
-    ctx.fillRect(0, 0, c.width, c.height);
-    colors.forEach(color => fx('glow_soft', color, 220, 235, equip.wings ? 420 : 290,
-      equip.wings ? 430 : 350, breath * (equip.wings ? 0.65 : 0.42) / Math.sqrt(colors.length)));
+    ctx.fillRect(0, 0, 440, HD);
+    const gk = kH(compact);
+    colors.forEach(color => fx('glow_soft', color, 220, HD - 225, equip.wings ? 420 * gk : 290,
+      equip.wings ? 430 * gk : 350, breath * (equip.wings ? 0.65 : 0.42) / Math.sqrt(colors.length)));
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.beginPath();
-    ctx.ellipse(220, 410, 80, 14, 0, 0, Math.PI * 2);
+    ctx.ellipse(220, HD - 50, 80, 14, 0, 0, Math.PI * 2);
     ctx.fill();
     if (heroSprite.ready && heroSprite.full) {
-      const H = compact ? 372 : 440, W = H * (heroSprite.full.width / heroSprite.full.height);
+      const H = compact ? 372 * kH(true) : Math.min(440, HD - 20), W = H * (heroSprite.full.width / heroSprite.full.height);
       const bobY = Math.sin(t * 0.03) * 3;
-      const top = (compact ? 30 : 6) + bobY;
+      const top = (compact ? feetY - H : HD - 14 - H) + bobY;
       // 呼吸（3.8s 一周期）：相位是全局时钟，同时调制翅膀扇幅（吸气翼张、呼气翼收）
       const breathPh = t * Math.PI * 2 / 3800;
       const breathB = Math.sin(breathPh);
@@ -922,7 +934,7 @@ export class Hub {
       if (compact) {
         const dais = showcaseImg('assets/fx/showcase_dais.webp');
         if (dais) {
-          const dw = 330, dh = dw * (dais.naturalHeight * 0.55) / dais.naturalWidth;
+          const dw = 330 * (H / 372), dh = dw * (dais.naturalHeight * 0.55) / dais.naturalWidth;
           ctx.drawImage(dais, 0, 0, dais.naturalWidth, dais.naturalHeight * 0.55, 220 - dw / 2, top + H - 62, dw, dh);
         }
       }
@@ -1038,12 +1050,12 @@ export class Hub {
       const look = this.g.playerLook();
       const pose = { crouch: 0.08 + Math.sin(t * 0.06) * 0.05, angle: 0.65 + Math.sin(t * 0.04) * 0.05, walk: 0, lean: 1, backAngle: 1.5 };
       ctx.save();
-      ctx.translate(168, 405);
+      ctx.translate(220, HD - 55);
       ctx.scale(3.1, 3.1);
       drawFighter(ctx, 0, 0, look, pose, { facing: 1, t });
       ctx.restore();
     }
     if (equip.veil) fx('light_magic', colors[0], 220 + Math.sin(t * 0.012) * 5,
-      245 + Math.cos(t * 0.015) * 4, 340, 400, 0.15 * breath);
+      HD - 215 + Math.cos(t * 0.015) * 4, 340 * kH(compact), 400 * kH(compact), 0.15 * breath);
   }
 }
