@@ -27,12 +27,140 @@ function wingImg(series) {
   const img = WING_IMGS[series];
   return img.complete && img.naturalWidth ? img : null;
 }
+// —— 翅膀样式款（v2 高幅量产主图）：稀有 r2 起按系列映射样式款，传说独立款用招牌样式；
+// rig: segments 两段骨骼挥动 / whole 切片波浪（中央装饰跨中线不断裂） / strip 薄条流水 / orbit 悬浮律动
+// period 一周期毫秒数；amp 扇幅倍率；scale 显示高度 = 人物高 × scale；rootFrac 根点纵向位置（中心列 alpha 质心实测）
+const STYLE_ART = {
+  cyber:    { rootFrac: 0.640, rig: 'segments', period: 2100, amp: 0.90, scale: 1.04, mote: '140,240,255' },
+  holy:     { rootFrac: 0.673, rig: 'whole',    period: 2600, amp: 0.70, scale: 1.05, mote: '255,226,160' },
+  shadow:   { rootFrac: 0.637, rig: 'segments', period: 2800, amp: 0.85, scale: 1.04, mote: '196,150,255' },
+  butterfly:{ rootFrac: 0.621, rig: 'segments', period: 1500, amp: 0.62, scale: 0.96, mote: '255,170,220' },
+  crystal:  { rootFrac: 0.633, rig: 'segments', period: 3000, amp: 0.50, scale: 1.03, mote: '190,170,255' },
+  demon:    { rootFrac: 0.589, rig: 'segments', period: 3200, amp: 1.10, scale: 1.05, mote: '255,110,90' },
+  peacock:  { rootFrac: 0.620, rig: 'whole',    period: 2700, amp: 0.60, scale: 1.00, mote: '120,255,205' },
+  aurora:   { rootFrac: 0.640, rig: 'strip',    period: 3400, amp: 0.80, scale: 1.02, mote: '150,255,225' },
+  thunder:  { rootFrac: 0.645, rig: 'whole',    period: 1100, amp: 0.45, scale: 1.03, mote: '205,185,255' },
+  ocean:    { rootFrac: 0.634, rig: 'strip',    period: 3200, amp: 0.80, scale: 1.02, mote: '140,220,255' },
+  meteor:   { rootFrac: 0.499, rig: 'orbit',    period: 4200, amp: 0.50, scale: 0.95, dyOff: 0.05, mote: '255,170,110' },
+  moonlight:{ rootFrac: 0.542, rig: 'strip',    period: 3300, amp: 0.70, scale: 1.02, mote: '220,228,255' },
+  sakura:   { rootFrac: 0.644, rig: 'segments', period: 2500, amp: 0.70, scale: 1.00, mote: '255,183,205' },
+  bloodmoon:{ rootFrac: 0.580, rig: 'segments', period: 2900, amp: 0.60, scale: 1.04, mote: '255,120,140' },
+  starship: { rootFrac: 0.632, rig: 'segments', period: 2400, amp: 0.55, scale: 0.97, mote: '140,235,255' },
+  flame:    { rootFrac: 0.639, rig: 'strip',    period: 2300, amp: 0.90, scale: 1.03, mote: '255,160,90' },
+  ice:      { rootFrac: 0.638, rig: 'segments', period: 2700, amp: 0.55, scale: 1.03, mote: '190,230,255' },
+  clockwork:{ rootFrac: 0.622, rig: 'segments', period: 2250, amp: 0.80, scale: 0.99, mote: '255,205,130' },
+  seraph:   { rootFrac: 0.650, rig: 'whole',    period: 2800, amp: 0.75, scale: 1.06, mote: '255,232,170' },
+  phoenix:  { rootFrac: 0.637, rig: 'whole',    period: 2600, amp: 0.85, scale: 1.05, mote: '255,175,105' },
+};
+// 系列普通翅膀只有 r0–r3：r2/r3 穿样式款；其余样式（蝶舞/恶魔/月光/时钟朋克/圣骑/剑阵/龙翼/祥云/纸鸢）留作职业专属翼储备
+const WING_STYLE_MAP = {
+  dawn:   { 2: 'peacock', 3: 'seraph' },
+  frost:  { 2: 'ice', 3: 'crystal' },
+  ember:  { 2: 'flame', 3: 'meteor' },
+  storm:  { 2: 'cyber', 3: 'starship' },
+  blight: { 2: 'ocean', 3: 'shadow' },
+  thorn:  { 2: 'sakura', 3: 'bloodmoon' },
+};
+const WING_STYLE_LG = { lg_chenxiyu: 'holy', lg_binglingyu: 'aurora', lg_jinhuoyi: 'phoenix', lg_leitingyi: 'thunder' };
+function styleKeyFor(defId, def) {
+  if (!def) return null;
+  if (WING_STYLE_LG[defId]) return WING_STYLE_LG[defId];
+  if (def.rar >= 2) return WING_STYLE_MAP[def.series]?.[def.rar] ?? null;
+  return null;
+}
+const STYLE_IMGS = {};
+function styleImg(key) {
+  if (!key || !STYLE_ART[key]) return null;
+  if (!STYLE_IMGS[key]) {
+    const img = new Image();
+    img.src = `assets/fx/wings_style_${key}.webp`;
+    STYLE_IMGS[key] = img;
+  }
+  const img = STYLE_IMGS[key];
+  return img.complete && img.naturalWidth ? img : null;
+}
+const COMP_IMGS = {};
+function compImg(name) {
+  if (!COMP_IMGS[name]) {
+    const img = new Image();
+    img.src = `assets/fx/wings_comp_${name}.webp`;
+    COMP_IMGS[name] = img;
+  }
+  const img = COMP_IMGS[name];
+  return img.complete && img.naturalWidth ? img : null;
+}
+const SHOWCASE_BGS = ['assets/fx/showcase_bg_starvault.webp', 'assets/fx/showcase_bg_altar.webp', 'assets/fx/showcase_bg_courtyard.webp'];
+const SHOWCASE_IMGS = {};
+function showcaseImg(src) {
+  if (!SHOWCASE_IMGS[src]) {
+    const img = new Image();
+    img.src = src;
+    SHOWCASE_IMGS[src] = img;
+  }
+  const img = SHOWCASE_IMGS[src];
+  return img.complete && img.naturalWidth ? img : null;
+}
+// 画一层样式翼：cx/cy 为根点（人物肩背），H 为人物高，ph 为该款周期相位（0..1），ampMul 为呼吸调制
+function drawStyleWing(ctx, img, meta, cx, cy, H, ph, ampMul, scaleMul = 1) {
+  const dispH = H * meta.scale * scaleMul;
+  const dispW = dispH * (img.naturalWidth / img.naturalHeight);
+  const x0 = cx - dispW / 2, y0 = cy - meta.rootFrac * dispH + (meta.dyOff ?? 0) * dispH;
+  if (meta.rig === 'segments') {
+    const srcW = img.naturalWidth, srcH = img.naturalHeight, half = srcW / 2;
+    const th = flapAngle(ph) * meta.amp * ampMul * Math.PI / 180;
+    const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * meta.amp * ampMul * 1.1 * Math.PI / 180;
+    const halfW = dispW / 2, inW = 0.55 * halfW, outW = 0.45 * halfW;
+    for (const dir of [-1, 1]) {
+      const sIn = dir > 0 ? [half, half * 0.55] : [half * 0.45, half * 0.55];
+      const sOut = dir > 0 ? [half + half * 0.55, half * 0.45] : [0, half * 0.45];
+      ctx.save();
+      ctx.translate(cx, cy);
+      ctx.rotate(dir * th);
+      ctx.drawImage(img, sIn[0], 0, sIn[1], srcH, dir > 0 ? 0 : -inW, -meta.rootFrac * dispH, inW, dispH);
+      ctx.restore();
+      const px = cx + dir * Math.cos(th) * inW, py = cy + Math.sin(th) * inW;
+      ctx.save();
+      ctx.translate(px, py);
+      ctx.rotate(dir * (th + lag));
+      ctx.drawImage(img, sOut[0], 0, sOut[1], srcH, dir > 0 ? 0 : -outW, -meta.rootFrac * dispH, outW, dispH);
+      ctx.restore();
+    }
+    return;
+  }
+  if (meta.rig === 'orbit') {
+    ctx.save();
+    ctx.translate(cx, cy);
+    ctx.rotate(Math.sin(ph * Math.PI * 2) * 0.02);
+    const pulse = 1 + 0.012 * Math.sin(ph * Math.PI * 2 - 0.5);
+    ctx.scale(pulse, pulse);
+    ctx.translate(-cx, -cy);
+    ctx.drawImage(img, x0, y0 + Math.sin(ph * Math.PI * 2 - 0.8) * 4 * ampMul, dispW, dispH);
+    ctx.restore();
+    return;
+  }
+  // whole / strip：纵向切片波浪位移——中央装饰不被扯裂，边缘流动幅度更大
+  const N = meta.rig === 'strip' ? 18 : 12;
+  const bob = Math.sin(ph * Math.PI * 2 - 0.8) * 3 * meta.amp * ampMul;
+  ctx.save();
+  ctx.translate(cx, cy);
+  ctx.rotate(Math.sin(ph * Math.PI * 2) * 0.012 * meta.amp);
+  ctx.translate(-cx, -cy);
+  for (let i = 0; i < N; i++) {
+    const f = i / N, fc = (i + 0.5) / N;
+    const edge = Math.abs(fc - 0.5) * 2;
+    const waveAmp = meta.rig === 'strip' ? 9 * Math.pow(edge, 1.4) : 2.6 * (0.35 + 0.65 * edge);
+    const dy = Math.sin(ph * Math.PI * 2 + edge * 2.6) * waveAmp * ampMul + bob * (0.4 + 0.6 * edge);
+    ctx.drawImage(img, f * img.naturalWidth, 0, img.naturalWidth / N + 1, img.naturalHeight,
+      x0 + f * dispW, y0 + dy, dispW / N + 1, dispH);
+  }
+  ctx.restore();
+}
 // 画一层翼对（两段骨骼挥动）：内段绕根点转、外段绕 55% 轴点滞后转；scaleMul<1 时用作传说副翼层
-function drawWingLayer(ctx, img, meta, cx, cy, W, scaleMul, ph) {
+function drawWingLayer(ctx, img, meta, cx, cy, W, scaleMul, ph, ampMul = 1) {
   const halfW = 0.643 * W * scaleMul, halfH = halfW * (meta.h / 1024);
   const rootOff = 0.044 * W * scaleMul, rootDy = -(meta.rootY / meta.h) * halfH;
-  const th = flapAngle(ph) * Math.PI / 180;
-  const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * 1.1 * Math.PI / 180;
+  const th = flapAngle(ph) * ampMul * Math.PI / 180;
+  const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * ampMul * 1.1 * Math.PI / 180;
   const inW = 0.55 * halfW, outW = 0.45 * halfW;
   for (const dir of [-1, 1]) {
     const rx = cx + dir * rootOff, ry = cy;
@@ -322,6 +450,10 @@ export class Hub {
       <section class="panel figure artframe">
         <canvas id="preview" width="440" height="460" aria-label="角色外观预览" aria-controls="hero-stats" aria-expanded="false"></canvas>
         <div class="slots">${slots}</div>
+        <div class="showctl" role="group" aria-label="展示设置">
+          ${[['-1', '原景'], ['0', '星穹'], ['1', '祭坛'], ['2', '晨光']].map(([v, n]) => `<button class="btn ghost mini-text" data-act="showbg" data-v="${v}" ${String(s.showcaseBg ?? 0) === v ? 'style="border-color:#ffd65a;color:#ffd65a"' : ''}>${n}</button>`).join('')}
+          <button class="btn ghost mini-text" data-act="halomode" title="圣光审判的光环位置：头顶悬浮 / 背后竖立">${(s.showcaseHalo ?? 'head') === 'head' ? '光环·头顶' : '光环·背立'}</button>
+        </div>
       <div class="stats-pop" id="hero-stats" hidden>
       <section class="panel">
         <h4>属性</h4>
@@ -531,6 +663,16 @@ export class Hub {
     const commit = () => { this.g.refreshStats(); this.g.store.save(); this.render(); };
 
     switch (act) {
+      case 'showbg':
+        s.showcaseBg = parseInt(el.dataset.v, 10);
+        sfx('click');
+        commit();
+        return;
+      case 'halomode':
+        s.showcaseHalo = (s.showcaseHalo ?? 'head') === 'head' ? 'back' : 'head';
+        sfx('click');
+        commit();
+        return;
       case 'settings':
         sfx('click');
         this.g.openSettings();
@@ -713,6 +855,17 @@ export class Hub {
     const ctx = c.getContext('2d');
     ctx.setTransform(1, 0, 0, 1, 0, 0);
     ctx.clearRect(0, 0, c.width, c.height);
+    // 展示背景（可切换，存档 showcaseBg：0 星穹神殿 / 1 暗夜祭坛 / 2 晨光庭院 / -1 无）
+    const showBg = this.save.showcaseBg ?? 0;
+    const compact = showBg >= 0;
+    if (compact) {
+      const bg = showcaseImg(SHOWCASE_BGS[showBg]);
+      if (bg) {
+        const s = Math.max(c.width / bg.naturalWidth, c.height / bg.naturalHeight);
+        const dw = bg.naturalWidth * s, dh = bg.naturalHeight * s;
+        ctx.drawImage(bg, (c.width - dw) / 2, (c.height - dh) / 2, dw, dh);
+      }
+    }
     const equip = this.save.equip;
     const defs = Object.values(equip).filter(Boolean).map(it => ({it, def: CATALOG[it.def]}));
     const palette = {chill:'#75dfff', burn:'#ff8148', shock:'#b795ff', poison:'#a3e66e', bleed:'#f45b83', shield:'#ffe7a0'};
@@ -758,23 +911,30 @@ export class Hub {
     ctx.ellipse(220, 410, 80, 14, 0, 0, Math.PI * 2);
     ctx.fill();
     if (heroSprite.ready && heroSprite.full) {
-      const H = 440, W = H * (heroSprite.full.width / heroSprite.full.height);
+      const H = compact ? 372 : 440, W = H * (heroSprite.full.width / heroSprite.full.height);
       const bobY = Math.sin(t * 0.03) * 3;
-      const top = 6 + bobY;
-      // —— 翅膀层：装配参数按新底图实测标定（根点相对人物框 0.491/0.235，半翼宽 0.643*W）——
+      const top = (compact ? 30 : 6) + bobY;
+      // 呼吸（3.8s 一周期）：相位是全局时钟，同时调制翅膀扇幅（吸气翼张、呼气翼收）
+      const breathPh = t * Math.PI * 2 / 3800;
+      const breathB = Math.sin(breathPh);
+      const ampMul = 0.86 + 0.28 * (0.5 + 0.5 * breathB);
+      // 展示站台：裁用站台图上部盘面垫在脚下
+      if (compact) {
+        const dais = showcaseImg('assets/fx/showcase_dais.webp');
+        if (dais) {
+          const dw = 330, dh = dw * (dais.naturalHeight * 0.55) / dais.naturalWidth;
+          ctx.drawImage(dais, 0, 0, dais.naturalWidth, dais.naturalHeight * 0.55, 220 - dw / 2, top + H - 62, dw, dh);
+        }
+      }
+      // —— 翅膀层：根点相对人物框 0.491/0.235；稀有以上优先用样式款主图（按 rig 动法），否则系列标准款 ——
       const wdef = CATALOG[equip.wings?.def];
-      const wimg = wingImg(wdef?.series);
+      const skey = styleKeyFor(equip.wings?.def, wdef);
+      const simg = skey ? styleImg(skey) : null;
+      const smeta = skey ? STYLE_ART[skey] : null;
+      const wimg = simg ? null : wingImg(wdef?.series);
       const wmeta = WING_ART[wdef?.series];
-      let wingCx = 0, wingCy = 0, wingPh = 0;
-      if (wimg) {
-        wingCx = 220 + (0.491 - 0.5) * W;
-        wingCy = top + 0.235 * H;
-        wingPh = (t % 2200) / 2200;
-        const halfH = 0.643 * W * (wmeta.h / 1024);
-        // 传说翅膀：主翼下方多一层副翼（同系列主图缩小、根点更低、相位更滞后）
-        if (wdef.rar === 4) drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy + 0.38 * halfH, W, 0.68, wingPh - 0.05);
-        drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy, W, 1, wingPh);
-        // 根部接触阴影（翅膀从肩背生出的压暗）
+      let wingCx = 0, wingCy = 0, wingPh = 0, moteColor = wmeta?.mote;
+      const rootShadow = () => {
         ctx.save();
         ctx.translate(wingCx, wingCy + 4);
         ctx.scale(1, 0.45);
@@ -786,10 +946,78 @@ export class Hub {
         ctx.arc(0, 0, 0.11 * W, 0, Math.PI * 2);
         ctx.fill();
         ctx.restore();
+      };
+      if (simg) {
+        wingCx = 220 + (0.491 - 0.5) * W;
+        wingCy = top + 0.235 * H;
+        wingPh = (t % smeta.period) / smeta.period;
+        moteColor = smeta.mote;
+        // 传说样式款：主翼下方多一层同款副翼（缩小、根点更低、相位更滞后）
+        if (wdef.rar === 4) drawStyleWing(ctx, simg, smeta, wingCx, wingCy + 0.16 * H, H, wingPh - 0.06, ampMul, 0.68);
+        drawStyleWing(ctx, simg, smeta, wingCx, wingCy, H, wingPh, ampMul);
+        // 光环背立模式（圣光审判）：竖环悬浮在背后，慢摆
+        if (skey === 'holy' && (this.save.showcaseHalo ?? 'head') === 'back') {
+          const halo = compImg('halo');
+          if (halo) {
+            ctx.save();
+            ctx.translate(220, wingCy + 30 + Math.sin(t * 0.0013) * 3);
+            ctx.rotate(Math.PI / 2 + Math.sin(t * 0.0009) * 0.03);
+            const hw = 300, hh = hw * halo.naturalHeight / halo.naturalWidth;
+            ctx.drawImage(halo, -hw / 2, -hh / 2, hw, hh);
+            ctx.restore();
+          }
+        }
+        // 虚空晶眼（暗影君王）：悬浮在翼根上方，缓缓窥视
+        if (skey === 'shadow') {
+          const eye = compImg('eye');
+          if (eye) {
+            const ew = 104, eh = ew * eye.naturalHeight / eye.naturalWidth;
+            ctx.drawImage(eye, 220 - ew / 2 + Math.sin(t * 0.0007) * 4, wingCy - eh - 4 + Math.sin(t * 0.0013) * 4, ew, eh);
+          }
+        }
+        rootShadow();
+      } else if (wimg) {
+        wingCx = 220 + (0.491 - 0.5) * W;
+        wingCy = top + 0.235 * H;
+        wingPh = (t % 2200) / 2200;
+        const halfH = 0.643 * W * (wmeta.h / 1024);
+        // 传说翅膀：主翼下方多一层副翼（同系列主图缩小、根点更低、相位更滞后）
+        if (wdef.rar === 4) drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy + 0.38 * halfH, W, 0.68, wingPh - 0.05, ampMul);
+        drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy, W, 1, wingPh, ampMul);
+        rootShadow();
       }
-      ctx.drawImage(heroSprite.full, 220 - W / 2, top, W, H);
-      // —— 翼尖光点（颜色随系列、亮度随品质）：下压相位更亮，位置由 t 与种子纯函数决定 ——
-      if (wimg) {
+      // —— 立绘呼吸：三带分层——腿带静止锚定 / 躯干带以腰线为锚呼吸缩放 / 头肩带相位滞后浮沉 ——
+      {
+        const full = heroSprite.full, sw = full.width, sh = full.height;
+        const band = (f0, f1, dy = 0, sY = 1) => {
+          ctx.save();
+          if (sY !== 1) {
+            const anchorY = top + f1 * H;
+            ctx.translate(0, anchorY);
+            ctx.scale(1, sY);
+            ctx.translate(0, -anchorY);
+          }
+          ctx.drawImage(full, 0, f0 * sh, sw, (f1 - f0) * sh, 220 - W / 2, top + f0 * H + dy, W, (f1 - f0) * H);
+          ctx.restore();
+        };
+        band(0.585, 1);
+        band(0.155, 0.60, 0, 1 + 0.013 * breathB);
+        band(0, 0.17, 1.6 * Math.sin(breathPh - 0.7));
+      }
+      // 光环头顶模式（圣光审判）：悬浮在头顶，轻浮慢摆
+      if (simg && skey === 'holy' && (this.save.showcaseHalo ?? 'head') === 'head') {
+        const halo = compImg('halo');
+        if (halo) {
+          const hw = 118, hh = hw * halo.naturalHeight / halo.naturalWidth;
+          ctx.save();
+          ctx.translate(220, top + 10 + Math.sin(t * 0.0011) * 3);
+          ctx.rotate(Math.sin(t * 0.0008) * 0.05);
+          ctx.drawImage(halo, -hw / 2, -hh / 2, hw, hh);
+          ctx.restore();
+        }
+      }
+      // —— 翼尖光点（颜色随系列/样式、亮度随品质）：下压相位更亮，位置由 t 与种子纯函数决定 ——
+      if (wimg || simg) {
         const press = wingPh > 0.3 && wingPh < 0.65 ? Math.sin((wingPh - 0.3) / 0.35 * Math.PI) : 0;
         ctx.save();
         for (let i = 0; i < MOTE_SEEDS.length; i++) {
@@ -799,7 +1027,7 @@ export class Hub {
           const my = wingCy + (0.02 + 0.14 * (m.tw / 6.28)) * H + m.fall * life * life;
           const a = Math.min(1, 0.75 * Math.sin(life * Math.PI) * (0.35 + 0.65 * press) * (0.6 + 0.4 * Math.sin(t * 0.02 + m.tw)) * (0.5 + 0.16 * (wdef?.rar ?? 0)));
           if (a <= 0.03) continue;
-          ctx.fillStyle = `rgba(${wmeta.mote},${a.toFixed(3)})`;
+          ctx.fillStyle = `rgba(${moteColor},${a.toFixed(3)})`;
           ctx.beginPath();
           ctx.arc(mx, my, m.size * (1 - life * 0.4), 0, Math.PI * 2);
           ctx.fill();

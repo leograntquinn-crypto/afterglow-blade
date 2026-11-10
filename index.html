@@ -266,6 +266,7 @@
   .stats-pop.is-locked { pointer-events: auto; }
   .stats-pop[hidden] { display: none; }
   #preview { cursor: pointer; }
+  .showctl { grid-column: 1 / -1; grid-row: 2; display: flex; gap: 6px; justify-content: center; flex-wrap: wrap; }
   @media (pointer: coarse) {
     .stats-pop { inset: 10px; }
   }
@@ -281,6 +282,7 @@
     .figure > #preview { grid-column: 1 / -1; grid-row: 1; max-width: 280px; }
     .figure > .slots { grid-column: 1 / -1; grid-row: 2; grid-template-columns: repeat(5, minmax(56px, 1fr)); gap: 4px; }
     .figure > .slots > .slot { grid-column: auto; grid-row: auto; }
+    .figure > .showctl { grid-row: 3; }
   }
   .r0 { --rc: var(--r0); } .r1 { --rc: var(--r1); } .r2 { --rc: var(--r2); } .r3 { --rc: #ff5aa0; } .r4 { --rc: #ff9a2e; }
   .kvs { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 16px; margin-bottom: 16px; }
