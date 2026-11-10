@@ -487,6 +487,9 @@ class Game {
   trialFloorCleared() {
     const T = this.trial, f = T.floor;
     if (T.cleared >= f) return;
+    // 同 finish()：换层前先清扫战场掉落，别把装备丢在上一层
+    for (const l of this.loots) if (!l.dead) { l.dead = true; this.pickup(l); }
+    this.loots = [];
     T.cleared = f;
     this.quest('trialFloor');
     const r = floorReward(f);
@@ -777,6 +780,9 @@ class Game {
   }
 
   finish() {
+    // 结算前清扫战场：地上的掉落先全部收走，避免胜利结算把没来得及拾取的装备（尤其传说）吞掉
+    for (const l of this.loots) if (!l.dead) { l.dead = true; this.pickup(l); }
+    this.loots = [];
     const p = this.player, st = this.stage, s = this.save;
     this.result = grade({ time: this.frame / 60, hpLostPct: p.dmgTaken / p.maxHp, maxCombo: this.maxCombo, rooms: this.dungeon.mainLength, style: this.style.peak });
     // 通关奖励（每个难度各有一次首通 ×3）
@@ -874,9 +880,33 @@ class Game {
     }
     const it = loot.item, color = RARITY[it.rar].color;
     if (this.save.bag.length >= BAG_MAX) {
-      const g = sellPrice(it);
-      this.gainGold(g);
-      this.toast(`背包已满，自动出售 ${itemTitle(it)} +${g} 金币`, '#9fb3c8');
+      // 背包满：优先卖掉背包里最差的一件（未锁定、品质严格低于新掉落），而不是卖掉刚打出来的好装备
+      let worst = -1;
+      for (let i = 0; i < this.save.bag.length; i++) {
+        const cand = this.save.bag[i];
+        if (cand.locked || cand.rar >= it.rar) continue;
+        if (worst < 0 || cand.rar < this.save.bag[worst].rar
+          || (cand.rar === this.save.bag[worst].rar && cand.ilvl < this.save.bag[worst].ilvl)) worst = i;
+      }
+      if (worst >= 0) {
+        const [old] = this.save.bag.splice(worst, 1);
+        const g = sellPrice(old);
+        this.gainGold(g);
+        this.save.bag.push(it);
+        this.run.items.push(it);
+        const cmp = compareItem(this.save, it), label = COMPARISON[cmp.verdict];
+        this.toast(`背包已满，自动出售 [${RARITY[old.rar].name}] ${itemTitle(old)} +${g} 金币 · 获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color, it);
+      } else if (it.rar >= 4) {
+        // 传说绝不出售：背包里没有更差的可卖时也强制收纳
+        this.save.bag.push(it);
+        this.run.items.push(it);
+        const cmp = compareItem(this.save, it), label = COMPARISON[cmp.verdict];
+        this.toast(`背包已满，但传说装备不会被出售 · 获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color, it);
+      } else {
+        const g = sellPrice(it);
+        this.gainGold(g);
+        this.toast(`背包已满，自动出售 ${itemTitle(it)} +${g} 金币`, '#9fb3c8');
+      }
     } else {
       this.save.bag.push(it);
       this.run.items.push(it);
@@ -1922,8 +1952,20 @@ class Game {
     if (this.perfT > 150 && this.frameEma > 24 && this.quality > 0) {
       this.quality--;
       this.perfT = 0;
+      this.goodT = 0;
       this.resize();
+      return;
     }
+    // 降档不是终身制：帧率长期恢复流畅后逐档升回，避免一时的特效高峰（如首领战）让画面整个会话都发糊
+    if (this.quality < 2 && this.frameEma < 16) {
+      this.goodT = (this.goodT || 0) + 1;
+      if (this.goodT > 1200) {
+        this.quality++;
+        this.goodT = 0;
+        this.perfT = -600; // 升档后给一段冷静期，避免来回跳档
+        this.resize();
+      }
+    } else this.goodT = 0;
   }
 }
 
