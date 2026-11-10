@@ -101,30 +101,50 @@ function showcaseImg(src) {
   const img = SHOWCASE_IMGS[src];
   return img.complete && img.naturalWidth ? img : null;
 }
+// 连续曲面挥翅（单侧，2026-11-10 移植战斗版做法）：把半翼切成 14 条，沿「转角随弧长连续变化」的
+// 曲线逐条仿射贴合——相邻条共享边缘、转角无跳变，没有两段式的接缝；相位滞后沿翼长连续分布成行波。
+// angleAt(u)：u∈[0,1] 根→尖的转角（弧度）；点位方向 (dir·cosθ, sinθ)，与原两段式在根/尖处一致。
+// sxRoot 为根部源 x，sxStep 为每条源宽（带符号：左翼为负，源图自中线向外）。
+function drawWingHalfMesh(ctx, img, srcH, sxRoot, sxStep, dir, cx, cy, halfW, dispH, rootAbove, angleAt) {
+  const N = 14, ds = halfW / N;
+  const px = [cx], py = [cy], ths = [];
+  let x = cx, y = cy;
+  for (let i = 0; i < N; i++) {
+    const th = angleAt((i + 0.5) / N);
+    ths.push(th);
+    x += dir * Math.cos(th) * ds;
+    y += Math.sin(th) * ds;
+    px.push(x); py.push(y);
+  }
+  const baseT = ctx.getTransform();
+  const flip = sxStep < 0, sw = Math.abs(sxStep);
+  for (let i = 0; i < N; i++) {
+    const th = ths[i];
+    const ux = dir * Math.sin(th), uy = -Math.cos(th);
+    const t0x = px[i] + ux * rootAbove, t0y = py[i] + uy * rootAbove;
+    const t1x = px[i + 1] + ux * rootAbove, t1y = py[i + 1] + uy * rootAbove;
+    const b0x = px[i] - ux * (dispH - rootAbove), b0y = py[i] - uy * (dispH - rootAbove);
+    const b1x = px[i + 1] - ux * (dispH - rootAbove), b1y = py[i + 1] - uy * (dispH - rootAbove);
+    const sx = flip ? sxRoot + (i + 1) * sxStep : sxRoot + i * sxStep;
+    const m = !flip
+      ? [(t1x - t0x) * 1.05, (t1y - t0y) * 1.05, b0x - t0x, b0y - t0y, t0x, t0y]
+      : [(t0x - t1x) * 1.05, (t0y - t1y) * 1.05, b1x - t1x, b1y - t1y, t1x, t1y];
+    ctx.setTransform(baseT.multiply(new DOMMatrix(m)));
+    ctx.drawImage(img, sx, 0, sw, srcH, 0, 0, 1, 1);
+  }
+  ctx.setTransform(baseT);
+}
 // 画一层样式翼：cx/cy 为根点（人物肩背），H 为人物高，ph 为该款周期相位（0..1），ampMul 为呼吸调制
 function drawStyleWing(ctx, img, meta, cx, cy, H, ph, ampMul, scaleMul = 1) {
   const dispH = H * meta.scale * scaleMul;
   const dispW = dispH * (img.naturalWidth / img.naturalHeight);
   const x0 = cx - dispW / 2, y0 = cy - meta.rootFrac * dispH + (meta.dyOff ?? 0) * dispH;
   if (meta.rig === 'segments') {
-    const srcW = img.naturalWidth, srcH = img.naturalHeight, half = srcW / 2;
-    const th = flapAngle(ph) * meta.amp * ampMul * Math.PI / 180;
-    const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * meta.amp * ampMul * 1.1 * Math.PI / 180;
-    const halfW = dispW / 2, inW = 0.55 * halfW, outW = 0.45 * halfW;
+    // 连续曲面变形（原两段骨骼在 55% 关节处会撕开楔形缝，2026-11-10 改）
+    const half = img.naturalWidth / 2, halfW = dispW / 2;
+    const angleAt = (u) => flapAngle(ph - 0.04 * u) * meta.amp * ampMul * Math.PI / 180;
     for (const dir of [-1, 1]) {
-      const sIn = dir > 0 ? [half, half * 0.55] : [half * 0.45, half * 0.55];
-      const sOut = dir > 0 ? [half + half * 0.55, half * 0.45] : [0, half * 0.45];
-      ctx.save();
-      ctx.translate(cx, cy);
-      ctx.rotate(dir * th);
-      ctx.drawImage(img, sIn[0], 0, sIn[1], srcH, dir > 0 ? 0 : -inW, -meta.rootFrac * dispH, inW, dispH);
-      ctx.restore();
-      const px = cx + dir * Math.cos(th) * inW, py = cy + Math.sin(th) * inW;
-      ctx.save();
-      ctx.translate(px, py);
-      ctx.rotate(dir * (th + lag));
-      ctx.drawImage(img, sOut[0], 0, sOut[1], srcH, dir > 0 ? 0 : -outW, -meta.rootFrac * dispH, outW, dispH);
-      ctx.restore();
+      drawWingHalfMesh(ctx, img, img.naturalHeight, half, dir * (half / 14), dir, cx, cy, halfW, dispH, meta.rootFrac * dispH, angleAt);
     }
     return;
   }
@@ -156,30 +176,13 @@ function drawStyleWing(ctx, img, meta, cx, cy, H, ph, ampMul, scaleMul = 1) {
   }
   ctx.restore();
 }
-// 画一层翼对（两段骨骼挥动）：内段绕根点转、外段绕 55% 轴点滞后转；scaleMul<1 时用作传说副翼层
+// 画一层翼对（连续曲面挥动，2026-11-10 由两段骨骼改：原 55% 关节挥动时会撕开接缝）
 function drawWingLayer(ctx, img, meta, cx, cy, W, scaleMul, ph, ampMul = 1) {
   const halfW = 0.643 * W * scaleMul, halfH = halfW * (meta.h / 1024);
-  const rootOff = 0.044 * W * scaleMul, rootDy = -(meta.rootY / meta.h) * halfH;
-  const th = flapAngle(ph) * ampMul * Math.PI / 180;
-  const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * ampMul * 1.1 * Math.PI / 180;
-  const inW = 0.55 * halfW, outW = 0.45 * halfW;
+  const rootOff = 0.044 * W * scaleMul, rootAbove = (meta.rootY / meta.h) * halfH;
+  const angleAt = (u) => flapAngle(ph - 0.04 * u) * ampMul * Math.PI / 180;
   for (const dir of [-1, 1]) {
-    const rx = cx + dir * rootOff, ry = cy;
-    const aIn = dir * th, aOut = dir * (th + lag);
-    // 内段（根→55%）：源图内侧 563px；外段（55%→翼尖）：源图外侧 461px，绕 55% 轴点滞后转
-    const sIn = dir > 0 ? [1024, 563] : [461, 563];
-    const sOut = dir > 0 ? [1587, 461] : [0, 461];
-    ctx.save();
-    ctx.translate(rx, ry);
-    ctx.rotate(aIn);
-    ctx.drawImage(img, sIn[0], 0, sIn[1], meta.h, dir > 0 ? 0 : -inW, rootDy, inW, halfH);
-    ctx.restore();
-    const px = rx + dir * Math.cos(th) * inW, py = ry + Math.sin(th) * inW;
-    ctx.save();
-    ctx.translate(px, py);
-    ctx.rotate(aOut);
-    ctx.drawImage(img, sOut[0], 0, sOut[1], meta.h, dir > 0 ? 0 : -outW, rootDy, outW, halfH);
-    ctx.restore();
+    drawWingHalfMesh(ctx, img, meta.h, 1024, dir * (1024 / 14), dir, cx + dir * rootOff, cy, halfW, halfH, rootAbove, angleAt);
   }
 }
 const FLAP_KEYS = [[0, -15], [0.16, -13], [0.40, 17], [0.50, 19], [0.72, 2], [1, -15]];
