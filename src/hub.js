@@ -4,17 +4,54 @@ import { compareItem, COMPARISON } from './gear/compare.js';
 import { CATALOG } from './gear/catalog.js';
 import { SERIES } from './gear/series.js';
 
-// 角色页翅膀层（正面翼对主图 + 骨骼式两段挥动）：目前只有晨辉主图，其余系列素材未到、不画（禁止占位）
-const WING_ART = {};
+// 角色页翅膀层（正面翼对主图 + 骨骼式两段挥动）：七大系列主图齐备（2048 宽，根点统一按中心列 alpha 质心实测）
+// h/rootY 为素材像素尺寸与根点高度；mote 为该系列光点颜色（r,g,b）
+const WING_ART = {
+  dawn:     { src: 'assets/fx/wings_dawn_front.webp',     h: 300, rootY: 166, mote: '255,216,138' },
+  wayfarer: { src: 'assets/fx/wings_wayfarer_front.webp', h: 309, rootY: 182, mote: '216,201,163' },
+  frost:    { src: 'assets/fx/wings_frost_front.webp',    h: 298, rootY: 173, mote: '191,227,255' },
+  ember:    { src: 'assets/fx/wings_ember_front.webp',    h: 301, rootY: 170, mote: '255,154,92' },
+  storm:    { src: 'assets/fx/wings_storm_front.webp',    h: 304, rootY: 185, mote: '201,184,255' },
+  blight:   { src: 'assets/fx/wings_blight_front.webp',   h: 303, rootY: 166, mote: '182,227,136' },
+  thorn:    { src: 'assets/fx/wings_thorn_front.webp',    h: 310, rootY: 164, mote: '255,143,163' },
+};
+const WING_IMGS = {};
 function wingImg(series) {
-  if (series !== 'dawn') return null;
-  if (!WING_ART.dawn) {
+  const meta = WING_ART[series];
+  if (!meta) return null;
+  if (!WING_IMGS[series]) {
     const img = new Image();
-    img.src = 'assets/fx/wings_dawn_front.webp';
-    WING_ART.dawn = img;
+    img.src = meta.src;
+    WING_IMGS[series] = img;
   }
-  const img = WING_ART.dawn;
+  const img = WING_IMGS[series];
   return img.complete && img.naturalWidth ? img : null;
+}
+// 画一层翼对（两段骨骼挥动）：内段绕根点转、外段绕 55% 轴点滞后转；scaleMul<1 时用作传说副翼层
+function drawWingLayer(ctx, img, meta, cx, cy, W, scaleMul, ph) {
+  const halfW = 0.643 * W * scaleMul, halfH = halfW * (meta.h / 1024);
+  const rootOff = 0.044 * W * scaleMul, rootDy = -(meta.rootY / meta.h) * halfH;
+  const th = flapAngle(ph) * Math.PI / 180;
+  const lag = (flapAngle(ph - 0.04) - flapAngle(ph)) * 1.1 * Math.PI / 180;
+  const inW = 0.55 * halfW, outW = 0.45 * halfW;
+  for (const dir of [-1, 1]) {
+    const rx = cx + dir * rootOff, ry = cy;
+    const aIn = dir * th, aOut = dir * (th + lag);
+    // 内段（根→55%）：源图内侧 563px；外段（55%→翼尖）：源图外侧 461px，绕 55% 轴点滞后转
+    const sIn = dir > 0 ? [1024, 563] : [461, 563];
+    const sOut = dir > 0 ? [1587, 461] : [0, 461];
+    ctx.save();
+    ctx.translate(rx, ry);
+    ctx.rotate(aIn);
+    ctx.drawImage(img, sIn[0], 0, sIn[1], meta.h, dir > 0 ? 0 : -inW, rootDy, inW, halfH);
+    ctx.restore();
+    const px = rx + dir * Math.cos(th) * inW, py = ry + Math.sin(th) * inW;
+    ctx.save();
+    ctx.translate(px, py);
+    ctx.rotate(aOut);
+    ctx.drawImage(img, sOut[0], 0, sOut[1], meta.h, dir > 0 ? 0 : -outW, rootDy, outW, halfH);
+    ctx.restore();
+  }
 }
 const FLAP_KEYS = [[0, -15], [0.16, -13], [0.40, 17], [0.50, 19], [0.72, 2], [1, -15]];
 function flapAngle(ph) {
@@ -725,35 +762,18 @@ export class Hub {
       const bobY = Math.sin(t * 0.03) * 3;
       const top = 6 + bobY;
       // —— 翅膀层：装配参数按新底图实测标定（根点相对人物框 0.491/0.235，半翼宽 0.643*W）——
-      const wimg = wingImg(CATALOG[equip.wings?.def]?.series);
+      const wdef = CATALOG[equip.wings?.def];
+      const wimg = wingImg(wdef?.series);
+      const wmeta = WING_ART[wdef?.series];
       let wingCx = 0, wingCy = 0, wingPh = 0;
       if (wimg) {
         wingCx = 220 + (0.491 - 0.5) * W;
         wingCy = top + 0.235 * H;
         wingPh = (t % 2200) / 2200;
-        const halfW = 0.643 * W, halfH = halfW * (300 / 1024);
-        const rootOff = 0.044 * W, rootDy = -(172 / 300) * halfH;
-        const th = flapAngle(wingPh) * Math.PI / 180;
-        const lag = (flapAngle(wingPh - 0.04) - flapAngle(wingPh)) * 1.1 * Math.PI / 180;
-        const inW = 0.55 * halfW, outW = 0.45 * halfW;
-        for (const dir of [-1, 1]) {
-          const rx = wingCx + dir * rootOff, ry = wingCy;
-          const aIn = dir * th, aOut = dir * (th + lag);
-          // 内段（根→55%）：源图内侧 563px；外段（55%→翼尖）：源图外侧 461px，绕 55% 轴点滞后转
-          const sIn = dir > 0 ? [1024, 563] : [461, 563];
-          const sOut = dir > 0 ? [1587, 461] : [0, 461];
-          ctx.save();
-          ctx.translate(rx, ry);
-          ctx.rotate(aIn);
-          ctx.drawImage(wimg, sIn[0], 0, sIn[1], 300, dir > 0 ? 0 : -inW, rootDy, inW, halfH);
-          ctx.restore();
-          const px = rx + dir * Math.cos(th) * inW, py = ry + Math.sin(th) * inW;
-          ctx.save();
-          ctx.translate(px, py);
-          ctx.rotate(aOut);
-          ctx.drawImage(wimg, sOut[0], 0, sOut[1], 300, dir > 0 ? 0 : -outW, rootDy, outW, halfH);
-          ctx.restore();
-        }
+        const halfH = 0.643 * W * (wmeta.h / 1024);
+        // 传说翅膀：主翼下方多一层副翼（同系列主图缩小、根点更低、相位更滞后）
+        if (wdef.rar === 4) drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy + 0.38 * halfH, W, 0.68, wingPh - 0.05);
+        drawWingLayer(ctx, wimg, wmeta, wingCx, wingCy, W, 1, wingPh);
         // 根部接触阴影（翅膀从肩背生出的压暗）
         ctx.save();
         ctx.translate(wingCx, wingCy + 4);
@@ -768,7 +788,7 @@ export class Hub {
         ctx.restore();
       }
       ctx.drawImage(heroSprite.full, 220 - W / 2, top, W, H);
-      // —— 翼尖光点（晨辉金）：下压相位更亮，位置由 t 与种子纯函数决定 ——
+      // —— 翼尖光点（颜色随系列、亮度随品质）：下压相位更亮，位置由 t 与种子纯函数决定 ——
       if (wimg) {
         const press = wingPh > 0.3 && wingPh < 0.65 ? Math.sin((wingPh - 0.3) / 0.35 * Math.PI) : 0;
         ctx.save();
@@ -777,9 +797,9 @@ export class Hub {
           const life = ((t / 2600) + m.off) % 1;
           const mx = wingCx + side * (0.10 + 0.50 * m.dx) * W + side * m.drift * life;
           const my = wingCy + (0.02 + 0.14 * (m.tw / 6.28)) * H + m.fall * life * life;
-          const a = 0.75 * Math.sin(life * Math.PI) * (0.35 + 0.65 * press) * (0.6 + 0.4 * Math.sin(t * 0.02 + m.tw));
+          const a = Math.min(1, 0.75 * Math.sin(life * Math.PI) * (0.35 + 0.65 * press) * (0.6 + 0.4 * Math.sin(t * 0.02 + m.tw)) * (0.5 + 0.16 * (wdef?.rar ?? 0)));
           if (a <= 0.03) continue;
-          ctx.fillStyle = `rgba(255,216,138,${a.toFixed(3)})`;
+          ctx.fillStyle = `rgba(${wmeta.mote},${a.toFixed(3)})`;
           ctx.beginPath();
           ctx.arc(mx, my, m.size * (1 - life * 0.4), 0, Math.PI * 2);
           ctx.fill();
