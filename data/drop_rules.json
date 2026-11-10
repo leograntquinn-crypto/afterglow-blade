@@ -1,0 +1,122 @@
+{
+  "bag_full": {
+    "candidate": "existing bag item",
+    "capacity": 60,
+    "exclude_locked": true,
+    "if_no_candidate": "sell incoming unless legendary",
+    "legend_overflow": true,
+    "never_auto_sell_rar": 4,
+    "sell_count": 1,
+    "sort": [
+      "rar ascending",
+      "ilvl ascending",
+      "bag index ascending"
+    ],
+    "strictly_lower_rarity": true
+  },
+  "clearItems": 1,
+  "cosmeticStage": 2,
+  "cosmetic_unlock": {
+    "any_of": [
+      "gearCosmeticsUnlocked",
+      "cleared.s2",
+      "stage > cosmeticStage",
+      "source == boss and stage >= cosmeticStage"
+    ],
+    "persistent": true
+  },
+  "item_level": {
+    "formula": "max(1, L + floor(rand(-1,2)))",
+    "offsets": [
+      -1,
+      0,
+      1
+    ]
+  },
+  "legend_sources": {
+    "boss": "matching drop.boss",
+    "boss_full_pool_chance": 0.3,
+    "boss_full_pool_respects_cosmetic_unlock": true,
+    "clear": "diff >= 1 and drop.boss is null",
+    "normal": "none",
+    "trial": "drop.boss is null"
+  },
+  "majorWeight": 3,
+  "newSlotShare": 0.2,
+  "newSlots": [
+    "legs",
+    "boots",
+    "bracers",
+    "wings",
+    "veil"
+  ],
+  "oldSlotWeights": {
+    "chest": 0.22,
+    "helm": 0.22,
+    "trinket": 0.22,
+    "weapon": 0.34
+  },
+  "pity": {
+    "counter_keys": [
+      "boss:{boss}",
+      "clear:{stage}:{diff}",
+      "{source}"
+    ],
+    "force": "next eligible draw when misses >= pityMisses",
+    "increment": "once per non-legend draw with eligible legends",
+    "reset_on_legend": true
+  },
+  "pityMisses": 8,
+  "rarity_scaling": {
+    "clamp_order": [
+      "maxRar masks weights",
+      "minRar floor",
+      "maxRar ceiling"
+    ],
+    "common_unscaled": true,
+    "formula": "i=0: w; i>0: w*(1+L*0.05+luck)*(i=4 ? 1+L*0.06 : 1)",
+    "legend_extra_level": 0.06,
+    "non_common_level": 0.05
+  },
+  "rarity_weights": [
+    58,
+    27,
+    10,
+    4,
+    1
+  ],
+  "schema_version": 1,
+  "selection_order": [
+    "cosmetic availability",
+    "legend source and boss mixing",
+    "rarity and pity",
+    "unseen priority",
+    "weighted series",
+    "weighted kind (slot weight divided by kind count)",
+    "uniform definition"
+  ],
+  "sell": {
+    "cost_tier": [
+      0,
+      1,
+      2,
+      2.5,
+      3
+    ],
+    "formula": "round((5 + ilvl * 3) * multipliers[cost_tier[rar]] * (1 + enh * 0.25))",
+    "multipliers": {
+      "0": 1,
+      "1": 3,
+      "2": 8,
+      "2.5": 16.5,
+      "3": 25
+    }
+  },
+  "unseen_priority": {
+    "fallback": "full eligible pool when all seen",
+    "history": "gearSeen",
+    "min_rar": 3,
+    "record": "only after bag acquisition",
+    "restrict_before_series_and_kind": true
+  }
+}

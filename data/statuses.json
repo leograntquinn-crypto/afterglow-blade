@@ -1,0 +1,353 @@
+{
+  "application_model": "每次命中给的量 = 招式级别 × 状态词条强度。级别：普攻 1、重击 / 上挑 2、技能 3、必杀 5。强度：1 档 = 6、2 档 = 9、3 档 = 12，单位是「层」用于持续伤害、「%」用于积累。\n\n举例：2 档寒意的武器，普攻每下 +9% 寒意，技能 +27%，大约一套连段冻住一个普通敌人。没有触发概率，打多少就积累多少，玩家能预期，靠操作打出来。\n\n**多件装备同元素**：强度相加后按 √ 递减，同一元素总强度上限是 1 档的 3 倍，不能堆一身同元素把敌人冻成雕像。\n\n**持续伤害的结算**：\n- 每 0.5 秒跳一次。\n- 按施加时快照的攻击力算，不暴击。\n- 对敌人：照常吃敌人减伤，但跳伤不触发受击硬直、不打断出招。\n- 对主角：无视防御，可以被护盾吸收。\n- 跳伤数字用状态色的小号字，不刷屏（同目标同状态 0.5 秒合并一个数字）。",
+  "interaction_matrix": {
+    "bleed": {
+      "bleed": "stack",
+      "burn": "cauterize",
+      "chill_freeze": "clot",
+      "poison": "bloodpoison",
+      "shock_paralyze": null,
+      "slow": null
+    },
+    "burn": {
+      "bleed": "cauterize",
+      "burn": "stack",
+      "chill_freeze": "frostfire",
+      "poison": "toxic_blast",
+      "shock_paralyze": null,
+      "slow": null
+    },
+    "chill_freeze": {
+      "bleed": "clot",
+      "burn": "frostfire",
+      "chill_freeze": "accumulate",
+      "poison": null,
+      "shock_paralyze": "shatter",
+      "slow": "numb"
+    },
+    "poison": {
+      "bleed": "bloodpoison",
+      "burn": "toxic_blast",
+      "chill_freeze": null,
+      "poison": "stack",
+      "shock_paralyze": null,
+      "slow": null
+    },
+    "shock_paralyze": {
+      "bleed": null,
+      "burn": null,
+      "chill_freeze": "shatter",
+      "poison": null,
+      "shock_paralyze": "accumulate",
+      "slow": null
+    },
+    "slow": {
+      "bleed": null,
+      "burn": null,
+      "chill_freeze": "numb",
+      "poison": null,
+      "shock_paralyze": null,
+      "slow": "maximum"
+    }
+  },
+  "matrix_groups": {
+    "chill_freeze": [
+      "chill",
+      "freeze"
+    ],
+    "shock_paralyze": [
+      "shock",
+      "paralyze"
+    ]
+  },
+  "reactions": {
+    "bloodpoison": {
+      "condition": "中毒 × 流血",
+      "effect": "流血每跳伤害 +30%（两者都在时持续生效）",
+      "id": "bloodpoison",
+      "name": "毒血",
+      "parameters": {
+        "bleed_bonus_percent": 30.0
+      }
+    },
+    "cauterize": {
+      "condition": "流血 × 灼烧",
+      "effect": "灼烧把流血**烧止**：每清掉 1 层流血，灼烧 +1 层（不超过上限）",
+      "id": "cauterize",
+      "name": "灼口",
+      "parameters": {
+        "bleed_stacks_consumed": 1.0,
+        "burn_stacks_added": 1.0
+      }
+    },
+    "clot": {
+      "condition": "流血 × 寒意 / 冻结",
+      "effect": "冻结期间流血**暂停**（不掉层也不跳伤），冻结结束后恢复",
+      "id": "clot",
+      "name": "凝血",
+      "parameters": {}
+    },
+    "frostfire": {
+      "condition": "灼烧 × 寒意 / 冻结",
+      "effect": "两者**同时清除**（冻结立即解除），爆发伤害 =（灼烧剩余的全部跳伤）× 1.5 +（寒意比例 × 攻击力 × 40%），并向周围半径 90 喷蒸汽，每个敌人受这次伤害的 50%",
+      "id": "frostfire",
+      "name": "融化",
+      "parameters": {
+        "chill_attack_percent": 40.0,
+        "radius": 90.0,
+        "remaining_burn_multiplier": 1.5,
+        "splash_percent": 50.0
+      }
+    },
+    "numb": {
+      "condition": "减速 × 寒意",
+      "effect": "寒意积累速度 ×1.3",
+      "id": "numb",
+      "name": "冻僵",
+      "parameters": {
+        "chill_accumulation_multiplier": 1.3
+      }
+    },
+    "shatter": {
+      "condition": "冻结 × 感电（或麻痹 × 寒意满）",
+      "effect": "冻结立即结束，造成碎冰伤害（攻击力 × 60%），挂**脆化** 4 秒",
+      "id": "shatter",
+      "name": "碎冰",
+      "parameters": {
+        "attack_percent": 60.0,
+        "brittle_seconds": 4.0
+      }
+    },
+    "toxic_blast": {
+      "condition": "中毒 × 灼烧",
+      "effect": "**消耗全部中毒层**，爆炸伤害 = 剩余毒伤 × 1.2，半径 120；周围敌人各获得 2 层中毒；灼烧保留",
+      "id": "toxic_blast",
+      "name": "毒爆",
+      "parameters": {
+        "radius": 120.0,
+        "remaining_poison_multiplier": 1.2,
+        "spread_poison_stacks": 2.0
+      }
+    }
+  },
+  "safeguards": [
+    "同一目标 1.5 秒内最多触发 1 次反应（反应冷却），避免一刀多重爆炸。",
+    "冻结 / 麻痹有控制递减（上表）；首领永远不会被硬控。",
+    "反应伤害和持续伤害**不算连击数、不加风格分、不造成硬直和击退**（不让挂毒挂火替代动作操作）；但击杀照常算。"
+  ],
+  "schema_version": 1,
+  "self_interactions": [
+    {
+      "combination": "护盾 × 持续伤害（灼烧 / 中毒 / 流血）",
+      "effect": "护盾**先吸收**持续伤害；有护盾时灼烧不叠新层"
+    },
+    {
+      "combination": "净化 × 护盾",
+      "effect": "净化清掉的每 1 层负面状态，转成最大生命 2% 的护盾"
+    },
+    {
+      "combination": "中毒（自身）× 吸血",
+      "effect": "吸血效果减半（和敌人受治疗 -50% 同一条规则）"
+    },
+    {
+      "combination": "荆棘 × 流血",
+      "effect": "荆棘反伤时给攻击者挂 1 层流血（血棘系列的核心）"
+    },
+    {
+      "combination": "战意 × 你施加的持续伤害",
+      "effect": "持续伤害按「施加时」的攻击力快照，战意期间挂上的灼烧 / 中毒 / 流血更痛"
+    }
+  ],
+  "source": "docs/DESIGN_EQUIPMENT.md §三 (design; web status engine absent)",
+  "statuses": {
+    "bleed": {
+      "id": "bleed",
+      "name": "流血",
+      "parameters": {
+        "attack_percent": 1.5,
+        "duration_seconds": 5.0,
+        "max_stacks": 5.0,
+        "stacks_per_apply": 1.0,
+        "tick_seconds": 0.5
+      },
+      "rule": "每 0.5 秒 1.5% × 层数，持续 5 秒；**目标被击飞 / 撞墙 / 被拖拽时额外结算一跳**（和浮空连、推墙的玩法挂钩）",
+      "stacking": "最多 5 层；+1 层并刷新",
+      "target": "enemy",
+      "type_or_trigger": "持续伤害"
+    },
+    "brittle": {
+      "id": "brittle",
+      "name": "脆化",
+      "parameters": {
+        "damage_taken_percent": 20.0,
+        "duration_seconds": 4.0
+      },
+      "rule": "受到所有伤害 +20%，4 秒",
+      "stacking": "不叠加，刷新时间；脆化期间不能再被冻结（防止冻住打碎再冻住的无限连）",
+      "target": "enemy",
+      "type_or_trigger": "削弱（只能由相互作用产生）"
+    },
+    "burn": {
+      "id": "burn",
+      "name": "灼烧",
+      "parameters": {
+        "attack_percent": 2.0,
+        "duration_seconds": 4.0,
+        "max_stacks": 5.0,
+        "stacks_per_apply": 1.0,
+        "tick_seconds": 0.5
+      },
+      "rule": "每 0.5 秒造成「施加时攻击力 × 2%」× 层数，持续 4 秒",
+      "stacking": "最多 5 层；再次施加 +1 层并刷新持续时间",
+      "target": "enemy",
+      "type_or_trigger": "持续伤害"
+    },
+    "chill": {
+      "id": "chill",
+      "name": "寒意",
+      "parameters": {
+        "accumulation_max_percent": 100.0,
+        "accumulation_min_percent": 0.0,
+        "decay_delay_seconds": 3.0,
+        "movement_reduction_percent": 20.0
+      },
+      "rule": "积累值 0～100%，满了触发「冻结」；寒意期间移速 -20%（减速包含在内）；3 秒不再积累就开始衰减",
+      "stacking": "积累值累加",
+      "target": "enemy",
+      "type_or_trigger": "积累"
+    },
+    "cleanse": {
+      "id": "cleanse",
+      "name": "净化",
+      "parameters": {},
+      "rule": "清除自己身上全部负面状态",
+      "stacking": "—",
+      "target": "self",
+      "trigger_parameters": {
+        "equipment_interval_seconds": 12.0
+      },
+      "type_or_trigger": "事件：极限闪避，或带净化的装备每 12 秒一次"
+    },
+    "freeze": {
+      "id": "freeze",
+      "name": "冻结",
+      "parameters": {
+        "boss_armor_reduction_percent": 15.0,
+        "damage_taken_percent": 10.0,
+        "diminishing_seconds": 8.0,
+        "elite_seconds": 0.6,
+        "normal_seconds": 1.2,
+        "threshold_multiplier": 1.5
+      },
+      "rule": "普通敌人 1.2 秒、精英 0.6 秒完全定住（不受击退，受伤 +10%）；首领不冻结，改为「霜蚀」：霸体条立即削 15%",
+      "stacking": "触发后同一目标 8 秒内冻结阈值 ×1.5（控制递减）",
+      "target": "enemy",
+      "type_or_trigger": "控制"
+    },
+    "fury": {
+      "id": "fury",
+      "name": "战意（攻击提升）",
+      "parameters": {
+        "attack_percent_per_stack": 6.0,
+        "duration_seconds": 6.0,
+        "max_stacks": 3.0,
+        "stacks_per_apply": 1.0
+      },
+      "rule": "攻击力 +6% / 层，6 秒",
+      "stacking": "最多 3 层；+1 层并刷新",
+      "target": "self",
+      "trigger_parameters": {
+        "combo_hits": 20.0
+      },
+      "type_or_trigger": "事件：破招 / 弹刀 / 连击每满 20 下"
+    },
+    "lifesteal": {
+      "id": "lifesteal",
+      "name": "吸血",
+      "parameters": {
+        "heal_per_second_max_hp_percent": 2.0,
+        "max_lifesteal_percent": 8.0
+      },
+      "rule": "造成伤害的 x% 转为生命；每秒最多回复最大生命 2%（防止巨剑技能一刀回满）",
+      "stacking": "装备之间累加，总上限 8%",
+      "target": "self",
+      "type_or_trigger": "常驻"
+    },
+    "paralyze": {
+      "id": "paralyze",
+      "name": "麻痹",
+      "parameters": {
+        "boss_interrupt_value": 3.0,
+        "boss_windup_slow_percent": 20.0,
+        "duration_seconds": 0.8
+      },
+      "rule": "0.8 秒；**打断当前出招**（判定等同破招，但不给破招奖励）；首领不麻痹，改为读条打断值 +3、当前出招前摇变慢 20%",
+      "stacking": "同冻结的控制递减",
+      "target": "enemy",
+      "type_or_trigger": "控制"
+    },
+    "poison": {
+      "id": "poison",
+      "name": "中毒",
+      "parameters": {
+        "attack_percent": 1.0,
+        "duration_seconds": 6.0,
+        "healing_reduction_percent": 50.0,
+        "max_stacks": 10.0,
+        "stacks_per_apply": 1.0,
+        "tick_seconds": 0.5
+      },
+      "rule": "每 0.5 秒 1% × 层数，持续 6 秒；**中毒者受到的治疗 -50%**（司祭的治疗被克制）",
+      "stacking": "最多 10 层；+1 层并刷新",
+      "target": "enemy",
+      "type_or_trigger": "持续伤害"
+    },
+    "shield": {
+      "id": "shield",
+      "name": "护盾",
+      "parameters": {
+        "max_hp_percent": 30.0,
+        "recovery_delay_seconds": 5.0
+      },
+      "rule": "吸收伤害，值 = 最大生命 × 装备给的比例；**先吸收持续伤害**；5 秒没受伤后护盾慢慢回复（有回复效果的装备才回复）",
+      "stacking": "值累加，上限为最大生命 × 30%",
+      "target": "self",
+      "type_or_trigger": "事件或常驻回复（看装备）"
+    },
+    "shock": {
+      "id": "shock",
+      "name": "感电",
+      "parameters": {
+        "accumulation_max_percent": 100.0,
+        "accumulation_min_percent": 0.0
+      },
+      "rule": "积累值 0～100%，满了触发「麻痹」",
+      "stacking": "积累值累加",
+      "target": "enemy",
+      "type_or_trigger": "积累"
+    },
+    "slow": {
+      "id": "slow",
+      "name": "减速",
+      "parameters": {
+        "duration_seconds": 3.0,
+        "speed_reduction_percent": 15.0
+      },
+      "rule": "移速和出招速度 -15%，3 秒",
+      "stacking": "不叠加，取最高值、刷新时间",
+      "target": "enemy",
+      "type_or_trigger": "削弱"
+    },
+    "thorns": {
+      "id": "thorns",
+      "name": "荆棘",
+      "parameters": {
+        "max_reflection_percent": 60.0
+      },
+      "rule": "反弹「本次受到伤害 × x%」给攻击者（不受防御影响，不会暴击）",
+      "stacking": "累加，总上限 60%",
+      "target": "self",
+      "type_or_trigger": "被近战命中"
+    }
+  }
+}
