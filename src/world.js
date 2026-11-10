@@ -11,6 +11,7 @@ import { BOSSES } from './boss.js';
 import { CHALLENGES } from './training.js';
 import { tex, tinted } from './fx_tex.js';
 import { drawFighter } from './rig.js';
+import { drawSideWing } from './wingfx.js';
 import { settings } from './settings.js';
 import { sfx } from './audio.js';
 import { WORLD_ART, maskCover } from './world_art.js';
@@ -1014,6 +1015,8 @@ export class World {
     const h = this.hero;
     ctx.fillStyle = 'rgba(0,0,0,.45)';
     ctx.beginPath(); ctx.ellipse(x, y, 13, 4, 0, 0, Math.PI * 2); ctx.fill();
+    const wl = this.g.playerLook().wings;
+    if (wl) drawSideWing(ctx, wl, x - h.facing * 2, y - 30, h.facing, 54, t * (h.moving ? 0.11 : 0.033), h.moving ? 0.2 : 0.09, -0.1);
     if (heroSprite.ready) {
       heroSprite.draw(ctx, this.heroFrame(t), x, y, h.facing, { scale: MAP_SCALE, rim: '#9fd8ff', rimAlpha: 0.3 });
     } else {

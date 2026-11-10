@@ -145,5 +145,6 @@ export function playerLook(save) {
       glow: w && w.rar > 0 ? RARITY[w.rar].color : '#7ff3ff',
       glowA: 0.28 + (w?.rar || 0) * 0.08, enh: w?.enh || 0,
     },
+    wings: (() => { const it = save.equip.wings; if (!it) return null; const d = CATALOG[it.def] ?? it; return { series: d.series || 'wayfarer', rar: d.rar ?? 0, id: it.def || null }; })(),
   };
 }

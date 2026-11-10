@@ -1,5 +1,6 @@
 import { FX_ART } from './fx_art.js';
 import { GEAR_ART, gearGlyph } from './gear/art.js';
+import { particleImg, PARTICLE_FOR_SERIES } from './wingfx.js';
 import { compareItem, COMPARISON } from './gear/compare.js';
 import { CATALOG } from './gear/catalog.js';
 import { SERIES } from './gear/series.js';
@@ -1039,10 +1040,21 @@ export class Hub {
           const my = wingCy + (0.02 + 0.14 * (m.tw / 6.28)) * H + m.fall * life * life;
           const a = Math.min(1, 0.75 * Math.sin(life * Math.PI) * (0.35 + 0.65 * press) * (0.6 + 0.4 * Math.sin(t * 0.02 + m.tw)) * (0.5 + 0.16 * (wdef?.rar ?? 0)));
           if (a <= 0.03) continue;
-          ctx.fillStyle = `rgba(${moteColor},${a.toFixed(3)})`;
-          ctx.beginPath();
-          ctx.arc(mx, my, m.size * (1 - life * 0.4), 0, Math.PI * 2);
-          ctx.fill();
+          const pimg = particleImg(PARTICLE_FOR_SERIES[wdef?.series] || 'mote', 'abcd'[i % 4]);
+          if (pimg) { // 造型粒子贴图（Quinn 2026-11-10：每类多形态，不用圆点盖章）
+            const ps = (9 + m.size * 3.6) * (1 - life * 0.25);
+            ctx.save();
+            ctx.globalAlpha = Math.min(1, a * 1.15);
+            ctx.translate(mx, my);
+            ctx.rotate(m.tw + (i % 2 ? 1 : -1) * t * 0.008);
+            ctx.drawImage(pimg, -ps / 2, -ps / 2, ps, ps * (pimg.height / pimg.width));
+            ctx.restore();
+          } else {
+            ctx.fillStyle = `rgba(${moteColor},${a.toFixed(3)})`;
+            ctx.beginPath();
+            ctx.arc(mx, my, m.size * (1 - life * 0.4), 0, Math.PI * 2);
+            ctx.fill();
+          }
         }
         ctx.restore();
       }

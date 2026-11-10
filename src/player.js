@@ -17,6 +17,7 @@ import { heroSprite, heroFrame, bladeOf, runStep } from './sprite.js';
 import { SLASH_FX } from './fx_data.js';
 import { STAMINA, MANA } from './stamina_data.js';
 import { ribbonTex, drawRibbon, drawTip } from './ribbon.js';
+import { drawCombatWing } from './wingfx.js';
 
 const SPEED_X = 4.2, SPEED_Y = 2.7, JUMP_V = 12.5;
 const CHARGE_LV1 = 24, CHARGE_LV2 = 66, CHARGE_HOLD = 14;
@@ -666,12 +667,17 @@ export class Player {
       else drawFighter(ctx, gx, gy, this.look, g.pose, { facing: g.facing, ghost: this.glow, alpha: (g.life / 12) * 0.35, t });
     }
     const [sx, sy] = toScreen(this.x, this.y, this.z, camX);
+    if (this.look.wings) drawCombatWing(ctx, this, camX, t); // 翅膀层：残影之后、身体之前（翅膀在身体背后）
     const blink = this.invuln > 0 && (this.state === 'idle' || this.state === 'run') && (t >> 2) % 2;
     const armored = this.state === 'attack' && this.move?.armor;
     if (armored) drawAura(ctx, sx, sy, this.h, this.glow, 1);
     if (this.state === 'charge') drawAura(ctx, sx, sy, this.h, this.chargeLv === 2 ? '#ffffff' : this.glow, 0.6 + this.chargeLv * 0.5 + 0.2 * Math.sin(t * 0.4));
     if (sprite) {
-      heroSprite.draw(ctx, heroFrame(this, t), sx, sy, this.facing, { flash: this.flash > 3, alpha: blink ? 0.45 : 1, rim: '#b8d4ff', rimAlpha: 0.28 });
+      if (this.state === 'idle' && !this.z) { // 待机呼吸：脚底锚定，躯干 3.8 秒起伏（Quinn 2026-11-10）
+        ctx.save(); ctx.translate(sx, sy); ctx.scale(1, 1 + 0.011 * Math.sin(t * 0.0276)); ctx.translate(-sx, -sy);
+        heroSprite.draw(ctx, heroFrame(this, t), sx, sy, this.facing, { flash: this.flash > 3, alpha: blink ? 0.45 : 1, rim: '#b8d4ff', rimAlpha: 0.28 });
+        ctx.restore();
+      } else heroSprite.draw(ctx, heroFrame(this, t), sx, sy, this.facing, { flash: this.flash > 3, alpha: blink ? 0.45 : 1, rim: '#b8d4ff', rimAlpha: 0.28 });
     } else {
       drawFighter(ctx, sx, sy, this.look, this.pose(t), { facing: this.facing, flash: this.flash > 3, alpha: blink ? 0.45 : 1, t });
     }
