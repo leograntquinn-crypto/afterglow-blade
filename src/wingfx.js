@@ -45,29 +45,50 @@ export function particleImg(type, form) {
 
 // 纯翅膀绘制（战斗与大地图共用）：锚点 (ax, ay) 是翼根位置，H 为显示高度
 // ph 挥舞相位，amp 幅度（弧度），base 基础张角。返回翼尖屏幕坐标（供粒子生成）
+// 连续曲面变形（2026-11-10 Quinn 反馈两段式拼接挥动有割裂感后重做）：
+// 把翼面切成 18 条竖条，沿一条「角度随弧长连续变化」的曲线逐条仿射贴合——
+// 相邻条共享边缘、角度无跳变，所以没有接缝；相位滞后沿翼长逐渐累积，就是行波挥翅。
 export function drawSideWing(ctx, wing, ax, ay, facing, H, ph, amp, base = -0.10) {
   const img = sideImg(wing?.series);
   if (!img) return null;
   const meta = SIDE_ART[wing.series] || SIDE_ART.wayfarer;
   const dispW = H * (img.width / img.height);
   const rootY = meta.rootY * H;
-  const segF = 0.55, inW = dispW * segF, outW = dispW - inW;
-  const th1 = base + Math.sin(ph) * amp;
-  const th2 = Math.sin(ph - 0.95) * amp * 1.25;
+  const N = 18, ds = dispW / N;
+  const ang = (u) => base * u + amp * Math.sin(ph - 1.15 * u) * (0.2 + 1.9 * u) + 0.03 * Math.sin(ph * 1.7 - u * 4) * u;
+  // 沿曲线走出每个条带节点的根部点与法线
+  const px = [0], py = [0], nx = [], ny = [];
+  {
+    let x = 0, y = 0;
+    for (let i = 0; i < N; i++) {
+      const a = ang((i + 0.5) / N);
+      const dx = -Math.cos(a), dy = -Math.sin(a);
+      nx.push(-dy); ny.push(dx);
+      x += dx * ds; y += dy * ds;
+      px.push(x); py.push(y);
+    }
+  }
   ctx.save();
   ctx.translate(ax, ay);
   if (facing < 0) ctx.scale(-1, 1);
-  ctx.save();
-  ctx.rotate(th1);
-  ctx.drawImage(img, img.width * (1 - segF), 0, img.width * segF, img.height, -inW, -rootY, inW, H);
-  ctx.translate(-inW, 0);
-  ctx.rotate(th2);
-  ctx.drawImage(img, 0, 0, img.width * (1 - segF), img.height, -outW, -rootY, outW, H);
+  const baseT = ctx.getTransform();
+  for (let i = 0; i < N; i++) {
+    const u0 = i / N;
+    const tx0 = px[i] + nx[i] * rootY, ty0 = py[i] + ny[i] * rootY;
+    const tx1 = px[i + 1] + nx[i] * rootY, ty1 = py[i + 1] + ny[i] * rootY;
+    const bx0 = px[i] - nx[i] * (H - rootY), by0 = py[i] - ny[i] * (H - rootY);
+    ctx.setTransform(baseT.multiply(new DOMMatrix([
+      (tx1 - tx0) * 1.06, (ty1 - ty0) * 1.06, bx0 - tx0, by0 - ty0, tx0, ty0,
+    ])));
+    ctx.drawImage(img, img.width * (1 - (i + 1) / N), 0, img.width / N, img.height, 0, 0, 1, 1);
+  }
   ctx.restore();
-  ctx.restore();
-  const jx = -inW * Math.cos(th1), jy = -inW * Math.sin(th1);
-  const tx = jx - outW * Math.cos(th1 + th2), ty = jy - outW * Math.sin(th1 + th2);
-  return { tipX: ax + facing * tx, tipY: ay + ty, jointX: ax + facing * jx, jointY: ay + jy, rootX: ax, rootY: ay };
+  const j = Math.round(0.55 * N);
+  return {
+    tipX: ax + facing * px[N], tipY: ay + py[N],
+    jointX: ax + facing * px[j], jointY: ay + py[j],
+    rootX: ax, rootY: ay,
+  };
 }
 
 // —— 翼尖粒子（世界坐标，独立小系统，不干扰主 FX 池） ——
@@ -115,8 +136,8 @@ function drawParts(ctx, camX) {
     ctx.save();
     if (LIT.has(q.type)) {
       ctx.globalCompositeOperation = 'lighter';
-      ctx.globalAlpha = a * 0.32;
-      const gs = s * 2.2;
+      ctx.globalAlpha = a * 0.2;
+      const gs = s * 1.55; // 光晕收紧（Quinn 2026-11-10：旧版太糊）
       ctx.drawImage(img, sx - gs / 2, sy - gs / 2, gs, gs * (img.height / img.width));
     }
     ctx.globalAlpha = a;
