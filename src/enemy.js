@@ -15,22 +15,22 @@ export const TYPES = {
     // brain：用 ai.js 的哪个大脑（踩线、惩罚打空、包抄；性格数据见 ai_data.js）
     name: '腐骨兵', lvOff: 0, hp: 140, w: 36, h: 82, speed: 1.7, weight: 1, armor: 0, xp: 12, drop: 0.22, brain: 'grunt',
     look: { rig: 'grunt', h: 82, bone: '#e2d7c0', cloth: '#3d2f28', armor: '#5a3d2e', eye: '#ff5a3c', weapon: { type: 'sword', len: 44, color: '#8d8178' } },
-    atk: { range: 62, windup: 26, hitAt: 4, recover: 34, cd: [70, 130],
+    atk: { range: 62, windup: 21, hitAt: 4, recover: 28, cd: [46, 84],
       hit: { box: { x: 46, w: 76, d: 26, z0: 0, z1: 90 }, dmg: 9, kb: 4, stun: 18, stop: 4, shake: 4 } },
     // 第二种攻击：中距离突刺（看到红光后横向或纵向躲开）
-    lunge: { range: 190, minRange: 100, windup: 32, hitAt: 2, dur: 12, recover: 40, speed: 9, cd: [110, 170],
+    lunge: { range: 190, minRange: 100, windup: 27, hitAt: 2, dur: 12, recover: 34, speed: 9, cd: [76, 118],
       hit: { box: { x: 40, w: 70, d: 24, z0: 0, z1: 90 }, dmg: 11, kb: 6, stun: 20, stop: 5, shake: 5 } },
   },
   archer: {
     name: '影弓手', lvOff: 1, hp: 95, w: 34, h: 84, speed: 2.0, weight: 0.9, armor: 0, ranged: true, xp: 14, drop: 0.25, brain: 'archer',
     look: { rig: 'archer', h: 84, cloak: '#2a2233', cloth: '#3a3044', wrap: '#4a4054', leather: '#5a4232', boots: '#2a2028', eye: '#c48bff', weapon: { type: 'bow', color: '#8a6a4a' } },
-    atk: { range: 330, windup: 38, recover: 30, cd: [110, 170],
+    atk: { range: 330, windup: 30, recover: 26, cd: [74, 116],
       hit: { box: { w: 30, d: 18, z0: -20, z1: 20 }, dmg: 8, kb: 3, stun: 16, stop: 3, shake: 3 } },
   },
   brute: {
     name: '铁甲屠夫', lvOff: 3, hp: 520, w: 58, h: 112, speed: 1.05, weight: 1.6, armor: 90, xp: 45, drop: 0.7, brain: 'brute',
     look: { rig: 'brute', h: 112, bulk: 1.5, twoHand: true, skin: '#8a6f5e', pants: '#3a2a26', metal: '#6f6a66', leather: '#4a2b22', eye: '#ffb347', weapon: { type: 'axe', len: 58, color: '#a9a29a' } },
-    atk: { range: 95, windup: 54, recover: 46, cd: [110, 160], slam: true,
+    atk: { range: 95, windup: 44, recover: 38, cd: [78, 116], slam: true,
       hit: { dmg: 22, kb: 8, launch: 9, stop: 8, shake: 10, heavy: true } },
   },
   // 灰烛司祭、烬翼：见 enemies_ext.js
@@ -113,6 +113,8 @@ export class Enemy {
 
   update(game) {
     this.st++;
+    this.chainAge = (this.chainAge ?? 0) + 1; // 防连锁：距上次硬直的帧数、挣脱剩余帧
+    if (this.breakFreeT > 0) this.breakFreeT--;
     if (this.flash > 0) this.flash--;
     if (this.invuln > 0) this.invuln--;
     if (this.attackCd > 0) this.attackCd--;
@@ -375,6 +377,19 @@ export class Enemy {
       this.vx = dir * (h.kb ?? 0) * 0.6;
       this.spiked = !!h.spike;
       this.setState('air');
+    } else if (!this.isBoss && !this.dummy) {
+      // 防无限连锁（Quinn 2026-11-10）：连吃硬直会递减，第 4 次触发 80 帧挣脱——期间普通攻击只吃伤害、不打断前摇，重击仍可打断
+      this.stunChain = this.chainAge <= 75 ? (this.stunChain || 0) + 1 : 1;
+      this.chainAge = 0;
+      if (this.stunChain >= 4) { this.stunChain = 0; this.breakFreeT = 80; }
+      if (this.breakFreeT > 0 && !h.heavy) {
+        this.vx = (dir * (h.kb ?? 0)) * 0.3 / this.T.weight;
+      } else {
+        const mul = Math.max(0.4, 1 - 0.2 * ((this.stunChain || 1) - 1));
+        this.setState('hurt');
+        this.hitstun = Math.max(4, Math.round((h.stun ?? 16) * mul));
+        this.vx = (dir * (h.kb ?? 0)) / this.T.weight;
+      }
     } else {
       this.setState('hurt');
       this.hitstun = h.stun ?? 16;

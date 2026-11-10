@@ -23,14 +23,14 @@ export const EXT_TYPES = {
     // 灰烬陷阱：在你脚下画符，40 帧后点亮
     trap: { kind: 'trap', windup: 36, recover: 30, cd: [200, 280] },
     // 推开：被贴身时的杖击
-    atk: { kind: 'shove', range: 90, windup: 20, hitAt: 2, recover: 30, cd: [90, 140],
+    atk: { kind: 'shove', range: 90, windup: 18, hitAt: 2, recover: 26, cd: [68, 108],
       hit: { box: { x: 40, w: 70, d: 26, z0: 0, z1: 90 }, dmg: 6, kb: 9, stun: 14, stop: 3, shake: 3 } },
   },
   wing: {
     name: '烬翼', lvOff: 0, hp: 34, w: 30, h: 34, speed: 3.2, weight: 0.5, armor: 0, xp: 8, drop: 0.08, ai: 'wing', brain: 'wing', flyer: true,
     look: { rig: 'wing', h: 34, body: '#3a2a30', crack: '#ff7a40', wing: '#4a3038', eye: '#ffe2b0', rim: 'rgba(255,170,120,0.7)' },
     // 俯冲：悬停预警 28 帧，然后斜着冲向你 16 帧，再爬升回去
-    atk: { kind: 'dive', windup: 28, dur: 16, recover: 46, cd: [90, 170],
+    atk: { kind: 'dive', windup: 24, dur: 16, recover: 40, cd: [68, 128],
       hit: { box: { x: 6, w: 44, d: 28, z0: -24, z1: 40 }, dmg: 7, kb: 3, stun: 14, stop: 3, shake: 2 } },
   },
 };
