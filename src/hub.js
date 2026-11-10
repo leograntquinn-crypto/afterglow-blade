@@ -207,6 +207,7 @@ const MOTE_SEEDS = Array.from({ length: 28 }, (_, i) => {
 import {
   RARITY, SLOT_KEYS, SLOT_NAME, STAT_INFO, MAX_ENH, fmtStat, itemStats, hydrateItem, canImprove, itemTitle, itemKind,
   enhCost, enhRate, sellPrice, WTYPES, MARKS, reforgeCost, reforgeAffix, inheritCost,
+  duplicatesOf, reforgeAllWithDuplicate, graftAffix,
 } from './items.js';
 import { ATTRS, SKILL_TREE, BAG_MAX, xpToNext, skillCap, power, resetStats, resetSkills, MAX_LV } from './progression.js';
 import { STAGES, DIFFS, isUnlocked, stageKey, diffUnlocked } from './stages.js';
@@ -571,6 +572,36 @@ export class Hub {
     if (!f) return this.closeModal();
     const { it, equipped } = f;
     const s = this.save, R = RARITY[it.rar];
+    // 词条嫁接：三步——选重复件 → 选词条 → （词条满时）选替换目标
+    if (this.graft && !canImprove(it)) this.graft = null;
+    if (this.graft) {
+      const allDups = duplicatesOf(s, it);
+      const gdups = allDups.filter(d=>d.affix.length);
+      let dup = this.graft.dupId ? allDups.find(x=>x.id===this.graft.dupId) : null;
+      if (this.graft.dupId && !dup) { this.graft = {}; dup = null; }
+      let body = '';
+      if (!dup) {
+        body = gdups.length ? `<p class="isub">选择要消耗的重复件（背包里有 ${gdups.length} 件带词条的同名装备）</p><div class="engrave-list">${gdups.map(d=>`<button class="btn" data-act="graftDup" data-id="${d.id}"><b>${itemTitle(d)}</b><span>物品等级 ${d.ilvl} · ${d.affix.map(a=>`${STAT_INFO[a.k][0]} +${fmtStat(a.k,a.v)}`).join(' / ')}</span></button>`).join('')}</div>`
+          : '<p class="isub">背包里没有带词条的同名重复件。</p>';
+      } else if (this.graft.srcIdx == null) {
+        body = `<p class="isub">从重复件「${itemTitle(dup)}」上选一条要搬过来的词条（同类词条不能重复）</p><div class="engrave-list">${dup.affix.map((a,i)=>{ const has = it.affix.some(x=>x.k===a.k); return `<button class="btn" data-act="graftSrc" data-i="${i}" ${has ? 'disabled' : ''}><b>${STAT_INFO[a.k][0]} +${fmtStat(a.k,a.v)}</b><span>${has ? '这件已有同类词条' : '来自重复件 · 物品等级 ' + dup.ilvl}</span></button>`; }).join('')}</div>`;
+      } else {
+        const src = dup.affix[this.graft.srcIdx];
+        const maxA = RARITY[it.rar].affixes || 0;
+        body = it.affix.length < maxA
+          ? `<p class="isub">这件还有词条空位（${it.affix.length}/${maxA}），可以直接追加「${STAT_INFO[src.k][0]} +${fmtStat(src.k, src.v)}」，消耗重复件 1 件</p><div class="actions"><button class="btn primary" data-act="graftGo">确认嫁接</button></div>`
+          : `<p class="isub">这件词条已满，选择一条要被「${STAT_INFO[src.k][0]} +${fmtStat(src.k, src.v)}」替换掉的词条</p><div class="engrave-list">${it.affix.map((a,i)=>`<button class="btn" data-act="graftGo" data-dst="${i}"><b>${STAT_INFO[a.k][0]} +${fmtStat(a.k,a.v)}</b><span>将被替换</span></button>`).join('')}</div>`;
+      }
+      this.modal.innerHTML = `<div class="sheet wide" role="dialog" aria-label="词条嫁接">
+        <div class="card-head"><span class="glyph big r${it.rar}">${gearGlyph(it)}</span>
+          <div><h3 style="color:${R.color}">词条嫁接 · ${itemTitle(it)}</h3><p class="isub">消耗 1 件同名重复装备，把它的词条搬到这件上</p></div>
+          <button class="close" data-act="close" aria-label="关闭">×</button></div>
+        ${body}
+        <div class="actions"><button class="btn ghost" data-act="graftCancel">返回</button></div>
+      </div>`;
+      this.modal.hidden = false;
+      return;
+    }
     // 铭刻：八选一，覆盖原来的刻印
     if (this.engrave && !canEngrave(it)) this.engrave = false;
     if (this.engrave) {
@@ -613,6 +644,7 @@ export class Hub {
       <tr><td>效果</td><td>${effectText(it)}</td><td>${effectText(cur)}</td></tr>
       <tr><td>buff</td><td>${buffText(it)}</td><td>${buffText(cur)}</td></tr></table>
       <p class="cmp" style="color:${label.color}">${label.symbol} ${label.text}（${comparison.total.toFixed(1)}%） · 基础 ${comparison.parts.base.toFixed(1)}% · 效果 ${comparison.parts.effect.toFixed(1)}% · buff ${comparison.parts.buff.toFixed(1)}%</p><p class="hint">${explanation}</p>`;
+    const dups = allowed ? duplicatesOf(s, it) : [];
     const cost = enhCost(it);
     const enhBtn = !allowed ? '<button class="btn" disabled title="翅膀 / 光幕固定攻击 +10，不能强化">不能强化：固定攻击 +10</button>' : it.enh >= MAX_ENH ? '<button class="btn" disabled>已强化到 +10</button>'
       : `<button class="btn" data-act="enhance" ${s.gold >= cost ? '' : 'disabled'}>强化 +${it.enh + 1} · 成功率 ${Math.round(enhRate(it) * 100)}% · ${cost} 金币</button>`;
@@ -633,6 +665,8 @@ export class Hub {
         ${enhBtn}
         ${inh ? `<button class="btn" data-act="inherit" ${s.gold >= inh ? '' : 'disabled'} title="把「${itemTitle(cur)}」的强化等级转到这件上，旧装备变回 +0">传承 +${cur.enh} 强化 · ${inh} 金币</button>` : ''}
         ${canEngrave(it) ? `<button class="btn" data-act="engrave" ${s.stones > 0 ? '' : 'disabled'} title="完成委托获得刻印石">铭刻刻印 · 刻印石 ×1（剩 ${s.stones}）</button>` : ''}
+        ${allowed && it.affix.length && dups.length ? `<button class="btn" data-act="dupReforge" title="消耗背包里等级最低的 1 件同名重复装备，免费把这件的全部词条重随一次">同名重铸 · 消耗重复件 ×1（有 ${dups.length} 件）</button>` : ''}
+        ${allowed && dups.some(d=>d.affix.length) ? `<button class="btn" data-act="graft" title="消耗 1 件同名重复装备，把它的一条词条搬到这件上">词条嫁接 · 消耗重复件 ×1</button>` : ''}
         <button class="btn ghost" data-act="lock">${it.locked ? '🔒 已锁定（点击解锁）' : '锁定（批量出售时跳过）'}</button>
         ${equipped ? '' : `<button class="btn ghost" data-act="sell" ${it.locked ? 'disabled' : ''}>出售 · ${sellPrice(it)} 金币</button>`}
       </div>
@@ -645,6 +679,7 @@ export class Hub {
     for (const tile of this.root.querySelectorAll('.is-selected')) tile.classList.remove('is-selected');
     this.sel = null;
     this.engrave = false;
+    this.graft = null;
     this.modal.hidden = true;
     this.modal.innerHTML = '';
   }
@@ -700,6 +735,14 @@ export class Hub {
         return this.renderModal();
       case 'engraveCancel':
         this.engrave = false;
+        return this.renderModal();
+      case 'graft':
+        if (!canImprove(this.findItem(this.sel)?.it)) return false;
+        this.graft = {};
+        sfx('click');
+        return this.renderModal();
+      case 'graftCancel':
+        this.graft = null;
         return this.renderModal();
       case 'go': {
         sfx('click');
@@ -772,6 +815,35 @@ export class Hub {
     const f = this.findItem(this.sel);
     if (!f) return;
     const { it, equipped } = f;
+    if (act === 'graftDup') {
+      if (this.graft) { this.graft.dupId = el.dataset.id; this.graft.srcIdx = null; sfx('click'); }
+      return this.renderModal();
+    }
+    if (act === 'graftSrc') {
+      if (this.graft) { this.graft.srcIdx = +el.dataset.i; sfx('click'); }
+      return this.renderModal();
+    }
+    if (act === 'graftGo') {
+      const dup = this.graft?.dupId ? s.bag.find(x=>x.id===this.graft.dupId) : null;
+      const srcA = dup?.affix?.[this.graft?.srcIdx];
+      const dst = el.dataset.dst != null ? +el.dataset.dst : null;
+      if (dup && srcA && graftAffix(s, it, dup, this.graft.srcIdx, dst)) {
+        this.graft = null;
+        sfx('enhance');
+        commit();
+        this.toast(`嫁接完成：${STAT_INFO[srcA.k][0]} +${fmtStat(srcA.k, srcA.v)}`, '#7ff3ff');
+      }
+      return;
+    }
+    if (act === 'dupReforge') {
+      const dup = duplicatesOf(s, it).slice().sort((a, b)=>a.ilvl - b.ilvl)[0];
+      if (dup && reforgeAllWithDuplicate(s, it, dup)) {
+        sfx('enhance');
+        commit();
+        this.toast('同名重铸完成：全部词条已重随', '#7ff3ff');
+      }
+      return;
+    }
     if (act === 'equip') {
       const target = it.slot === 'trinket' ? el.dataset.slot : it.slot;
       if (!SLOT_KEYS.includes(target) || (it.slot === 'trinket' && !['trinket1','trinket2'].includes(target))) return;
@@ -834,7 +906,8 @@ export class Hub {
       this.toast(`获得 ${gold} 金币`, '#ffd65a');
     } else if (act === 'enhance') {
       if (!canImprove(it)) return;
-      const cost = enhCost(it);
+      const dups = allowed ? duplicatesOf(s, it) : [];
+    const cost = enhCost(it);
       if (s.gold < cost || it.enh >= MAX_ENH) return;
       s.gold -= cost;
       if (Math.random() < enhRate(it)) {

@@ -44,7 +44,7 @@ import { Boss, BOSSES } from './boss.js';
 import { Chest, Shrine, Urn } from './props.js';
 import { SKILLS, SKILL_KEYS } from './moves.js';
 import { computeStats, addXp, autoUnlock, skillMul, playerLook, BAG_MAX, power } from './progression.js';
-import { RARITY, isLegend, randomDrop, sellPrice, itemTitle, MARKS } from './items.js';
+import { RARITY, isLegend, randomDrop, sellPrice, itemTitle, MARKS, markSeen } from './items.js';
 import { SaveStore } from './save.js';
 import { Hub } from './hub.js';
 import { drawDoors, drawVignette, drawShadow } from './draw.js';
@@ -915,6 +915,7 @@ class Game {
       const cmp=compareItem(this.save,it), label=COMPARISON[cmp.verdict];
       this.toast(`获得 [${RARITY[it.rar].name}] ${itemTitle(it)} · ${label.symbol} ${label.text} ${cmp.total.toFixed(1)}%`, color, it);
     }
+    if (this.save.bag.includes(it)) markSeen(this.save, it.def); // 真正收进背包才记持有（防重复掉落）
     this.fx.label(p.x, p.y, p.z + 110, it.name, color, 20);
     sfx(it.rar >= 2 ? 'rare' : 'pickup');
   }

@@ -38,6 +38,11 @@ export function migrateSave(input) {
   save.equip = equip;
   save.bag = (save.bag || []).map(convert);
   save.legendPity ||= {};
+  if (!Array.isArray(save.gearSeen)) { // 防重复掉落的持有记录：老存档按当前穿戴+背包补种
+    const seen = new Set();
+    for (const it of [...Object.values(save.equip || {}), ...(save.bag || [])]) if (it?.def) seen.add(it.def);
+    save.gearSeen = [...seen];
+  }
   save.v = 2;
   return save;
 }

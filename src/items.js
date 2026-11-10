@@ -80,6 +80,14 @@ function shuffle(arr) {
 let seq = 0;
 export const newId = () => `${Date.now().toString(36)}${(seq++).toString(36)}${Math.floor(Math.random() * 1296).toString(36)}`;
 
+// 持有记录：收进过背包的装备定义 id 集合（防重复掉落用）；老存档在 migrateSave 里按现有装备补种
+export function seenDefs(save){ return new Set(Array.isArray(save?.gearSeen) ? save.gearSeen : []); }
+export function markSeen(save, defId){
+  if (!save || !defId) return;
+  if (!Array.isArray(save.gearSeen)) save.gearSeen = [];
+  if (!save.gearSeen.includes(defId)) save.gearSeen.push(defId);
+}
+
 // 掉落品质：关卡越深，高品质权重越高；精英怪有额外幸运
 export function rollRarity(L, { minRar = 0, luck = 0, maxRar = 4 } = {}) {
   const w = RARITY.map((r, i) => i>maxRar ? 0 : (i === 0 ? r.w : r.w * (1 + L * 0.05 + luck) * (i === 4 ? 1 + L * 0.06 : 1)));
@@ -155,13 +163,21 @@ export function randomDrop(L, opts = {}) {
   const cosmetic = !!save?.gearCosmeticsUnlocked || !!save?.cleared?.s2 || stage>DROP_RULES.cosmeticStage || (source==='boss' && stage>=DROP_RULES.cosmeticStage);
   if (cosmetic && save) save.gearCosmeticsUnlocked=true;
   const available = Object.values(CATALOG).filter(d=>cosmetic || !d.fixed);
-  const legends = available.filter(d=>d.rar===4 && (source==='boss' ? d.drop.boss===boss :
+  let legends = available.filter(d=>d.rar===4 && (source==='boss' ? d.drop.boss===boss :
     (source==='trial' || (source==='clear' && diff>=1)) && !d.drop.boss));
+  // 混池：boss 掉落三成机会改从全图传说池抽——不然刷同一个 boss 永远只有它自己的几件（Quinn 2026-11-10）
+  if (source==='boss' && Math.random() < 0.3) legends = available.filter(d=>d.rar===4);
   const key = source==='boss' ? `boss:${boss}` : source==='clear' ? `clear:${stage}:${diff}` : source;
   const pity = save ? (save.legendPity ||= {}) : {};
   let rar = rollRarity(L,{...opts,maxRar:legends.length ? 4 : 3});
   if (legends.length && (pity[key] || 0)>=DROP_RULES.pityMisses) rar=4;
   let pool = rar===4 ? legends : available.filter(d=>d.rar===rar);
+  // 防重复：史诗以上先在「还没拥有过」的里面抽，池里还有没见过的就不会掉重复的（Quinn 2026-11-10）
+  if (save && rar >= 3) {
+    const seen = seenDefs(save);
+    const fresh = pool.filter(d=>!seen.has(d.id));
+    if (fresh.length) pool = fresh;
+  }
   const series = weighted([...new Set(pool.map(d=>d.series))],id=>SERIES[id].stages.includes(source==='trial' ? 'trial' : stage) ? DROP_RULES.majorWeight : 1);
   pool=pool.filter(d=>d.series===series);
   const kind = weighted([...new Set(pool.map(d=>d.kind))],k=>{
@@ -216,6 +232,38 @@ export function reforgeAffix(it, i) {
   it.affix[i] = { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
   it.reforged = (it.reforged || 0) + 1;
   return true;
+}
+
+// ---------- 重复件用途：同名重铸 / 词条嫁接 ----------
+// Quinn 2026-11-10：重复件不再是垃圾，而是「这件装备的改造机会」——不做分解材料（那会变成肝货币）
+export function duplicatesOf(save, it){
+  if (!save || !it) return [];
+  return (save.bag || []).filter(x=>x && x.id !== it.id && x.def === it.def && !x.locked);
+}
+function consumeBagItem(save, uid){
+  const i = (save.bag || []).findIndex(x=>x && x.id === uid);
+  if (i < 0) return false;
+  save.bag.splice(i, 1);
+  return true;
+}
+// 同名重铸：消耗一件同名重复件，免费把这件的全部词条重随一次（重铸计数只 +1）
+export function reforgeAllWithDuplicate(save, it, dup){
+  if (!canImprove(it) || !it.affix.length || !dup || dup.def !== it.def || dup.id === it.id) return false;
+  const before = it.reforged || 0;
+  let ok = false;
+  for (let i = 0; i < it.affix.length; i++) if (reforgeAffix(it, i)) ok = true;
+  it.reforged = before + (ok ? 1 : 0);
+  return ok ? consumeBagItem(save, dup.id) : false;
+}
+// 词条嫁接：消耗一件同名重复件，把它的一条词条原样搬到这件上；有空位追加、满了替换 dstIdx；同类词条不重复
+export function graftAffix(save, it, dup, srcIdx, dstIdx){
+  if (!canImprove(it) || !dup || dup.def !== it.def || dup.id === it.id) return false;
+  const src = dup.affix?.[srcIdx];
+  if (!src || it.affix.some(a=>a.k === src.k)) return false;
+  if (it.affix.length < (RARITY[it.rar].affixes || 0)) it.affix.push({ k: src.k, v: src.v });
+  else if (dstIdx != null && it.affix[dstIdx]) it.affix[dstIdx] = { k: src.k, v: src.v };
+  else return false;
+  return consumeBagItem(save, dup.id);
 }
 
 // 传承：新装备继承同部位旧装备的强化等级（旧装备变回 +0）。
