@@ -1042,7 +1042,7 @@ export class Hub {
           if (a <= 0.03) continue;
           const pimg = particleImg(PARTICLE_FOR_SERIES[wdef?.series] || 'mote', 'abcd'[i % 4]);
           if (pimg) { // 造型粒子贴图（Quinn 2026-11-10：每类多形态，不用圆点盖章）
-            const ps = (9 + m.size * 3.6) * (1 - life * 0.25);
+            const ps = (12 + m.size * 4.4) * (1 - life * 0.25);
             ctx.save();
             ctx.globalAlpha = Math.min(1, a * 1.15);
             ctx.translate(mx, my);

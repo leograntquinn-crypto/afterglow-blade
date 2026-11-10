@@ -67,7 +67,7 @@ export function drawSideWing(ctx, wing, ax, ay, facing, H, ph, amp, base = -0.10
   ctx.restore();
   const jx = -inW * Math.cos(th1), jy = -inW * Math.sin(th1);
   const tx = jx - outW * Math.cos(th1 + th2), ty = jy - outW * Math.sin(th1 + th2);
-  return { tipX: ax + facing * tx, tipY: ay + ty };
+  return { tipX: ax + facing * tx, tipY: ay + ty, jointX: ax + facing * jx, jointY: ay + jy, rootX: ax, rootY: ay };
 }
 
 // —— 翼尖粒子（世界坐标，独立小系统，不干扰主 FX 池） ——
@@ -77,14 +77,15 @@ let phAcc = 0; // 挥舞相位累加器：切换周期时不跳变
 function spawn(wing, tip, p) {
   const type = PARTICLE_FOR_SERIES[wing.series] || 'mote';
   const form = FORMS[(Math.random() * 4) | 0];
-  const life = type === 'arc' ? 13 + Math.random() * 6 : 46 + Math.random() * 40;
+  const life = type === 'arc' ? 16 + Math.random() * 8 : 52 + Math.random() * 44;
   const q = {
     x: tip.x, y: tip.y, z: tip.z, life, max: life, type, form,
     rot: Math.random() * 6.28, vr: (Math.random() - 0.5) * 0.06,
-    size: 7 + Math.random() * 9 + (wing.rar || 0) * 1.2,
-    vx: (Math.random() - 0.5) * 0.5 - p.facing * 0.3, vy: (Math.random() - 0.5) * 0.2, vz: 0,
+    size: 11 + Math.random() * 11 + (wing.rar || 0) * 1.8,
+    vx: (p.vx || 0) * 0.5 + (Math.random() - 0.5) * 0.5 - p.facing * 0.25, vy: (p.vy || 0) * 0.5 + (Math.random() - 0.5) * 0.2, vz: 0,
     sway: Math.random() * 6.28,
   };
+  if (type === 'ember' || type === 'snow' || type === 'petal' || type === 'mote') q.life = q.max = Math.round(q.life * 1.25);
   if (type === 'ember') { q.vz = 0.35 + Math.random() * 0.5; q.vx += (Math.random() - 0.5) * 0.4; }
   else if (type === 'snow') { q.vz = -(0.22 + Math.random() * 0.25); q.vr = (Math.random() - 0.5) * 0.03; }
   else if (type === 'petal') { q.vz = -(0.3 + Math.random() * 0.25); q.vr = (Math.random() - 0.5) * 0.12; }
@@ -92,7 +93,7 @@ function spawn(wing, tip, p) {
   else if (type === 'spore') { q.vz = 0.04 + Math.random() * 0.1; q.vx += (Math.random() - 0.5) * 0.3; }
   else if (type === 'dust') { q.vz = -(0.05 + Math.random() * 0.12); q.size *= 1.3; }
   parts.push(q);
-  if (parts.length > 110) parts.splice(0, parts.length - 110);
+  if (parts.length > 170) parts.splice(0, parts.length - 170);
 }
 
 function drawParts(ctx, camX) {
@@ -101,17 +102,23 @@ function drawParts(ctx, camX) {
     q.life--;
     if (q.life <= 0) { parts.splice(i, 1); continue; }
     if (q.type === 'snow' || q.type === 'petal') q.vx += Math.sin(q.life * 0.22 + q.sway) * 0.012;
+    q.vx *= 0.985; q.vy *= 0.985; // 拖滞：流出一段后缓下来，在路径末端停留
     q.x += q.vx; q.y += q.vy; q.z += q.vz;
     q.rot += q.vr;
     const img = particleImg(q.type, q.form);
     if (!img) continue;
     const [sx, sy] = toScreen(q.x, q.y, q.z, camX);
     const pr = 1 - q.life / q.max;
-    const a = Math.sin(Math.min(1, pr) * Math.PI) * 0.8;
+    const a = Math.sin(Math.min(1, Math.pow(pr, 0.55)) * Math.PI) * 0.95;
     if (a <= 0.02) continue;
     const s = q.size * (q.type === 'dust' ? 0.8 + pr * 0.9 : 0.75 + pr * 0.35);
     ctx.save();
-    if (LIT.has(q.type)) ctx.globalCompositeOperation = 'lighter';
+    if (LIT.has(q.type)) {
+      ctx.globalCompositeOperation = 'lighter';
+      ctx.globalAlpha = a * 0.32;
+      const gs = s * 2.2;
+      ctx.drawImage(img, sx - gs / 2, sy - gs / 2, gs, gs * (img.height / img.width));
+    }
     ctx.globalAlpha = a;
     ctx.translate(sx, sy);
     ctx.rotate(q.rot);
@@ -136,7 +143,9 @@ export function drawCombatWing(ctx, p, camX, t) {
   }
   const breath = Math.sin(t * 0.0276); // 3.8 秒呼吸（与角色页同一时钟）
   if (st === 'idle') amp *= 0.85 + 0.3 * (0.5 + 0.5 * breath);
+  const prevSin = Math.sin(phAcc);
   phAcc += (Math.PI * 2) / period;
+  const strokeBurst = prevSin > -0.8 && Math.sin(phAcc) <= -0.8;
   const [sx, sy] = toScreen(p.x, p.y, p.z, camX);
   const H = 102 + (wing.rar || 0) * 4;
   const ax = sx - p.facing * 5;
@@ -145,9 +154,20 @@ export function drawCombatWing(ctx, p, camX, t) {
   drawParts(ctx, camX);
   if (res) {
     const busy = st === 'run' || st === 'dash' || p.z > 2;
-    const chance = (0.045 + 0.028 * (wing.rar || 0)) * (busy ? 2.1 : 1);
-    if (Math.random() < chance) {
-      spawn(wing, { x: res.tipX + camX, y: res.tipY - GROUND_TOP + p.z, z: p.z }, p);
+    const chance = (0.11 + 0.055 * (wing.rar || 0)) * (busy ? 2.2 : 1);
+    const shed = () => { // 沿翼面随机取点：外段偏多（羽尖一带最密）
+      let px, py;
+      if (Math.random() < 0.6) { const u = 0.25 + Math.random() * 0.75; px = res.jointX + (res.tipX - res.jointX) * u; py = res.jointY + (res.tipY - res.jointY) * u; }
+      else { const u = Math.random() * 0.85; px = res.rootX + (res.jointX - res.rootX) * u; py = res.rootY + (res.jointY - res.rootY) * u; }
+      px -= p.facing * (4 + Math.random() * 9); py += 7 + Math.random() * 9;
+      spawn(wing, { x: px + camX, y: py - GROUND_TOP + p.z, z: p.z }, p);
+    };
+    if (Math.random() < chance) shed();
+    if (busy && Math.random() < chance * 0.55) shed();
+    if (strokeBurst) for (let i = 0; i < 3; i++) { // 下压甩出：位置在外段、初速朝后下散开
+      const u = 0.5 + Math.random() * 0.5;
+      const bx = res.jointX + (res.tipX - res.jointX) * u - p.facing * 6, by = res.jointY + (res.tipY - res.jointY) * u + 8;
+      spawn(wing, { x: bx + camX, y: by - GROUND_TOP + p.z, z: p.z }, p);
     }
   }
 }
