@@ -52,12 +52,12 @@
     left: calc(24px + env(safe-area-inset-left, 0px));
     bottom: calc(24px + env(safe-area-inset-bottom, 0px));
     width: 128px; height: 128px; border-radius: 50%;
-    border: 2px solid rgba(233, 226, 214, .22); background: rgba(233, 226, 214, .05);
+    border: 2px solid transparent; background: url('assets/ui/stick_base.webp') center / cover no-repeat;
     pointer-events: auto; touch-action: none;
   }
   #stick .knob {
     position: absolute; left: 50%; top: 50%; width: 76px; height: 76px; margin: -26px 0 0 -26px; border-radius: 50%;
-    background: rgba(127, 243, 255, .28); border: 2px solid rgba(127, 243, 255, .6);
+    background: url('assets/ui/stick_knob.webp') center / cover no-repeat; border: 2px solid transparent;
   }
   .pad {
     position: absolute;
