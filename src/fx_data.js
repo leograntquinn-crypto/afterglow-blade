@@ -185,7 +185,7 @@ export const BOSS_FX = {
     cage: { fb: 'cage_tighten', color: '#ff5a3c', width: 512, shrink: 0.6 },
     tether: { tex: 'marrow_tether', color: '#ff5a3c', height: 6, scroll: 1.5 },
     drag: { fb: 'drag_sparks', color: '#ff5a3c', size: 1, x: 0.55, rendTail: 40 },
-    shard: { fb: 'shard_return', size: 0.45, count: [3, 5], scatter: 18, pause: 10, back: 24,
+    shard: { fb: 'shard_return', size: 0.45, count: [3, 5], scatter: 18, pause: 45, back: 24, // pause：落地停留，可以踩碎（身份机制，boss_identity.js）
       chest: 0.6, speed: 3.5, lift: 4, gravity: 0.22, arc: 45, trail: 0.2, light: 16 }, // light：每枚骨片的补光半径 rx（光照按 rx × 1.5 画）
     reform: { fb: 'bone_reform', size: 1 },
     sigil: { tex: 'bone_sigil', color: '#ff5a3c', spin: 0.004 },
@@ -232,6 +232,7 @@ export const BOSS_FX = {
     stompScales: [1, 1.2, 1.5],
     charge: { fb: 'charge_sparks', color: '#ff7a2e', k: 0.56 },
     mark: { tex: 'execution_mark', color: '#ff7a2e', rise: 0.3, alpha: 0.6 },
+    platform: { color: '#ff7a2e', alpha: 0.32, pulse: 0.25, speed: 0.05 }, // 刑台（身份机制）：借处刑印记常驻地面，偏暗、慢呼吸
     glint: { fb: 'headsman_glint', color: '#e1eeff', k: 0.43, x: 0.28, z: 1.03 },
     drop: { fb: 'execution_drop', color: '#ff7a2e', k: 0.80, alpha: 0.72 },
     chainBreak: { fb: 'chain_break', color: '#ff7a2e', k: 0.64 },

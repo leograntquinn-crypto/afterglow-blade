@@ -473,7 +473,11 @@ export class Player {
     if (inp.dx && !m.air) this.facing = Math.sign(inp.dx);
     this.move = m;
     this.mf = 0;
-    if (m.skill) game.lastSkill = name; // 残影的「镜像」复制你最后用过的技能
+    if (m.skill) { // 残影的「镜像」「看穿」：记下最后用的技能、用的时刻、这一战每招用了几次（boss_identity.js）
+      game.lastSkill = name;
+      game.lastSkillAt = game.ticks;
+      (game.skillUse ??= {})[name] = (game.skillUse[name] ?? 0) + 1;
+    }
     this.landed = false;
     this.hitSets = m.hits.map(() => new Set());
     const chained = this.state === 'attack';

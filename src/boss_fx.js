@@ -2,7 +2,8 @@
 import { toScreen } from './config.js';
 import { bossTex, enemyTex, flipbook } from './fx_art.js';
 import { tinted } from './fx_tex.js';
-import { fbIndex, tileAlong } from './enemy_fx.js';
+import { fbIndex, tileAlong, drawWarn, drawLaneBand } from './enemy_fx.js';
+import { trampled, shardReturned } from './boss_identity.js';
 import { BOSS_FX, ENEMY_FX } from './fx_data.js';
 
 const raven = BOSS_FX.nightRaven;
@@ -431,7 +432,17 @@ export function boneShards(game, boss) {
     };
     // rx：每枚骨片只带一小团髓光；不写的话光照系统按默认 140 补一盏大光，重击一次地面亮 3～5 团
     game.hazards.push({ ...origin, rx: e.light, t: 0, dead: false,
-      update() { this.t++; Object.assign(this, pos(this.t)); if (this.t >= e.scatter + e.pause + e.back) this.dead = true; },
+      update(g) {
+        this.t++;
+        Object.assign(this, pos(this.t));
+        // 落地停留期间被你踩到就碎，回不去（身份机制「拼合的骨」，boss_identity.js）
+        if (this.t > e.scatter && this.t <= e.scatter + e.pause && trampled(g, this)) {
+          this.dead = true;
+          g.fx.chips(this.x, this.y, 6, 1, 5, '#d8cbb4');
+          return;
+        }
+        if (this.t >= e.scatter + e.pause + e.back) { this.dead = true; shardReturned(boss); }
+      },
       drawFloor(ctx, camX) {
         if (this.dead) return;
         const at = toScreen(this.x, this.y, this.z, camX);
@@ -508,4 +519,29 @@ export function drawWardenLane(ctx, lane, sx, sy, len, alpha) {
   tileAlong(ctx, img, 0, 0, 0, len, lane.half * e.height, lane.t * e.scroll, wardenColor(lane.warden));
   ctx.restore();
   return true;
+}
+
+// ---------------- 首领身份机制的画法（规则在 boss_identity.js）----------------
+// 铁颚的刑台：借铁颚包的处刑印记，常驻、偏暗；包没载好时用一直载入的敌人预警圈
+export function drawIronJawPlatform(ctx, plat, camX) {
+  const [sx, sy] = toScreen(plat.x, plat.y, 0, camX);
+  const e = iron.platform, img = bossTex('ironjaw', iron.mark.tex);
+  if (img) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.scale(1, plat.ry / plat.rx);
+    put(ctx, img, 0, 0, 2 * plat.rx * img.sc / img.fw, e.color, e.alpha * (1 + e.pulse * Math.sin(plat.t * e.speed)));
+    ctx.restore();
+    return true;
+  }
+  return drawWarn(ctx, sx, sy, plat.rx, plat.ry, 0, plat.t, false, e.alpha);
+}
+
+// 守护者第三阶段的余火：守护者包的火带，包没载好时用敌人通用路线光带
+export function drawWardenEmbers(ctx, ember, camX, alpha) {
+  const [sx, sy] = toScreen(ember.x0, ember.y, 0, camX);
+  const len = Math.abs(ember.x1 - ember.x0);
+  const lane = { warden: ember.warden, facing: ember.facing, half: ember.half, t: ember.t };
+  if (drawWardenLane(ctx, lane, sx, sy, len, alpha)) return true;
+  return drawLaneBand(ctx, sx, sy, ember.facing, len, ember.half, ember.t, '#ff9a3c', alpha);
 }

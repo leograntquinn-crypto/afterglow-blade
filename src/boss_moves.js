@@ -5,6 +5,7 @@ import { DEPTH, world, clamp, rand, toScreen, COLORS } from './config.js';
 import { Projectile, Hazard, Lane, hitBox, overlaps } from './combat.js';
 import { sfx } from './audio.js';
 import { BOSS_FX } from './fx_data.js';
+import { hookDestination, brazierBroken, wardenEmbers, favoriteSkill, IDENTITY } from './boss_identity.js';
 import { tex, tinted } from './fx_tex.js';
 import { ravenBodyFx, disperseRavenCopies, playIronJawFx, startIronJawDrag, ironJawCleave, ironJawStompArt, afterimageRibbon, playAfterimageFx, afterimageDash, drawAfterimageStreak, boneCageFx, playWardenFx, drawWardenBrazier, breakWardenBrazier } from './boss_fx.js';
 
@@ -182,7 +183,13 @@ export const SIGNATURE = {
       }
       if (d.pulledAt != null) {
         const k = t - d.pulledAt;
-        if (k < 12) { p.x += (b.x + b.facing * 70 - p.x) * 0.28; p.y += (b.y - p.y) * 0.3; }
+        // 刑台（身份机制）：把你拖到台心，它自己落到台边、面朝台心；没有刑台时照旧拖到它面前
+        if (k === 0) d.dest = hookDestination(b);
+        const to = d.dest, pull = IDENTITY.ironJaw.pull;
+        if (k < 12 && to) {
+          b.x += (to.bx - b.x) * pull; b.y += (to.by - b.y) * pull; b.facing = to.facing;
+          p.x += (to.px - p.x) * pull; p.y += (to.py - p.y) * pull;
+        } else if (k < 12) { p.x += (b.x + b.facing * 70 - p.x) * 0.28; p.y += (b.y - p.y) * 0.3; }
         if (k === 12) { d.set = new Set(); g.fx.label(b.x, b.y, b.h + 30, '!', '#ff3b3b', 30); }
         b.tele = k < 24;
         b.pa = k < 24 ? -2.6 : 1.2;
@@ -270,6 +277,7 @@ export const SIGNATURE = {
         if (p.z < 70 && Math.abs(p.y - y) < 26 && (p.x - x0) * b.facing > -20 && (p.x - x1) * b.facing < 20) {
           g.applyHit(b, p, { dmg: 18, kb: 7, launch: 5, stop: 7, shake: 8, heavy: true }, b.facing);
         }
+        wardenEmbers(g, b, x0, x1, y); // 第三阶段火焰失控：扫过的地方留下余火（boss_identity.js）
         sfx('swing');
       };
       if (t === D) { b.y = d.y1; sweep(d.y1); }
@@ -287,7 +295,7 @@ export const SIGNATURE = {
     tick(b, g, t, d) {
       const D = Math.round(30 / b.spd), p = g.player;
       if (t === 0) {
-        d.skill = g.lastSkill || 'wave';
+        d.skill = favoriteSkill(g) || g.lastSkill || 'wave'; // 身份机制：照你这一战最常用的技能出（boss_identity.js）
         b.facing = sign(p.x - b.x);
         const glyph = { wave: '裂', whirl: '风', quake: '崩', flurry: '千' }[d.skill] || '裂';
         g.fx.label(b.x, b.y, b.h + 46, `镜 · ${glyph}`, b.B.glow, 26);
@@ -402,6 +410,7 @@ export class Brazier {
   }
   shatter(game) {
     this.remove = true;
+    brazierBroken(game, this); // 借来的火：打碎炉子削守护者的霸体（boss_identity.js）
     const broken = breakWardenBrazier(game, this);
     if (!broken) game.fx.flip('impact_ground', this.x, this.y, 0, { color: this.owner.B.glow, scale: 0.5 });
     game.fx.emit('soul', this.x, this.y, 30, { color: this.owner.B.glow });

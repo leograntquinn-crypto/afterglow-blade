@@ -52,6 +52,7 @@ import { Post } from './post.js';
 import { makeTerrain } from './terrain.js';
 import { STAGE_RULES } from './stage_rules.js';
 import { bossBonus, BOSS_SCALE } from './boss_scale.js';
+import { bossDamageMul } from './boss_identity.js';
 import { music } from './music.js';
 import { drawHUD, drawDead, drawClear } from './hud.js';
 
@@ -1331,6 +1332,7 @@ class Game {
       }
     } else {
       dmg *= (src.owner || src).dmgMul ?? 1;
+      dmg *= bossDamageMul(src.owner || src, target); // 首领身份机制：站在铁颚的刑台上更痛（boss_identity.js）
       dmg *= 100 / (100 + this.stats.def); // 防御减伤：100 防御 = 伤害减半
     }
     return { dmg: Math.max(1, Math.round(dmg)), crit };

@@ -25,6 +25,7 @@ import { bossFrame, ENEMY_SPRITES, BOSS_SPRITES, bossOwnFrame } from './enemy_sp
 import { sfx } from './audio.js';
 import { updateNight } from './raven_night.js';
 import { SIGNATURE, SIGNATURE_PHASES } from './boss_moves.js';
+import { updateIdentity } from './boss_identity.js';
 import { drawRavenBodyFx, ravenBodyFx, disperseRavenCopies, ravenSigil, hasRavenChannelFx, cueRavenVolley, flashRavenVeil, updateRavenDeathFx, ironJawGroundArt, playIronJawFx, ironJawCleave, hasIronJawCharge, drawIronJawBodyFx, ironJawMark, hasIronJawMark, ironJawChannelArt, hasIronJawDrop, afterimageRibbon, playAfterimageFx, drawAfterimageBodyFx, hasAfterimageGather, playBoneFx, boneSigil, hasBoneGlow, drawBoneBodyFx, boneShards, playWardenFx, hasWardenGather, updateWardenFlame, drawWardenBodyFx } from './boss_fx.js';
 
 const sign = (v) => Math.sign(v) || 1;
@@ -65,7 +66,7 @@ export const BOSSES = {
     minion: 'grunt', shot: 'arrow',
     channel: '断头重锤',
     phases: [
-      { at: 1, attacks: { slam: 3, charge: 2, combo: 1 } },
+      { at: 1, attacks: { slam: 3, charge: 2 } }, // 身份机制：去掉和骸骨统领重复的三连斩，第一阶段靠锁链钩（boss_moves.js）把你拖上刑台
       { at: 0.55, line: '铁颚扯断了身上的锁链', attacks: { slam: 2, charge: 2, shockwave: 2, summon: 1, channel: 1 } },
     ],
   },
@@ -441,6 +442,7 @@ export class Boss extends Enemy {
       this.startAct('roar');
     }
     super.update(game);
+    updateIdentity(this, game); // 首领身份机制（boss_identity.js）
     updateWardenFlame(this, game);
     updateNight(this, game); // 夜鸦第二阶段的夜色（raven_night.js）
     updateRavenDeathFx(game, this);
