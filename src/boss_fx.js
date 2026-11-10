@@ -1,5 +1,5 @@
 // 首领专属特效：素材和尺寸在 fx_data.js，招式只在对应时刻调用这里。
-import { toScreen } from './config.js';
+import { toScreen, world, DEPTH } from './config.js';
 import { bossTex, enemyTex, flipbook } from './fx_art.js';
 import { tinted } from './fx_tex.js';
 import { fbIndex, tileAlong, drawWarn, drawLaneBand } from './enemy_fx.js';
@@ -421,14 +421,18 @@ export function boneShards(game, boss) {
   for (let i = 0; i < count; i++) {
     const angle = (i + 0.5) / count * Math.PI * 2;
     const origin = { x: boss.x, y: boss.y, z: boss.z + boss.h * e.chest };
-    const end = { x: origin.x + Math.cos(angle) * e.speed * e.scatter, y: origin.y,
-      z: Math.max(0, origin.z + (e.lift + Math.sin(angle) * e.speed) * e.scatter - e.gravity * e.scatter * e.scatter / 2) };
+    // 落点在首领周围的地面上散开（纵深按 2:1 压扁），落地停留期间可以踩碎（身份机制「拼合的骨」）
+    const land = { x: Math.max(20, Math.min(world.w - 20, origin.x + Math.cos(angle) * e.land)),
+      y: Math.max(6, Math.min(DEPTH - 6, origin.y + Math.sin(angle) * e.land * 0.42)), z: 0 };
     const pos = (t) => {
-      if (t <= e.scatter) return { x: origin.x + Math.cos(angle) * e.speed * t, y: origin.y,
-        z: Math.max(0, origin.z + (e.lift + Math.sin(angle) * e.speed) * t - e.gravity * t * t / 2) };
+      if (t <= e.scatter) {
+        const u = t / e.scatter;
+        return { x: origin.x + (land.x - origin.x) * u, y: origin.y + (land.y - origin.y) * u,
+          z: origin.z * (1 - u) + Math.sin(u * Math.PI) * e.hop };
+      }
       const u = Math.max(0, Math.min(1, (t - e.scatter - e.pause) / e.back));
-      return { x: end.x + (boss.x - end.x) * u, y: end.y + (boss.y - end.y) * u,
-        z: end.z + (boss.z + boss.h * e.chest - end.z) * u + Math.sin(u * Math.PI) * e.arc };
+      return { x: land.x + (boss.x - land.x) * u, y: land.y + (boss.y - land.y) * u,
+        z: (boss.z + boss.h * e.chest) * u + Math.sin(u * Math.PI) * e.arc };
     };
     // rx：每枚骨片只带一小团髓光；不写的话光照系统按默认 140 补一盏大光，重击一次地面亮 3～5 团
     game.hazards.push({ ...origin, rx: e.light, t: 0, dead: false,
@@ -527,11 +531,8 @@ export function drawIronJawPlatform(ctx, plat, camX) {
   const [sx, sy] = toScreen(plat.x, plat.y, 0, camX);
   const e = iron.platform, img = bossTex('ironjaw', iron.mark.tex);
   if (img) {
-    ctx.save();
-    ctx.translate(sx, sy);
-    ctx.scale(1, plat.ry / plat.rx);
-    put(ctx, img, 0, 0, 2 * plat.rx * img.sc / img.fw, e.color, e.alpha * (1 + e.pulse * Math.sin(plat.t * e.speed)));
-    ctx.restore();
+    // 印记素材本身已是贴地透视（2:1），按刑台宽度放大即可，不再压扁
+    put(ctx, img, sx, sy, 2 * plat.rx * img.sc / img.fw, e.color, e.alpha * (1 + e.pulse * Math.sin(plat.t * e.speed)));
     return true;
   }
   return drawWarn(ctx, sx, sy, plat.rx, plat.ry, 0, plat.t, false, e.alpha);

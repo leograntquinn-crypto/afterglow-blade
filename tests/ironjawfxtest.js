@@ -218,14 +218,16 @@ async function exercise() {
     });
 
     check('channel', () => {
-      let b = scene('channel'); step(4);
+      // 刑台（身份机制）常驻地面、借的是同一张 execution_mark：这一项只看读条自己的印记，先把刑台熄掉
+      const noPlatform = (boss) => { if (boss.platform) boss.platform.dead = true; };
+      let b = scene('channel'); step(4); noPlatform(b);
       const active = !!b.channel && floor().includes('execution_mark') && body(b).includes('headsman_glint');
       const earlyDrop = at('execution_drop').length;
       until(() => !b.act, 220, '读条完成');
       step(4);
       const success = earlyDrop === 0 && at('execution_drop').length === 1 && !floor().includes('execution_mark');
 
-      b = scene('channel'); step(4);
+      b = scene('channel'); step(4); noPlatform(b);
       const visible = floor().includes('execution_mark') && body(b).includes('headsman_glint');
       const deadline = b.channel.T;
       for (let i = 0; i < 10 && b.channel; i++) g.channelHit(b, { ult: true });

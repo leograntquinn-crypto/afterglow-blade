@@ -52,6 +52,7 @@ const TESTS = [
   test('bonefxtest', 300),
   test('wardenfxtest', 300),
   test('scenefxtest', 300),
+  test('bossidtest', 300),
   ...[
     'afftest', 'traintest', 'train2', 'countertest', 'walktest', 'difftest',
     'coretest', 'contracttest', 'trialtest', 'trialsoak', 'gear', 'settest',
