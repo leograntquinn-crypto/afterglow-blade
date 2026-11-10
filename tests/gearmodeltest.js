@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 8765;
           try {
             // 1：逐格枚举，不用目录自己的总数代替期望集合。
             const defs = Object.values(CATALOG), base = defs.filter(d => !d.variantOf && d.rar < 4);
-            check(base.length === 308 && LEGENDS.length === 36 && defs.filter(d=>!d.variantOf).length === 344, '1 308+36');
+            check(base.length === 310 && LEGENDS.length === 36 && defs.filter(d=>!d.variantOf).length === 346, '1 310+36（2026-11-10 补行者翅膀 2 件）');
             for (const series of Object.keys(SERIES)) for (const kind of Object.keys(KINDS)) {
               if (series === 'wayfarer' && ['wings','veil'].includes(kind)) continue;
               for (let rar=0;rar<(series==='wayfarer'?2:4);rar++) check(!!CATALOG[`${kind}_${series}_r${rar}`], `1 格子 ${kind}/${series}/${rar}`);

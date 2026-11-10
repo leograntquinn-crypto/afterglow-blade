@@ -18,4 +18,5 @@ export const WAYFARER_NAMES = {
  sword: ['铁剑','青钢剑'], katana: ['打刀','霜纹太刀'], great: ['阔剑','断岩巨剑'],
  helm: ['布头巾','皮盔'], chest: ['布衣','皮甲'], legs: ['布裤','皮护腿'],
  boots: ['布靴','皮战靴'], bracers: ['布缠','皮护腕'], ring: ['铜戒','银戒'], amulet: ['木符','铜护符'],
+ wings: ['布羽','旅人展翼'],
 };
