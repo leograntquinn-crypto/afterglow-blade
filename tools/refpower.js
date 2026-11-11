@@ -8,34 +8,14 @@ let progression;
 try {progression=await import('../src/progression.js');}
 finally {if(!previousDocument) delete globalThis.document;}
 const {newSave,computeStats,power,MAX_LV}=progression;
-import { SLOT_KEYS, makeItem } from '../src/items.js';
-import { defsBy } from '../src/gear/catalog.js';
 import { REF_RULES } from '../src/gear/rules.js';
 import { REF_POWER } from '../src/boss_scale.js';
 
+import { referenceSamples } from './referencegear.js';
 export function referencePower() {
-  const random=Math.random;
-  let seed=REF_RULES.seed >>> 0;
-  Math.random=()=>{seed=(Math.imul(seed,1664525)+1013904223)>>>0;return seed/4294967296;};
-  try {
-    const result=[0];
-    for(let lv=1;lv<=MAX_LV;lv++) {
-      let sum=0;
-      for(let n=0;n<REF_RULES.samples;n++) {
-        const save=newSave();
-        save.lv=lv;
-        save.stats.str=save.stats.vit=(lv-1)*3/2;
-        for(const slot of SLOT_KEYS) {
-          if((slot==='wings' || slot==='veil') && lv<REF_RULES.cosmeticLevel) {save.equip[slot]=null;continue;}
-          const pool=defsBy({slot:slot.startsWith('trinket') ? 'trinket' : slot,rar:1}).filter(d=>!d.variantOf);
-          save.equip[slot]=makeItem(pool[Math.floor(Math.random()*pool.length)].id,lv);
-        }
-        sum+=power(computeStats(save));
-      }
-      result.push(Math.round(sum/REF_RULES.samples));
-    }
-    return result;
-  } finally {Math.random=random;}
+  const result=Array(MAX_LV+1).fill(0);
+  referenceSamples(newSave,(save,lv)=>{result[lv]+=power(computeStats(save));});
+  return result.map((sum,lv)=>lv ? Math.round(sum/REF_RULES.samples) : 0);
 }
 
 if(process.argv[1] && import.meta.url===pathToFileURL(process.argv[1]).href) {

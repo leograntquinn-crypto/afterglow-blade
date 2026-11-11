@@ -43,6 +43,8 @@ const TESTS = [
   ...['aitest', 'aitest2', 'aitest3', 'staminatest', 'runtest', 'fxltest'].map(name => test(name, 300)),
   test('gearmodeltest', 600),
   test('loottest', 300),
+  test('gearfix3test', 300),
+  test('powerlineartest', 120),
   test('stagetest', 600),
   test('efxtest', 300),
   test('efx2test', 300),
