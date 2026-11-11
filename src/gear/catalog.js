@@ -21,6 +21,8 @@ const independent = [
  ['shizhihuan','时之环','ring','dawn'], ['yongyezhishi','永夜之誓','ring','thorn'],
  ['binglingyu','冰棱羽','wings','frost'], ['jinhuoyi','烬火翼','wings','ember'],
  ['leitingyi','雷霆翼','wings','storm'], ['chenxiyu','晨曦羽','wings','dawn'],
+ ['jingshuangyi','镜霜翼','wings','frost'], ['xinghuoyu','星火羽','wings','ember'],
+ ['cangleimu','藏雷幕','veil','storm'], ['guixumu','归墟幕','veil','blight'],
  ['yongyemu','永夜幕','veil','thorn'], ['limingmu','黎明幕','veil','dawn'],
 ];
 const bossSets = [

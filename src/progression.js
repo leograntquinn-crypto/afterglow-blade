@@ -93,7 +93,9 @@ export function computeStats(save, gearMeta = {}) {
   const agi = save.stats.agi + g('agi');
   return {
     lv, str, vit, int, agi, setCount, imbues,
+    powerLv: Math.max(lv, ...SLOT_KEYS.map(k=>save.equip[k]?.ilvl || 0)),
     atk: (6 + lv * 3 + g('atk') + str * 2) * (1 + g('atkPct')),
+    atkPct: g('atkPct'),
     def: g('def') + vit * 0.5,
     maxHp: Math.round(280 + lv * 20 + vit * 12 + g('hp')),
     maxMp: Math.round(116 + lv * 4 + int * 5),
@@ -112,7 +114,19 @@ export function computeStats(save, gearMeta = {}) {
 export const skillMul = (S, key) => (1 + (S.skillLv[key] - 1) * 0.12) * S.intMul;
 
 // 「战力」：把各种属性折算成一个数字，给玩家直观的成长反馈
-export const power = (S) => Math.round((S.atk * (1 + S.crit * (S.critDmg - 1)) * 8 + S.maxHp * 0.6 + S.def * 6) * (1 + markRating(S) + buffRating(S)));
+// 战力按同级参考攻击折算输出属性，避免多条乘区互相放大预算。
+// 技能约占输出一半；智力、回魔、冷却分别折算技能伤害与施放频率。
+export const power = (S, rounded = true) => {
+  const L = S.powerLv || S.lv;
+  const referenceAtk = 6 + L * 3 + (10 + L * 4) * 1.15 + (L - 1) * 3;
+  const outputBonus = S.crit * 0.5 + 0.09 * (S.critDmg - 1.5) + S.atkPct +
+    0.5 * (S.intMul - 1 + S.cdr + S.mpRegen / 0.11 - 1) + 0.5 * (S.normalMul - 1);
+  const value = (S.atk / (1 + S.atkPct) * 8 + referenceAtk * 8 * outputBonus +
+    S.maxHp * 0.6 + S.def * 6) * (1 + markRating(S) + buffRating(S));
+  // 战力显示采用平方根尺度，整套预算增长不会线性放大首领参考战力。
+  const rating = Math.sqrt(Math.max(0, value)) * 100;
+  return rounded ? Math.round(rating) : rating;
+};
 
 export function resetStats(save) {
   for (const k of Object.keys(save.stats)) {

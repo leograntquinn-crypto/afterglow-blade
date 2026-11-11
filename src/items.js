@@ -6,7 +6,7 @@
 import { rand } from './config.js';
 
 import { CATALOG, defsBy } from './gear/catalog.js';
-import { BUDGET, AFFIX_SHARE, AFFIX_MAX, ITEM_RULES, RARITY, COST_TIER, SELL_MULT, DROP_RULES } from './gear/rules.js';
+import { BUDGET, AFFIX_SHARE, AFFIX_VALUE, LINE, ITEM_RULES, RARITY, COST_TIER, SELL_MULT, DROP_RULES } from './gear/rules.js';
 export { RARITY };
 import { SERIES } from './gear/series.js';
 export const SLOT_KEYS = ['weapon','helm','chest','legs','boots','bracers','wings','veil','trinket1','trinket2'];
@@ -119,6 +119,11 @@ export function itemBase(it) {
   for (const [k,v] of Object.entries(it.legacyBase || {})) base[k] = Math.max(base[k] || 0,v);
   return base;
 }
+export function affixRoll(k, ilvl, slot, rar, r) {
+  const L = Math.max(1, Math.min(30, Math.round(ilvl)));
+  const v = LINE[L] * AFFIX_SHARE[slot] * RARITY[rar].quality * r / AFFIX_VALUE[L][k];
+  return STAT_INFO[k][1] ? Math.max(0.001, +v.toFixed(3)) : Math.max(1, Math.round(v));
+}
 export function makeItem(defId, ilvl, opts = {}, wtype) {
   // 保留旧调用兼容；新掉落统一按定义 id 生成。
   if (!CATALOG[defId]) {
@@ -133,9 +138,7 @@ export function makeItem(defId, ilvl, opts = {}, wtype) {
   const it = {uid:newId(),def:defId,ilvl,enh:0,affix:[],mark:null,imbueLv:0,reforged:0,locked:false,skin:null};
   if (!d.fixed) {
     it.affix = shuffle(Object.keys(AFFIX)).slice(0,R.affixes).map((k) => {
-      const [a,b] = AFFIX_MAX[k];
-      const v = (a+b*ilvl)*rand(ITEM_RULES.affixMin,1)*AFFIX_SHARE[d.slot]*R.quality;
-      return {k,v:STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v)};
+      return {k,v:affixRoll(k,ilvl,d.slot,d.rar,rand(ITEM_RULES.affixMin,1))};
     });
     if (Math.random() < R.mark) it.mark = pick(Object.keys(MARKS));
     if (d.imbue && R.imbue.length) it.imbueLv = pick(R.imbue);
@@ -162,14 +165,11 @@ export function randomDrop(L, opts = {}) {
   let rar = rollRarity(L,{...opts,maxRar:legends.length ? 4 : 3});
   if (legends.length && (pity[key] || 0)>=DROP_RULES.pityMisses) rar=4;
   let pool = rar===4 ? legends : available.filter(d=>d.rar===rar);
+  const slot = weighted([...new Set(pool.map(d=>d.slot))],s=>DROP_RULES.slotWeights[s]);
+  pool=pool.filter(d=>d.slot===slot);
   const series = weighted([...new Set(pool.map(d=>d.series))],id=>SERIES[id].stages.includes(source==='trial' ? 'trial' : stage) ? DROP_RULES.majorWeight : 1);
   pool=pool.filter(d=>d.series===series);
-  const kind = weighted([...new Set(pool.map(d=>d.kind))],k=>{
-    const slot=pool.find(d=>d.kind===k).slot;
-    const count=new Set(pool.filter(d=>d.slot===slot).map(d=>d.kind)).size;
-    const weight=DROP_RULES.oldSlotWeights[slot];
-    return (weight===undefined ? DROP_RULES.newSlotShare/DROP_RULES.newSlots.length : weight*(1-DROP_RULES.newSlotShare))/count;
-  });
+  const kind = pick([...new Set(pool.map(d=>d.kind))]);
   const it=makeItem(pick(pool.filter(d=>d.kind===kind)).id,Math.max(1,L+Math.floor(rand(-1,2))));
   if (legends.length && save) pity[key]=rar===4 ? 0 : (pity[key] || 0)+1;
   return it;
@@ -211,9 +211,7 @@ export function reforgeAffix(it, i) {
   const pool = Object.keys(AFFIX).filter((k) => !used.has(k));
   if (!pool.length) return false;
   const k = pick(pool);
-  const [a,b] = AFFIX_MAX[k];
-  const v = (a+b*it.ilvl)*rand(ITEM_RULES.affixMin,1)*AFFIX_SHARE[it.slot]*RARITY[it.rar].quality;
-  it.affix[i] = { k, v: STAT_INFO[k][1] ? +v.toFixed(3) : Math.round(v) };
+  it.affix[i] = {k,v:affixRoll(k,it.ilvl,it.slot,it.rar,rand(ITEM_RULES.affixMin,1))};
   it.reforged = (it.reforged || 0) + 1;
   return true;
 }

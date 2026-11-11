@@ -65,7 +65,7 @@ const PORT = process.env.PORT || 8765;
           try {
             // 1：逐格枚举，不用目录自己的总数代替期望集合。
             const defs = Object.values(CATALOG), base = defs.filter(d => !d.variantOf && d.rar < 4);
-            check(base.length === 308 && LEGENDS.length === 36 && defs.filter(d=>!d.variantOf).length === 344, '1 308+36');
+            check(base.length === 308 && LEGENDS.length === 40 && defs.filter(d=>!d.variantOf).length === 348, '1 308+40');
             for (const series of Object.keys(SERIES)) for (const kind of Object.keys(KINDS)) {
               if (series === 'wayfarer' && ['wings','veil'].includes(kind)) continue;
               for (let rar=0;rar<(series==='wayfarer'?2:4);rar++) check(!!CATALOG[`${kind}_${series}_r${rar}`], `1 格子 ${kind}/${series}/${rar}`);
@@ -130,7 +130,7 @@ const PORT = process.env.PORT || 8765;
                 const result=compareItem(s,a,{slot:slot==='trinket'?'trinket1':slot});
                 if(['better','much'].includes(result.verdict)) wins++;
               }
-              check(wins<= (gap===1?500:100), `5 标定 r${low}对r${low+gap}`, `${wins}/10000`);
+              check(wins<= (gap===1?200:0), `5 标定 r${low}对r${low+gap}`, `${wins}/10000`);
             }
             // 6：去除随机词条干扰，专门守住同强化折算及不修改实例。
             const save=newSave(), fine=makeItem('sword_wayfarer_r1',10,{enh:8,affix:[],mark:null}), epic=makeItem('sword_frost_r3',10,{enh:0,affix:[],mark:null});

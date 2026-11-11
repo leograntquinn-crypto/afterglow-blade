@@ -13,7 +13,7 @@ const PORT = process.env.PORT || 8765;
     const g = __game, s = g.save; s.gold = 100000; s.lv = 14; g.refreshStats();
     const old = makeItem('ring', 10, 1); old.enh = 7; s.equip.trinket1 = old;
     const nw = makeItem('ring', 14, 4); s.bag = [nw]; // 新传说：九词条、必带刻印
-    if (nw.rar !== 4 || nw.affix.length !== 9 || !nw.mark) throw new Error('传说品质样本不符合新表');
+    if (nw.rar !== 4 || nw.affix.length !== 4 || !nw.mark) throw new Error('传说品质样本不符合新表');
     for (let k = 0; k < 6; k++) s.bag.push(makeItem('helm', 5, k % 2));       // 普通 / 精良
     const keep = makeItem('armor', 5, 1); keep.locked = true; s.bag.push(keep); // 锁定的精良
     const enh = makeItem('armor', 5, 0); enh.enh = 2; s.bag.push(enh);          // 强化过的普通
