@@ -126,6 +126,7 @@ const PORT = process.env.PORT || 8765;
                 const lp=pool(low),hp=pool(low+gap), a=makeItem(lp[n%lp.length].id,level),b=makeItem(hp[n%hp.length].id,level);
                 a.enh=b.enh=n%11;
                 const s=newSave(); s.equip=Object.fromEntries(SLOT_KEYS.map(k=>[k,null]));
+                s.lv=level; // 角色等级 = 物品等级（掉落等级 = 关卡等级）；与 gearfix3test 同口径，见 FIX-3a 终审裁定 2
                 s.equip[slot==='trinket'?'trinket1':slot]=b;
                 const result=compareItem(s,a,{slot:slot==='trinket'?'trinket1':slot});
                 if(['better','much'].includes(result.verdict)) wins++;

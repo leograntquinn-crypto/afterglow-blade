@@ -73,7 +73,7 @@ async function exercise() {
       return { ok: adjacent && skip, res };
     });
     check('inflation', () => {
-      // 满身传说（没有传说定义的部位用史诗）对满身精良，同物品等级 +0：1.15 倍 ～ 1.45 倍
+      // 满身传说（没有传说定义的部位用史诗）对满身精良，同物品等级 +0：1.80 倍 ～ 2.25 倍
       const rows = [];
       for (const L of [10, 20, 30]) {
         let sum = [0, 0];
@@ -86,7 +86,7 @@ async function exercise() {
         }
         rows.push({ L, ratio: +(sum[1] / sum[0]).toFixed(3) });
       }
-      return { ok: rows.every((r) => r.ratio >= 1.15 && r.ratio <= 1.45), rows };
+      return { ok: rows.every((r) => r.ratio >= 1.80 && r.ratio <= 2.25), rows };
     });
     check('legends', () => {
       const indep = LEGENDS.filter((d) => !d.drop?.boss), boss = LEGENDS.filter((d) => d.drop?.boss);
@@ -140,7 +140,7 @@ async function exercise() {
     ['equalValue', '等值词条：同一条词条抽到任何属性，战力增量都在中位数 ±15% 内（5 / 15 / 25 级）'],
     ['minValue', '低等级取整：整数属性至少 1，百分比属性至少 0.001'],
     ['monotone', '同等级同强化：低一档赢高一档 ≤ 2%，低两档 0%'],
-    ['inflation', '满身传说 / 满身精良的战力比在 1.15～1.45（不膨胀）'],
+    ['inflation', '满身传说 / 满身精良的战力比在 1.80～2.25（线性尺度；FIX-3a 终审按 基础倍率 + 4.4/0.8 词条 + 刻印 重定）'],
     ['legends', '传说 40 件：首领套装 20 + 独立 20（旧 10 件原槽位 + 6 翅膀 + 4 光幕），目录 348 件'],
     ['dropShare', '部位份额按裁定表；翅膀 / 光幕解锁前不掉，其余按比例放大'],
   ];
