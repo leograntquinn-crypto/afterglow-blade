@@ -56,3 +56,10 @@ gearmodeltest 第 5 条离线配对胜出次数：0→1 为 0，1→2 为 2，2�
 沙箱不允许监听端口，无法运行需要本地静态服务器和 Playwright 的 gearfix3test、gearmodeltest、gear，以及模块浏览器全套；未声称全套通过。
 
 `tests/gearmodeltest.js` 第 68 行仍要求 LEGENDS=36、目录=344，与工单要求的 40/348 冲突。在允许监听的环境里，完整 gearmodeltest 会在此处失败。遵守“除两处外不改任何测试”，保留此断言，交由维护方更新。没有通过修改生产数据去兼容这个过期断言。
+
+## 验收附录（Muse，2026-11-11）
+
+- 已提交：899a68d（分支 gear-data-cp1），已推送远端核对一致。
+- 正式验收（本地全套）：tests/run_all.js 43/43 通过，退出码 0（含 gearfix3test、gearmodeltest、gear、soakd、soakd60）。等值/标定数据见正文。
+- gearmodeltest 第 1 条数量断言（传说 36/目录 344）与工单 40/348 冲突：Codex 按「只改两处测试」的限制未动并在此说明中报出；Muse 验收时对齐为 40/348 并写入提交说明；Claude 终审已认可，追认为工单内修改（见 docs/FIX3_REVIEW.md 裁断 2）。
+- 传说池说明（终审边缘清单 7 备注）：传说池没有护腿/护腕传说，传说掉落的部位份额按剩余部位重新分配。
