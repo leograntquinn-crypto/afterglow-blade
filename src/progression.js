@@ -1,5 +1,6 @@
 import { markRating, buffRating } from './gear/rating.js';
 import { CATALOG } from './gear/catalog.js';
+import { BUDGET } from './gear/rules.js';
 // 成长系统：经验与等级、属性点、技能树、最终属性计算
 //
 // 所有「成长」都汇总到 computeStats() 一个函数里：
@@ -93,7 +94,7 @@ export function computeStats(save, gearMeta = {}) {
   const agi = save.stats.agi + g('agi');
   return {
     lv, str, vit, int, agi, setCount, imbues,
-    powerLv: Math.max(lv, ...SLOT_KEYS.map(k=>save.equip[k]?.ilvl || 0)),
+    powerLv: lv,
     atk: (6 + lv * 3 + g('atk') + str * 2) * (1 + g('atkPct')),
     atkPct: g('atkPct'),
     def: g('def') + vit * 0.5,
@@ -116,16 +117,16 @@ export const skillMul = (S, key) => (1 + (S.skillLv[key] - 1) * 0.12) * S.intMul
 // 「战力」：把各种属性折算成一个数字，给玩家直观的成长反馈
 // 战力按同级参考攻击折算输出属性，避免多条乘区互相放大预算。
 // 技能约占输出一半；智力、回魔、冷却分别折算技能伤害与施放频率。
+// 暴击/暴伤按加法近似，丢失二者的联动；做打法对比时需注意这一限制。
 export const power = (S, rounded = true) => {
-  const L = S.powerLv || S.lv;
-  const referenceAtk = 6 + L * 3 + (10 + L * 4) * 1.15 + (L - 1) * 3;
+  const L = S.lv;
+  const [weaponBase, weaponPerLv] = BUDGET.weapon.atk;
+  const referenceAtk = 6 + L * 3 + (weaponBase + weaponPerLv * L) * RARITY[1].mul + (L - 1) * 3;
   const outputBonus = S.crit * 0.5 + 0.09 * (S.critDmg - 1.5) + S.atkPct +
     0.5 * (S.intMul - 1 + S.cdr + S.mpRegen / 0.11 - 1) + 0.5 * (S.normalMul - 1);
   const value = (S.atk / (1 + S.atkPct) * 8 + referenceAtk * 8 * outputBonus +
     S.maxHp * 0.6 + S.def * 6) * (1 + markRating(S) + buffRating(S));
-  // 战力显示采用平方根尺度，整套预算增长不会线性放大首领参考战力。
-  const rating = Math.sqrt(Math.max(0, value)) * 100;
-  return rounded ? Math.round(rating) : rating;
+  return rounded ? Math.round(value) : value;
 };
 
 export function resetStats(save) {

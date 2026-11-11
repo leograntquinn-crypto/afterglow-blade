@@ -1,7 +1,7 @@
 // node tools/affixvalue.js：生成；--check：只比对，报告第一处差异。
 import { readFile, writeFile } from 'node:fs/promises';
 import { referenceSamples } from './referencegear.js';
-import { AFFIX_MAX, AFFIX_VALUE, LINE, REF_RULES, ITEM_RULES } from '../src/gear/rules.js';
+import { AFFIX_MAX, AFFIX_VALUE, LINE, REF_RULES } from '../src/gear/rules.js';
 const previousDocument=globalThis.document;
 if (!previousDocument) globalThis.document={createElement:tag=>{if(tag!=='canvas') throw new Error('标定脚本不支持 DOM');return {width:0,height:0};}};
 let progression;
@@ -23,9 +23,10 @@ try {
     }
   },{calibration:true});
   values[0]=null;
+  // LINE 按满掷点 r=1 标定；随机掷点只在 affixRoll 中乘一次。
   for(let L=1;L<=30;L++) {
     for(const k of Object.keys(AFFIX_MAX)) values[L][k]=+values[L][k].toFixed(9);
-    lines[L]=+(Object.entries(AFFIX_MAX).reduce((sum,[k,[a,b]])=>sum+(a+b*L)*(1+ITEM_RULES.affixMin)/2*values[L][k],0)/10).toFixed(9);
+    lines[L]=+(Object.entries(AFFIX_MAX).reduce((sum,[k,[a,b]])=>sum+(a+b*L)*values[L][k],0)/10).toFixed(9);
   }
   if(process.argv.includes('--check')) {
     for(let L=0;L<=30;L++) {
