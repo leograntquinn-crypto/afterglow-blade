@@ -28,6 +28,8 @@ var previous_jump := false
 var flash_t := 0
 var flash: StandardMaterial3D
 var arcs: Array = []
+var anim_player: AnimationPlayer
+var cur_anim := ""
 
 func setup(owner_stage: Node) -> void:
 	stage = owner_stage
@@ -53,10 +55,53 @@ func setup(owner_stage: Node) -> void:
 	normalized.position = Vector3(-box.get_center().x, -box.position.y, -box.get_center().z) * factor
 	visual.add_child(normalized)
 	normalized.add_child(model)
+	_setup_animation(model)
 	flash = StandardMaterial3D.new()
 	flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	flash.albedo_color = Color(1, 0.08, 0.03, 0.65)
 	flash.transparency = BaseMaterial3D.TRANSPARENCY_ALPHA
+
+func _setup_animation(model: Node) -> void:
+	var players := model.find_children("*", "AnimationPlayer", true, false)
+	if players.is_empty():
+		return
+	anim_player = players[0] as AnimationPlayer
+	for loop_name in ["idle", "walk", "run"]:
+		var a := anim_player.get_animation(loop_name)
+		if a:
+			a.loop_mode = Animation.LOOP_LINEAR
+	# 位移由胶囊控制器驱动：把所有片段 Hips 的水平位移钉在首帧，只保留纵向起伏。
+	for anim_name in anim_player.get_animation_list():
+		_pin_root(anim_player.get_animation(anim_name))
+	_play_anim("idle", 1.0)
+
+func _pin_root(anim: Animation) -> void:
+	if anim == null:
+		return
+	for t in anim.get_track_count():
+		if anim.track_get_type(t) != Animation.TYPE_POSITION_3D:
+			continue
+		var path := anim.track_get_path(t)
+		if path.get_subname_count() == 0 or not String(path.get_subname(0)).ends_with("Hips"):
+			continue
+		var keys := anim.track_get_key_count(t)
+		if keys == 0:
+			continue
+		var first: Vector3 = anim.track_get_key_value(t, 0)
+		for k in keys:
+			var v: Vector3 = anim.track_get_key_value(t, k)
+			anim.track_set_key_value(t, k, Vector3(first.x, v.y, first.z))
+
+func _play_anim(anim_name: String, speed: float, from_time := -1.0) -> void:
+	if anim_player == null or not anim_player.has_animation(anim_name):
+		return
+	if cur_anim == anim_name and anim_player.is_playing():
+		return
+	cur_anim = anim_name
+	anim_player.speed_scale = speed
+	anim_player.play(anim_name, 0.12)
+	if from_time >= 0.0:
+		anim_player.seek(from_time, true)
 
 func forward() -> Vector3:
 	return visual.basis.z.normalized()
@@ -106,6 +151,12 @@ func _physics_process(delta: float) -> void:
 			velocity.z = direction.z * MOVE_SPEED
 			if direction.length_squared() > 0.001:
 				visual.rotation.y = lerp_angle(visual.rotation.y, atan2(direction.x, direction.z), minf(TURN_SPEED * delta, 1))
+			if not is_on_floor():
+				_play_anim("jump", 1.5)
+			elif direction.length_squared() > 0.001:
+				_play_anim("run", 1.0)
+			else:
+				_play_anim("idle", 1.0)
 			if pressed:
 				start_attack(0)
 			elif jumped and is_on_floor():
@@ -124,6 +175,8 @@ func start_attack(index: int) -> void:
 	velocity.x = forward().x * 1.2
 	velocity.z = forward().z * 1.2
 	_slash()
+	# 片段本体 5.3s，从挥砍段（约 1.0s 处）起播并加速，让接触帧落在挥砍动作上；判定仍走帧数据。
+	_play_anim("attack1" if index == 0 else "attack2", 5.0, 1.0)
 
 func _do_hit() -> void:
 	for enemy in stage.enemies:
@@ -145,6 +198,7 @@ func take_hit(from_dir: Vector3) -> void:
 	state = "hurt"
 	state_t = 0
 	flash_t = 4
+	_play_anim("death" if hp <= 0 else "hit", 1.0 if hp <= 0 else 4.0)
 	velocity.x = from_dir.x * KNOCKBACK / (HURT_FRAMES / 60.0)
 	velocity.z = from_dir.z * KNOCKBACK / (HURT_FRAMES / 60.0)
 
