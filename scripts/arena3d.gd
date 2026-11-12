@@ -177,7 +177,7 @@ func _build_hero() -> void:
 	_visual = Node3D.new()
 	_visual.rotation.y = PI # 默认朝北，相机从角色后上方跟随
 	_hero.add_child(_visual)
-	var packed := load("res://art/models/heroine3d.glb") as PackedScene
+	var packed := load("res://art/models/feisun_gen4.glb") as PackedScene
 	if packed == null:
 		push_error("无法加载 heroine3d.glb")
 		return

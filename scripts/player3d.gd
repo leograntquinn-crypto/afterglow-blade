@@ -43,7 +43,7 @@ func setup(owner_stage: Node) -> void:
 	visual = Node3D.new()
 	visual.rotation.y = PI
 	add_child(visual)
-	var model := (load("res://art/models/heroine3d.glb") as PackedScene).instantiate() as Node3D
+	var model := (load("res://art/models/feisun_gen4.glb") as PackedScene).instantiate() as Node3D
 	var bounds: Array = []
 	stage._mesh_bounds(model, Transform3D.IDENTITY, bounds)
 	var box: AABB = bounds[0]
