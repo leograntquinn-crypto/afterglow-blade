@@ -14,6 +14,7 @@ const DAMAGE := [12, 12, 16]
 const HURT_FRAMES := 12
 const KNOCKBACK := 1.2
 var stage: Node
+var model_path := "res://art/models/feisun_gen4.glb"
 var visual: Node3D
 var hp := MAX_HP
 var state := "idle"
@@ -45,7 +46,7 @@ func setup(owner_stage: Node) -> void:
 	visual = Node3D.new()
 	visual.rotation.y = PI
 	add_child(visual)
-	var model := (load("res://art/models/feisun_gen4.glb") as PackedScene).instantiate() as Node3D
+	var model := (load(model_path) as PackedScene).instantiate() as Node3D
 	var bounds: Array = []
 	stage._mesh_bounds(model, Transform3D.IDENTITY, bounds)
 	var box: AABB = bounds[0]
@@ -70,6 +71,8 @@ func _setup_animation(model: Node) -> void:
 		var a := anim_player.get_animation(loop_name)
 		if a:
 			a.loop_mode = Animation.LOOP_LINEAR
+	# 注意：S1 资产暂缺 attack1（劈砍）与 jump 两段，待真实片段补入后自动生效；
+	# 此处不做别名冒充（不用 attack2 顶 attack1、不用 run 顶 jump），缺段时 _play_anim 自动跳过。
 	# 位移由胶囊控制器驱动：把所有片段 Hips 的水平位移钉在首帧，只保留纵向起伏。
 	for anim_name in anim_player.get_animation_list():
 		_pin_root(anim_player.get_animation(anim_name))
