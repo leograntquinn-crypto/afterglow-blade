@@ -159,8 +159,8 @@ godot --path . scenes/play3d.tscn -- --demo --god
 
 | 文档 | 路径 |
 |---|---|
-| 3D 角色管线定版 | `~/workspace/goals/afterglow-blade-remaining-enemy-packs-and-development/files/CHARACTER_3D_PIPELINE.md` |
-| guizang 吸收规格 v2（场景 v5 + 战斗增量） | 同上目录 `GUIZANG_ABSORPTION_SPEC.md` |
+| 3D 角色管线定版 | 仓库内 `docs/CHARACTER_3D_PIPELINE.md`（原件在 Muse 侧 goal files，同名） |
+| guizang 吸收规格 v2（场景 v5 + 战斗增量） | 仓库内 `docs/GUIZANG_ABSORPTION_SPEC.md` |
 | Godot 迁移计划 | 同上目录 `GODOT_MIGRATION_PLAN.md` |
 | Tripo M0 实测报告 | 同上目录 `TRIPO_M0_REPORT.md` |
 | S1 工作区（母版/验收图/脚本） | `~/workspace/feisun_s1_work/`、`~/workspace/feisun_parts/` |
