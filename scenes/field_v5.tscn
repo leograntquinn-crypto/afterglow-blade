@@ -1,0 +1,21 @@
+[gd_scene load_steps=4 format=3]
+
+[ext_resource type="Script" path="res://scripts/field_v5.gd" id="1_field"]
+[ext_resource type="Script" path="res://scripts/weather_rig.gd" id="2_weather"]
+
+[sub_resource type="CameraAttributesPractical" id="CameraAttributesPractical_v5"]
+dof_blur_far_enabled = true
+dof_blur_far_distance = 120.0
+
+[node name="FieldV5" type="Node3D"]
+script = ExtResource("1_field")
+
+[node name="Weather" type="Node3D" parent="."]
+script = ExtResource("2_weather")
+
+[node name="PreviewCamera" type="Camera3D" parent="."]
+transform = Transform3D(0.866025, -0.25, 0.433013, 0, 0.866025, 0.5, -0.5, -0.433013, 0.75, 0, 30, 55)
+fov = 38.0
+far = 600.0
+current = true
+attributes = SubResource("CameraAttributesPractical_v5")

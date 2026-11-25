@@ -18,9 +18,10 @@ var _hero: CharacterBody3D
 var _visual: Node3D
 var _rig: Node3D
 var _arm: SpringArm3D
+var _camera_rig: Node
 var _yaw := 0.0
-var _pitch := -0.32
-var _distance := CAMERA_DISTANCE
+var _pitch := -deg_to_rad(45.0)
+var _distance := 16.0
 var _time := 0.0
 var _demo := false
 var _capture := false
@@ -71,9 +72,12 @@ func _pillar(at: Vector3, material: Material) -> void:
 	var shape := CylinderShape3D.new()
 	shape.radius = 0.7
 	shape.height = 4.8
-	_solid(mesh, at + Vector3.UP * 2.4, shape, material)
-	_box(Vector3(1.7, 0.3, 1.7), at + Vector3.UP * 0.15, material)
-	_box(Vector3(1.6, 0.35, 1.6), at + Vector3.UP * 4.65, material)
+	var body := _solid(mesh, at + Vector3.UP * 2.4, shape, material)
+	body.add_to_group("occluder")
+	body.set_meta("fade_radius", 0.85)
+	body.set_meta("fade_height", 4.8)
+	_box(Vector3(1.7, 0.3, 1.7), at + Vector3.UP * 0.15, material).add_to_group("occluder")
+	_box(Vector3(1.6, 0.35, 1.6), at + Vector3.UP * 4.65, material).add_to_group("occluder")
 
 func _build_arena() -> void:
 	var stone := _material(Color(0.28, 0.29, 0.34))
@@ -198,34 +202,25 @@ func _build_hero() -> void:
 	print("arena3d: imported AABB=", aabb, " normalized height=", aabb.size.y * factor)
 
 func _build_camera() -> void:
-	_rig = Node3D.new()
-	add_child(_rig)
-	_arm = SpringArm3D.new()
-	_arm.spring_length = _distance
-	_arm.margin = 0.2
-	_arm.add_excluded_object(_hero.get_rid())
-	var probe := SphereShape3D.new()
-	probe.radius = 0.18
-	_arm.shape = probe
-	_rig.add_child(_arm)
-	var camera := Camera3D.new()
-	camera.fov = 65
-	camera.far = 130
-	_arm.add_child(camera)
-	camera.current = true
-	_update_camera()
+	var rig_script := load("res://scripts/camera_rig3d.gd")
+	_camera_rig = rig_script.new()
+	add_child(_camera_rig)
+	var face := _hero.get("visual") as Node3D
+	_camera_rig.setup(_hero, face if face != null else _hero)
+	_camera_rig.ground_mask = 1
+	_camera_rig.input_enabled = not _demo
+	for node in get_tree().get_nodes_in_group("occluder"):
+		_camera_rig.mark_occluder(node, float(node.get_meta("fade_radius", 0.8)))
+	_yaw = _camera_rig.yaw
+	_pitch = _camera_rig.pitch
+	_distance = 16.0 * _camera_rig.zoom
 
 func _unhandled_input(event: InputEvent) -> void:
 	if _demo:
 		return
-	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_yaw -= event.relative.x * MOUSE_SENSITIVITY
-		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.15, -0.1)
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_distance = clampf(_distance - 0.5, CAMERA_MIN, CAMERA_MAX)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_distance = clampf(_distance + 0.5, CAMERA_MIN, CAMERA_MAX)
+	# 相机输入统一由 CameraRig3D 节点自身处理；此处保留空实现避免父类重复处理。
+	pass
+
 
 func _physics_process(delta: float) -> void:
 	_time += delta
@@ -240,7 +235,7 @@ func _physics_process(delta: float) -> void:
 		_yaw += delta * 0.32
 	else:
 		var input := Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
-		direction = (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y)).normalized()
+		direction = (Basis(Vector3.UP, _camera_rig.move_yaw()) * Vector3(input.x, 0, input.y)).normalized()
 		var down := Input.is_key_pressed(KEY_SPACE)
 		jump = down and not _jump_was_down
 		_jump_was_down = down
@@ -258,9 +253,11 @@ func _physics_process(delta: float) -> void:
 	_update_camera()
 
 func _update_camera() -> void:
-	_rig.position = _hero.position + Vector3.UP * 1.25
-	_rig.rotation = Vector3(_pitch, _yaw, 0)
-	_arm.spring_length = _distance
+	if _camera_rig == null:
+		return
+	_camera_rig.yaw = _yaw
+	_camera_rig.pitch = _pitch
+	_camera_rig._apply_transform()
 
 func _process(_delta: float) -> void:
 	if _capture and not _capturing and _shots < SHOT_TIMES.size() and _time >= SHOT_TIMES[_shots]:

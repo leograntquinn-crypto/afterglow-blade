@@ -9,6 +9,7 @@ const INTERMISSION := 2.0
 const PLAY_CAPTURE_TIMES := [2.0, 6.0, 12.0, 20.0]
 
 var god_mode := false
+var jinyi_enabled := false
 var wave := 0
 var phase := "fighting"
 var phase_t := 0.0
@@ -20,6 +21,7 @@ func _ready() -> void:
 	_demo = "--demo" in args
 	_capture = "--capture" in args
 	god_mode = "--god" in args
+	jinyi_enabled = "--jinyi" in args
 	_build_hud()
 	_build_play_hud()
 	_build_arena()
@@ -31,9 +33,9 @@ func _ready() -> void:
 	fighter.setup(self)
 	_hero = fighter
 	_build_camera()
-	_pitch = -0.7
-	_distance = 11.0
-	(_arm.get_child(0) as Camera3D).fov = 50.0
+	_pitch = -deg_to_rad(45.0)
+	_distance = 16.0
+	(_camera_rig.get_child(0) as Camera3D).fov = 38.0
 	_update_camera()
 	_initialized = true
 	if fighter.anim_player:
@@ -67,6 +69,12 @@ func _start_wave(n: int) -> void:
 		add_child(enemy)
 		enemy.setup(self, fighter)
 		enemies.append(enemy)
+	if jinyi_enabled and n == 2:
+		var jinyi := Enemy3D.new()
+		jinyi.position = Vector3(4.0, 3.0, 4.0)
+		add_child(jinyi)
+		jinyi.setup(self, fighter, true)
+		enemies.append(jinyi)
 	phase = "fighting"
 	phase_t = 0.0
 	_result.text = ""
@@ -83,17 +91,13 @@ func _physics_process(delta: float) -> void:
 	if not _initialized or not is_instance_valid(fighter):
 		return
 	_time += delta
-	frozen = _freeze_t > 0
-	if frozen:
-		_freeze_t -= 1
-	else:
-		if _demo:
-			_drive_combat_demo()
-		elif phase == "fighting" or phase == "intermission":
-			var input := Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
-			fighter.direction = (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y)).normalized()
-			fighter.attack = Input.is_key_pressed(KEY_J)
-			fighter.jump = Input.is_key_pressed(KEY_SPACE)
+	if _demo:
+		_drive_combat_demo()
+	elif phase == "fighting" or phase == "intermission":
+		var input := Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
+		fighter.direction = (Basis(Vector3.UP, _camera_rig.move_yaw()) * Vector3(input.x, 0, input.y)).normalized()
+		fighter.attack = Input.is_key_pressed(KEY_J)
+		fighter.jump = Input.is_key_pressed(KEY_SPACE)
 	if _demo:
 		_yaw += delta * 0.16
 	if god_mode and is_instance_valid(fighter):
@@ -141,23 +145,11 @@ func _flow(delta: float) -> void:
 		if phase_t >= 1.5:
 			get_tree().quit(0 if phase == "won" else 1)
 
-func _unhandled_input(event: InputEvent) -> void:
-	if _demo:
-		return
-	if event is InputEventMouseMotion and Input.is_mouse_button_pressed(MOUSE_BUTTON_LEFT):
-		_yaw -= event.relative.x * MOUSE_SENSITIVITY
-		_pitch = clampf(_pitch - event.relative.y * MOUSE_SENSITIVITY, -1.15, -0.1)
-	if event is InputEventMouseButton and event.pressed:
-		if event.button_index == MOUSE_BUTTON_WHEEL_UP:
-			_distance = clampf(_distance - 0.5, 4.0, 16.0)
-		elif event.button_index == MOUSE_BUTTON_WHEEL_DOWN:
-			_distance = clampf(_distance + 0.5, 4.0, 16.0)
-
 func _process(delta: float) -> void:
-	if not _initialized or not is_instance_valid(_arm):
+	if not _initialized or not is_instance_valid(_camera_rig):
 		return
 	_trauma = maxf(_trauma - TRAUMA_DECAY * delta, 0.0)
-	var camera := _arm.get_child(0) as Camera3D
+	var camera := _camera_rig.get_child(0) as Camera3D
 	var amplitude := _trauma * _trauma * 0.35
 	camera.h_offset = sin(_time * 111) * amplitude
 	camera.v_offset = sin(_time * 137 + 1.7) * amplitude

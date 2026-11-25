@@ -5,11 +5,12 @@ const Enemy3D := preload("res://scripts/enemy3d.gd")
 const CAPTURE_TIMES := [1.5, 3.5, 5.5, 8.0]
 const TRAUMA_MAX := 0.6
 const TRAUMA_DECAY := 1.8
+const PLAYER_RADIUS := 0.3
+const ENEMY_RADIUS := 0.32
+const SEP_MAX := 0.08
 var enemies: Array = []
 var fighter: CharacterBody3D
-var frozen := false
 var verify_mode := false
-var _freeze_t := 0
 var _trauma := 0.0
 var _pulse := 0
 var _health: ColorRect
@@ -72,10 +73,36 @@ func _build_hud() -> void:
 	_result.add_theme_font_size_override("font_size", 52)
 	layer.add_child(_result)
 
-func hitstop(frames: int) -> void:
-	_freeze_t = maxi(_freeze_t, frames)
-	# 命中同帧也阻止后续实体更新。
-	frozen = true
+func apply_hitstop(attacker: CharacterBody3D, victim: CharacterBody3D, heavy: bool) -> void:
+	var atk_freeze := 6 if heavy else 4
+	var vic_freeze := 8 if heavy else 5
+	if attacker != null:
+		attacker.freeze_t = maxi(attacker.freeze_t, atk_freeze)
+	if victim != null:
+		victim.freeze_t = maxi(victim.freeze_t, vic_freeze)
+
+func _resolve_body_collisions() -> void:
+	var bodies: Array = []
+	if is_instance_valid(fighter):
+		bodies.append(fighter)
+	for e in enemies:
+		if is_instance_valid(e) and e.hp > 0:
+			bodies.append(e)
+	for i in range(bodies.size()):
+		var a: Node3D = bodies[i]
+		var ar := float(a.get("body_radius"))
+		for j in range(i + 1, bodies.size()):
+			var b: Node3D = bodies[j]
+			var br := float(b.get("body_radius"))
+			var offset := b.global_position - a.global_position
+			offset.y = 0.0
+			var d := offset.length()
+			var sum := ar + br
+			if d > 0.001 and d < sum - 0.001:
+				var push := minf(sum - d + 0.01, SEP_MAX)
+				var n := offset / d
+				a.global_position -= n * (push * 0.5)
+				b.global_position += n * (push * 0.5)
 
 func add_trauma(amount: float) -> void:
 	_trauma = minf(_trauma + amount, TRAUMA_MAX)
@@ -89,24 +116,21 @@ func _physics_process(delta: float) -> void:
 	if not _initialized or not is_instance_valid(fighter):
 		return
 	_time += delta
-	frozen = _freeze_t > 0
-	if frozen:
-		_freeze_t -= 1
+	if verify_mode:
+		_drive_verify()
+	elif _demo:
+		_drive_combat_demo()
 	else:
-		if verify_mode:
-			_drive_verify()
-		elif _demo:
-			_drive_combat_demo()
-		else:
-			var input := Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
-			fighter.direction = (Basis(Vector3.UP, _yaw) * Vector3(input.x, 0, input.y)).normalized()
-			fighter.attack = Input.is_key_pressed(KEY_J)
-			fighter.jump = Input.is_key_pressed(KEY_SPACE)
+		var input := Vector2(float(Input.is_key_pressed(KEY_D)) - float(Input.is_key_pressed(KEY_A)), float(Input.is_key_pressed(KEY_S)) - float(Input.is_key_pressed(KEY_W)))
+		fighter.direction = (Basis(Vector3.UP, _camera_rig.move_yaw()) * Vector3(input.x, 0, input.y)).normalized()
+		fighter.attack = Input.is_key_pressed(KEY_J)
+		fighter.jump = Input.is_key_pressed(KEY_SPACE)
 	if _demo:
 		_yaw += delta * 0.16
 	_update_camera()
 	if is_instance_valid(_health):
 		_health.size.x = 200.0 * fighter.hp / 100
+	_resolve_body_collisions()
 	var alive := false
 	for enemy in enemies:
 		if is_instance_valid(enemy) and enemy.hp > 0:
@@ -142,7 +166,7 @@ func _process(delta: float) -> void:
 	if not _initialized or not is_instance_valid(_arm):
 		return
 	_trauma = maxf(_trauma - TRAUMA_DECAY * delta, 0)
-	var camera := _arm.get_child(0) as Camera3D
+	var camera := _camera_rig.get_child(0) as Camera3D
 	var amplitude := _trauma * _trauma * 0.35
 	camera.h_offset = sin(_time * 111) * amplitude
 	camera.v_offset = sin(_time * 137 + 1.7) * amplitude

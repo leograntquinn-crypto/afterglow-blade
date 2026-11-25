@@ -13,6 +13,14 @@ const HALF_ANGLE := 70.0
 const DAMAGE := [12, 12, 16]
 const HURT_FRAMES := 12
 const KNOCKBACK := 1.2
+const BODY_RADIUS := 0.3
+const ATTACK_BUFFER := 10
+const JUMP_BUFFER := 8
+const MAGNET_RADIUS := 4.0
+const MAGNET_HALF_ANGLE := 60.0
+const MAGNET_STANDOFF := 1.52
+const MAGNET_SEG := [2.0, 2.0, 2.6]
+const MAGNET_NO_TARGET := 0.28
 var stage: Node
 var model_path := "res://art/models/feisun_gen4.glb"
 var visual: Node3D
@@ -26,6 +34,19 @@ var attack := false
 var jump := false
 var previous_attack := false
 var previous_jump := false
+var freeze_t := 0
+var buf_attack_age := 999
+var buf_jump_age := 999
+var anim_speed := 1.0
+var magnet_target: Node3D
+var magnet_remaining := 0.0
+var magnet_dir := Vector3.FORWARD
+var shake_t := 0
+var shake_amp := 0.0
+var shake_dir := Vector3.FORWARD
+var spring_runtime: Node
+var spring_count := 0
+var body_radius := BODY_RADIUS
 var flash_t := 0
 var flash: StandardMaterial3D
 var arcs: Array = []
@@ -35,7 +56,7 @@ var cur_anim := ""
 func setup(owner_stage: Node) -> void:
 	stage = owner_stage
 	collision_layer = 2
-	collision_mask = 1
+	collision_mask = 1 | 4
 	var shape := CollisionShape3D.new()
 	var capsule := CapsuleShape3D.new()
 	capsule.radius = 0.3
@@ -57,6 +78,10 @@ func setup(owner_stage: Node) -> void:
 	visual.add_child(normalized)
 	normalized.add_child(model)
 	_setup_animation(model)
+	var spring_script := load("res://scripts/spring_bone_runtime.gd") as Script
+	spring_runtime = spring_script.new()
+	add_child(spring_runtime)
+	spring_count = spring_runtime.setup(model)
 	flash = StandardMaterial3D.new()
 	flash.shading_mode = BaseMaterial3D.SHADING_MODE_UNSHADED
 	flash.albedo_color = Color(1, 0.08, 0.03, 0.65)
@@ -96,6 +121,7 @@ func _pin_root(anim: Animation) -> void:
 			anim.track_set_key_value(t, k, Vector3(first.x, v.y, first.z))
 
 func _play_anim(anim_name: String, speed: float, from_time := -1.0) -> void:
+	anim_speed = speed
 	if anim_player == null or not anim_player.has_animation(anim_name):
 		return
 	if cur_anim == anim_name and anim_player.is_playing():
@@ -116,32 +142,62 @@ func _overlay(node: Node, enabled: bool) -> void:
 		_overlay(child, enabled)
 
 func _physics_process(delta: float) -> void:
-	if stage.frozen:
-		return
+	var pressed := attack and not previous_attack
+	var jumped := jump and not previous_jump
+	previous_attack = attack
+	previous_jump = jump
+	if pressed:
+		buf_attack_age = 0
+	if jumped:
+		buf_jump_age = 0
+	if buf_attack_age < 999:
+		buf_attack_age += 1
+	if buf_jump_age < 999:
+		buf_jump_age += 1
 	for arc in arcs.duplicate():
 		arc.life -= delta
 		arc.mesh.material_override.albedo_color.a = maxf(arc.life / 0.12, 0.0)
 		if arc.life <= 0:
 			arc.mesh.queue_free()
 			arcs.erase(arc)
-	var pressed := attack and not previous_attack
-	var jumped := jump and not previous_jump
-	previous_attack = attack
-	previous_jump = jump
+	if freeze_t > 0:
+		freeze_t -= 1
+		if spring_runtime != null:
+			spring_runtime.set_frozen(true)
+		if anim_player != null:
+			anim_player.speed_scale = 0.0
+		if shake_t > 0:
+			_shake_apply()
+		return
+	if anim_player != null:
+		anim_player.speed_scale = anim_speed
+	if spring_runtime != null:
+		spring_runtime.set_frozen(false)
 	state_t += 1
 	flash_t = maxi(0, flash_t - 1)
 	_overlay(visual, flash_t > 0)
+	if shake_t > 0:
+		shake_t -= 1
+		_shake_apply()
+	else:
+		visual.position = Vector3.ZERO
 	if hp <= 0:
 		return
 	match state:
 		"attack":
 			if state_t == CONTACT_FRAME:
+				collision_mask = 1 | 4
 				_do_hit()
-			if pressed and state_t >= CANCEL_FRAME:
-				buffered = true
+			if 1 <= state_t and state_t < CONTACT_FRAME:
+				_magnet_step(delta)
+			if state_t == CANCEL_FRAME:
+				if buf_attack_age <= ATTACK_BUFFER:
+					buffered = true
+				buf_attack_age = 999
 			velocity.x = move_toward(velocity.x, 0, 8 * delta)
 			velocity.z = move_toward(velocity.z, 0, 8 * delta)
 			if state_t >= ATTACK_FRAMES:
+				collision_mask = 1 | 4
 				if buffered and atk_idx < 2:
 					start_attack(atk_idx + 1)
 				else:
@@ -150,6 +206,9 @@ func _physics_process(delta: float) -> void:
 			if state_t >= HURT_FRAMES:
 				state = "idle"
 		_:
+			if buf_attack_age <= ATTACK_BUFFER:
+				start_attack(0)
+				buf_attack_age = 999
 			velocity.x = direction.x * MOVE_SPEED
 			velocity.z = direction.z * MOVE_SPEED
 			if direction.length_squared() > 0.001:
@@ -160,10 +219,9 @@ func _physics_process(delta: float) -> void:
 				_play_anim("run", 1.0)
 			else:
 				_play_anim("idle", 1.0)
-			if pressed:
-				start_attack(0)
-			elif jumped and is_on_floor():
+			if buf_jump_age <= JUMP_BUFFER and is_on_floor():
 				velocity.y = JUMP_SPEED
+				buf_jump_age = 999
 	if not is_on_floor():
 		velocity.y -= GRAVITY * delta
 	move_and_slide()
@@ -175,11 +233,87 @@ func start_attack(index: int) -> void:
 	state_t = 0
 	atk_idx = index
 	buffered = false
-	velocity.x = forward().x * 1.2
-	velocity.z = forward().z * 1.2
+	buf_attack_age = 999
+	collision_mask = 1
+	velocity = Vector3.ZERO
+	_acquire_target()
+	velocity.x = magnet_dir.x * 1.2
+	velocity.z = magnet_dir.z * 1.2
 	_slash()
 	# 片段本体 5.3s，从挥砍段（约 1.0s 处）起播并加速，让接触帧落在挥砍动作上；判定仍走帧数据。
 	_play_anim("attack1" if index == 0 else "attack2", 5.0, 1.0)
+
+func _acquire_target() -> void:
+	magnet_target = null
+	magnet_remaining = 0.0
+	magnet_dir = forward()
+	var dir := direction if direction.length_squared() > 0.001 else forward()
+	var best_score := 1e9
+	var best: Node3D = null
+	var best_offset := Vector3.ZERO
+	for enemy in stage.enemies:
+		if not is_instance_valid(enemy) or enemy.hp <= 0:
+			continue
+		var offset: Vector3 = enemy.position - position
+		var dy: float = absf(offset.y)
+		offset.y = 0.0
+		var d: float = offset.length()
+		if d < 0.05 or d > MAGNET_RADIUS or dy > 1.0:
+			continue
+		var angle: float = absf(wrapf(atan2(offset.x, offset.z) - atan2(dir.x, dir.z), -PI, PI))
+		if angle > deg_to_rad(MAGNET_HALF_ANGLE):
+			continue
+		var score: float = d / MAGNET_RADIUS + angle / deg_to_rad(MAGNET_HALF_ANGLE) * 0.8
+		if score < best_score:
+			best_score = score
+			best = enemy
+			best_offset = offset
+	if best != null:
+		magnet_target = best
+		magnet_dir = best_offset.normalized() if best_offset.length_squared() > 0.001 else forward()
+		visual.rotation.y = atan2(magnet_dir.x, magnet_dir.z)
+		magnet_remaining = minf(best_offset.length() - MAGNET_STANDOFF, MAGNET_SEG[atk_idx])
+		if magnet_remaining < 0.0:
+			magnet_remaining = 0.0
+	else:
+		magnet_remaining = MAGNET_NO_TARGET
+
+func _magnet_step(delta: float) -> void:
+	if magnet_remaining <= 0.0:
+		return
+	var frames_left := maxf(1.0, float(CONTACT_FRAME - state_t))
+	var step: float = minf(magnet_remaining / frames_left, magnet_remaining)
+	if magnet_target == null:
+		step = minf(step, MAGNET_NO_TARGET / float(CONTACT_FRAME - 1))
+	var move := magnet_dir * step
+	var target_d := magnet_remaining
+	if magnet_target != null and is_instance_valid(magnet_target) and magnet_target.hp > 0:
+		var offset := magnet_target.position - position
+		offset.y = 0.0
+		target_d = offset.length()
+		if target_d > MAGNET_STANDOFF:
+			var wanted: float = minf(magnet_remaining / frames_left, target_d - MAGNET_STANDOFF)
+			move = offset.normalized() * wanted
+			step = wanted
+	var coll := move_and_collide(move)
+	if coll != null:
+		magnet_remaining = 0.0
+		return
+	magnet_remaining -= step
+	if magnet_target != null and is_instance_valid(magnet_target) and state_t >= CONTACT_FRAME - 1:
+		var final_offset := magnet_target.global_position - global_position
+		final_offset.y = 0.0
+		if final_offset.length() > MAGNET_STANDOFF:
+			global_position = magnet_target.global_position - final_offset.normalized() * MAGNET_STANDOFF
+			global_position.y = position.y
+			magnet_remaining = 0.0
+
+func _shake_apply() -> void:
+	var shake := shake_dir
+	shake.y = 0.0
+	if shake.length_squared() > 0.0001:
+		shake = shake.normalized()
+	visual.position = shake * shake_amp * cos(state_t * PI)
 
 func _do_hit() -> void:
 	for enemy in stage.enemies:
@@ -189,10 +323,11 @@ func _do_hit() -> void:
 		offset.y = 0
 		if offset.length() <= REACH and (offset.length() < 0.01 or forward().dot(offset.normalized()) >= cos(deg_to_rad(HALF_ANGLE))):
 			var before: int = enemy.hp
-			enemy.take_hit(DAMAGE[atk_idx], forward(), atk_idx == 2)
+			var heavy := atk_idx == 2
+			enemy.take_hit(DAMAGE[atk_idx], forward(), heavy)
+			stage.apply_hitstop(self, enemy, heavy)
 			stage.record_hit(atk_idx, before, enemy.hp)
-			stage.hitstop(8 if atk_idx == 2 else 6)
-			stage.add_trauma(0.32 if atk_idx == 2 else 0.25)
+			stage.add_trauma(0.32 if heavy else 0.25)
 
 func take_hit(from_dir: Vector3) -> void:
 	if state == "hurt" or hp <= 0:
@@ -201,9 +336,16 @@ func take_hit(from_dir: Vector3) -> void:
 	state = "hurt"
 	state_t = 0
 	flash_t = 4
+	freeze_t = maxi(freeze_t, 4)
+	_shake(-from_dir, 0.03, 4)
 	_play_anim("death" if hp <= 0 else "hit", 1.0 if hp <= 0 else 4.0)
 	velocity.x = from_dir.x * KNOCKBACK / (HURT_FRAMES / 60.0)
 	velocity.z = from_dir.z * KNOCKBACK / (HURT_FRAMES / 60.0)
+
+func _shake(dir: Vector3, amp: float, frames: int) -> void:
+	shake_dir = dir
+	shake_amp = amp
+	shake_t = frames
 
 func _slash() -> void:
 	# 占位弧形刃光：正式版换 CG 特效素材。
