@@ -100,27 +100,45 @@ func _setup_animation(model: Node) -> void:
 			a.loop_mode = Animation.LOOP_LINEAR
 	# 注意：S1 资产暂缺 attack1（劈砍）与 jump 两段，待真实片段补入后自动生效；
 	# 此处不做别名冒充（不用 attack2 顶 attack1、不用 run 顶 jump），缺段时 _play_anim 自动跳过。
-	# 位移由胶囊控制器驱动：把所有片段 Hips 的水平位移钉在首帧，只保留纵向起伏。
+	# 位移由胶囊控制器驱动：把所有片段 Hip 的水平行进钉掉，只保留纵向起伏。
+	var skels := model.find_children("*", "Skeleton3D", true, false)
+	var skel := skels[0] as Skeleton3D if not skels.is_empty() else null
 	for anim_name in anim_player.get_animation_list():
-		_pin_root(anim_player.get_animation(anim_name))
+		_pin_root(anim_player.get_animation(anim_name), skel)
 	_play_anim("idle", 1.0)
 
-func _pin_root(anim: Animation) -> void:
+func _pin_root(anim: Animation, skel: Skeleton3D) -> void:
 	if anim == null:
 		return
 	for t in anim.get_track_count():
 		if anim.track_get_type(t) != Animation.TYPE_POSITION_3D:
 			continue
 		var path := anim.track_get_path(t)
-		if path.get_subname_count() == 0 or not String(path.get_subname(0)).ends_with("Hips"):
+		if path.get_subname_count() == 0:
+			continue
+		var bone_name := String(path.get_subname(0))
+		if bone_name != "Hip" and bone_name != "Hips":
 			continue
 		var keys := anim.track_get_key_count(t)
 		if keys == 0:
 			continue
+		# 轨道数值在父骨坐标系里表达，轴向与世界轴不一致（S1 的行进大头在轨道 Y 分量上），
+		# 不能按分量硬钉：把世界 Up 换算进父骨坐标系，只保留位移沿 Up 的分量（纵向起伏）。
+		var up := Vector3.UP
+		if skel != null:
+			var bi := skel.find_bone(bone_name)
+			if bi >= 0:
+				var up_skel := (skel.global_transform.basis.inverse() * Vector3.UP).normalized()
+				var parent := skel.get_bone_parent(bi)
+				if parent >= 0:
+					up = (skel.get_bone_global_rest(parent).basis.inverse() * up_skel).normalized()
+				else:
+					up = up_skel
 		var first: Vector3 = anim.track_get_key_value(t, 0)
 		for k in keys:
 			var v: Vector3 = anim.track_get_key_value(t, k)
-			anim.track_set_key_value(t, k, Vector3(first.x, v.y, first.z))
+			var d := v - first
+			anim.track_set_key_value(t, k, first + up * d.dot(up))
 
 func _play_anim(anim_name: String, speed: float, from_time := -1.0) -> void:
 	anim_speed = speed
