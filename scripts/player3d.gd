@@ -1,6 +1,8 @@
 extends CharacterBody3D
 ## 3D 玩家；所有帧计数以 60Hz 物理帧运行。
 const MOVE_SPEED := 4.2
+const RUN_CLIP_SPEED := 2.26 # run 片段自然速度实测（P0 诊断：Hip 位移 2.827m / 周期 1.25s）
+const ACCEL := 28.0 # 起步/停步加速度（Fable 指导 ②.1：25–30 m/s²，约 0.15s 到满速/停稳）
 const JUMP_SPEED := 5.2
 const GRAVITY := 15.68
 const TURN_SPEED := 10.0
@@ -209,14 +211,14 @@ func _physics_process(delta: float) -> void:
 			if buf_attack_age <= ATTACK_BUFFER:
 				start_attack(0)
 				buf_attack_age = 999
-			velocity.x = direction.x * MOVE_SPEED
-			velocity.z = direction.z * MOVE_SPEED
+			velocity.x = move_toward(velocity.x, direction.x * MOVE_SPEED, ACCEL * delta)
+			velocity.z = move_toward(velocity.z, direction.z * MOVE_SPEED, ACCEL * delta)
 			if direction.length_squared() > 0.001:
 				visual.rotation.y = lerp_angle(visual.rotation.y, atan2(direction.x, direction.z), minf(TURN_SPEED * delta, 1))
 			if not is_on_floor():
 				_play_anim("jump", 1.5)
 			elif direction.length_squared() > 0.001:
-				_play_anim("run", 1.0)
+				_play_anim("run", MOVE_SPEED / RUN_CLIP_SPEED) # B 路线临时同步：播放倍速对齐足速与移速，P1 的 A 路线 4.2m/s 片段到位后回 1.0
 			else:
 				_play_anim("idle", 1.0)
 			if buf_jump_age <= JUMP_BUFFER and is_on_floor():
